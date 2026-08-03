@@ -1642,6 +1642,7 @@ function renderCalendar(result) {
       ? { left: 'prev,next', center: 'title', right: 'today' }
       : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
     locale: 'th',
+    height: 'auto',
     allDayText: 'ทั้งวัน',
     buttonText: { today: 'วันนี้' },
     events: result.events,
@@ -1695,6 +1696,7 @@ function renderCalendar(result) {
       wrapper.style.overflow = 'hidden';
       wrapper.style.padding = '1px 2px';
       wrapper.style.width = '100%';
+      wrapper.style.minWidth = '0';
 
       var topRow = document.createElement('div');
       topRow.style.display = 'flex';
@@ -1702,12 +1704,15 @@ function renderCalendar(result) {
       topRow.style.gap = '3px';
       topRow.style.overflow = 'hidden';
       topRow.style.width = '100%';
+      topRow.style.minWidth = '0';
       topRow.innerHTML = typeDotHtml + dotsHtml;
 
       var titleSpan = document.createElement('span');
       titleSpan.style.overflow = 'hidden';
       titleSpan.style.textOverflow = 'ellipsis';
       titleSpan.style.whiteSpace = 'nowrap';
+      titleSpan.style.minWidth = '0';
+      titleSpan.style.flex = '1';
       if (isListView) titleSpan.style.fontWeight = '600';
       titleSpan.textContent = arg.event.title;
       topRow.appendChild(titleSpan);

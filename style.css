@@ -696,8 +696,16 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
   /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น */
-  .fc-list-event-title { font-size: 13px; }
+  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; }
   .fc-list-day-cushion { font-size: 12px; }
+
+  /* บังคับตารางไม่ให้กว้างเกินจอ (สาเหตุที่ข้อความล้นแทนที่จะตัดคำ) */
+  .fc-list-table { table-layout: fixed; width: 100%; }
+  .fc-list-table td { overflow: hidden; }
+
+  /* ซ่อนคอลัมน์ "ทั้งวัน"/เวลาของ FullCalendar เอง เพราะเรามีแถบวันที่ของเราเองอยู่ใต้ชื่องานแล้ว ซ้ำซ้อนกัน */
+  .fc-list-event-time { display: none; }
+  .fc-list-event-graphic { padding-right: 4px !important; }
 
   /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ */
   .fc-toolbar-title { font-size: 18px !important; }
