@@ -85,7 +85,9 @@
         <button onclick="openTaskModal()">+ สร้างงานใหม่</button>
         <button id="staff-menu-btn" onclick="openStaffModal()">บัญชีผู้ใช้</button>
         <button id="holiday-menu-btn" onclick="openHolidayModal()">วันหยุด</button>
-        <button id="my-requests-btn" onclick="openMyRequestsModal()" style="display:none">คำขอของฉัน</button>
+        <button id="my-requests-btn" onclick="openMyRequestsModal()" style="display:none;position:relative">
+          คำขอของฉัน<span id="my-requests-badge" style="display:none">0</span>
+        </button>
         <button onclick="openProfileModal()">โปรไฟล์</button>
         <button onclick="doLogout()">ออกจากระบบ</button>
       </div>

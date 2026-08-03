@@ -42,6 +42,9 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; }
 /* ปุ่มที่กำลังโหลด */
 button:disabled { opacity: 0.7; cursor: not-allowed; }
 
+/* SweetAlert2 ต้องอยู่บนสุดเสมอ (สูงกว่า modal ทุกตัวที่ z-index: 2050) กันโผล่ไปอยู่หลัง modal */
+.swal2-container { z-index: 3000 !important; }
+
 /* Animation ตอนเปิด modal ทุกตัว ให้ดูมีชีวิตชีวาขึ้น ไม่โผล่มาดิบๆทันที */
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modalScaleIn { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
@@ -142,8 +145,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   background-color: rgba(193, 250, 169, 0.35) !important;
 }
 }
-
-
 
 /* การ์ดผู้ปฏิบัติงานฝั่งซ้าย - นามบัตรใช้สีประจำตัวเป็นพื้นหลัง */
 .member-card {
@@ -466,6 +467,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
+#my-requests-badge {
+  position: absolute; top: -6px; right: -6px; background: #ef4444; color: #fff;
+  font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center; padding: 0 3px;
+}
 
 /* Modal ขอเปลี่ยนวัน / รายการคำขอ - ใช้ style ร่วมกันแบบ modal ทั่วไป */
 #reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay {
@@ -551,7 +557,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 .staff-checklist .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 #task-map { height: 180px; border-radius: 6px; margin-top: 8px; border: 1px solid #d1d5db; }
-#task-map-notice { font-size: 12px; color: #9a7b1f; margin: 6px 0 0; }
 #task-box > button:not(#task-close) {
   width: 100%; padding: 10px; background: #059669; color: #fff; border: none;
   border-radius: 6px; font-size: 14px; cursor: pointer; margin-top: 18px;
@@ -665,6 +670,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   }
   .mfn-item:active { color: #059669; }
   .mfn-add {
+    flex: 0 0 auto;
     background: #059669; color: #fff; border-radius: 50%;
     width: 48px; height: 48px; margin: -14px auto 0; justify-content: center;
     box-shadow: 0 4px 12px rgba(5,150,105,0.4);

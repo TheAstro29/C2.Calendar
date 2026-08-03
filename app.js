@@ -49,12 +49,59 @@ function hidePageLoading() {
 
 var holidaysCache = [];
 
+// ===== Local Cache (เก็บในเบราว์เซอร์) แบบ Stale-While-Revalidate =====
+// ใช้เฉพาะข้อมูลที่ไม่จำเป็นต้อง real-time เป๊ะๆ: รายชื่อผู้ปฏิบัติงาน + วันหยุด
+// โชว์จาก cache ทันทีถ้ามี (ไม่ต้องรอเน็ต) แล้วเช็คข้อมูลจริงเงียบๆด้านหลังเสมอ
+var LOCAL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 ชม. - หมดอายุสำรอง กันโชว์ข้อมูลเก่าเกินไปถ้าเน็ตมีปัญหานาน
+var STAFF_CACHE_KEY = 'c2tech_cache_staff_public';
+var HOLIDAYS_CACHE_KEY = 'c2tech_cache_holidays';
+
+function getLocalCache(key) {
+  try {
+    var raw = localStorage.getItem(key);
+    if (!raw) return null;
+    var parsed = JSON.parse(raw);
+    if (Date.now() - parsed.timestamp > LOCAL_CACHE_TTL_MS) return null;
+    return parsed.data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setLocalCache(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ data: data, timestamp: Date.now() }));
+  } catch (e) {
+    // localStorage เต็มหรือใช้งานไม่ได้ - ปล่อยผ่านเงียบๆ ไม่กระทบการทำงานหลัก
+  }
+}
+
 // ทุกคนเห็นปฏิทินได้เสมอตั้งแต่เปิดหน้าเว็บ ไม่ต้อง login
 window.onload = function () {
-  loadHolidays().then(function () {
+  var cachedHolidays = getLocalCache(HOLIDAYS_CACHE_KEY);
+
+  if (cachedHolidays) {
+    // มี local cache ของวันหยุด: โชว์ปฏิทินทันทีไม่ต้องรอเน็ตเลย
+    holidaysCache = cachedHolidays;
     loadPublicEvents();
     checkExistingSession();
-  });
+    // เช็คข้อมูลจริงเงียบๆด้านหลัง ถ้าข้อมูลเปลี่ยนจะสร้างปฏิทินใหม่ให้ตรงกับของจริง
+    loadHolidays().then(function () {
+      if (calendarInstance) {
+        calendarInstance.destroy();
+        calendarInstance = null;
+      }
+      var token = localStorage.getItem(TOKEN_KEY);
+      if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
+    });
+  } else {
+    // ไม่มี cache (เปิดครั้งแรก/cache หมดอายุ) ต้องรอโหลดจริงก่อนเหมือนเดิม
+    loadHolidays().then(function () {
+      loadPublicEvents();
+      checkExistingSession();
+    });
+  }
+
   loadMemberSidebar();
   setupPullToRefresh();
 
@@ -71,7 +118,10 @@ window.onload = function () {
 
 function loadHolidays() {
   return callApi('getHolidays', {}).then(function (result) {
-    if (result.success) holidaysCache = result.holidays;
+    if (result.success) {
+      holidaysCache = result.holidays;
+      setLocalCache(HOLIDAYS_CACHE_KEY, result.holidays);
+    }
     return result;
   }).catch(function (err) {
     console.error('โหลดวันหยุดไม่สำเร็จ', err);
@@ -106,6 +156,31 @@ function renderMonthHolidayList(start, end) {
       '<span class="mh-name">' + h.name + '</span>';
     container.appendChild(row);
   });
+}
+
+function formatEventDateRange(event) {
+  var start = event.start;
+  var end = event.end;
+  var opts = { day: 'numeric', month: 'short' };
+  var timeOpts = { hour: '2-digit', minute: '2-digit' };
+
+  if (event.allDay) {
+    // FullCalendar เก็บ end แบบ exclusive ต้อง -1 วัน ให้ตรงกับวันที่โชว์จริง
+    var displayEnd = end ? new Date(end.getTime() - 86400000) : start;
+    var sameDay = displayEnd.toDateString() === start.toDateString();
+    if (sameDay) return start.toLocaleDateString('th-TH', opts);
+    return start.toLocaleDateString('th-TH', opts) + ' - ' + displayEnd.toLocaleDateString('th-TH', opts);
+  }
+
+  if (!end) return start.toLocaleDateString('th-TH', opts) + ' ' + start.toLocaleTimeString('th-TH', timeOpts);
+
+  var sameDayTimed = start.toDateString() === end.toDateString();
+  if (sameDayTimed) {
+    return start.toLocaleDateString('th-TH', opts) + ' ' + start.toLocaleTimeString('th-TH', timeOpts) +
+      ' - ' + end.toLocaleTimeString('th-TH', timeOpts);
+  }
+  return start.toLocaleDateString('th-TH', opts) + ' ' + start.toLocaleTimeString('th-TH', timeOpts) +
+    ' - ' + end.toLocaleDateString('th-TH', opts) + ' ' + end.toLocaleTimeString('th-TH', timeOpts);
 }
 
 function getOverlappingHolidays(startDateTime, endDateTime) {
@@ -230,6 +305,9 @@ function enterAdminMode(fullName, role) {
     loadNotifBadge();
     loadTodoList();
   }
+  if (isStaff) {
+    loadMyRequestsBadge();
+  }
 }
 
 function exitAdminMode() {
@@ -278,9 +356,9 @@ function renderStaffList(result) {
       '</div>' +
       '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
       '<button class="row-edit-btn" onclick=\'startEditStaff(' + JSON.stringify(s) + ')\'>แก้ไข</button>' +
-      '<button class="row-edit-btn" onclick="resetPasswordConfirm(\'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">รีเซ็ตรหัส</button>' +
+      '<button class="row-edit-btn" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">รีเซ็ตรหัส</button>' +
       '<label style="font-size:12px;display:flex;align-items:center;gap:4px">' +
-        '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(\'' + s.staffId + '\', this.checked)">' +
+        '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(this, \'' + s.staffId + '\', this.checked)">' +
         'ใช้งาน' +
       '</label>';
     container.appendChild(row);
@@ -394,7 +472,7 @@ function submitAddStaff() {
   });
 }
 
-function resetPasswordConfirm(staffId, name) {
+function resetPasswordConfirm(btn, staffId, name) {
   Swal.fire({
     icon: 'warning', title: 'รีเซ็ตรหัสผ่านของ ' + name + '?',
     text: 'ระบบจะสุ่มรหัสผ่านใหม่ให้ทันที รหัสผ่านเดิมจะใช้ไม่ได้อีก',
@@ -402,6 +480,7 @@ function resetPasswordConfirm(staffId, name) {
   }).then(function (res) {
     if (!res.isConfirmed) return;
     var token = localStorage.getItem(TOKEN_KEY);
+    setButtonLoading(btn, true, 'กำลังรีเซ็ต...');
     callApi('resetPassword', { token: token, staffId: staffId }).then(function (result) {
       if (result.success) {
         Swal.fire({
@@ -416,12 +495,15 @@ function resetPasswordConfirm(staffId, name) {
       }
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    }).finally(function () {
+      setButtonLoading(btn, false);
     });
   });
 }
 
-function toggleStaffActive(staffId, active) {
+function toggleStaffActive(checkboxEl, staffId, active) {
   var token = localStorage.getItem(TOKEN_KEY);
+  checkboxEl.disabled = true;
   callApi('setStaffActive', { token: token, staffId: staffId, active: active }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: active ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว' });
@@ -430,6 +512,8 @@ function toggleStaffActive(staffId, active) {
     }
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+  }).finally(function () {
+    checkboxEl.disabled = false;
   });
 }
 
@@ -754,7 +838,7 @@ function loadTodoList() {
         (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
         '<div class="ti-actions">' +
           '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
-          '<button class="btn-reject" onclick="deleteTodoTask(\'' + t.taskId + '\')">ลบ</button>' +
+          '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
         '</div>';
       container.appendChild(item);
     });
@@ -765,13 +849,14 @@ function editTodoTask(taskId) {
   openTaskModalForEdit(taskId);
 }
 
-function deleteTodoTask(taskId) {
+function deleteTodoTask(btn, taskId) {
   Swal.fire({
     icon: 'warning', title: 'ยืนยันลบงานนี้จาก To-Do List?',
     showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก'
   }).then(function (res) {
     if (!res.isConfirmed) return;
     var token = localStorage.getItem(TOKEN_KEY);
+    setButtonLoading(btn, true, 'กำลังลบ...');
     callApi('deleteTask', { token: token, taskId: taskId }).then(function (result) {
       if (result.success) {
         loadTodoList();
@@ -781,6 +866,8 @@ function deleteTodoTask(taskId) {
       }
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    }).finally(function () {
+      setButtonLoading(btn, false);
     });
   });
 }
@@ -793,6 +880,7 @@ function deleteTaskConfirm(taskId) {
   }).then(function (res) {
     if (!res.isConfirmed) return;
     var token = localStorage.getItem(TOKEN_KEY);
+    Toast.fire({ icon: 'info', title: 'กำลังลบ...' });
     callApi('deleteTask', { token: token, taskId: taskId }).then(function (result) {
       if (result.success) {
         loadAdminEvents(token);
@@ -1035,7 +1123,7 @@ function renderHolidayList() {
     row.innerHTML =
       badge +
       '<span class="hname">' + h.name + (h.type === 'weekly' ? ' (' + WEEKDAY_NAMES[h.value] + ')' : '') + '</span>' +
-      '<button class="row-edit-btn" onclick="deleteHolidayConfirm(\'' + h.holidayId + '\')">ลบ</button>';
+      '<button class="row-edit-btn" onclick="deleteHolidayConfirm(this, \'' + h.holidayId + '\')">ลบ</button>';
     container.appendChild(row);
   });
 }
@@ -1072,13 +1160,14 @@ function submitAddHoliday() {
   });
 }
 
-function deleteHolidayConfirm(holidayId) {
+function deleteHolidayConfirm(btn, holidayId) {
   Swal.fire({
     icon: 'warning', title: 'ยืนยันลบวันหยุดนี้?',
     showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก'
   }).then(function (res) {
     if (!res.isConfirmed) return;
     var token = localStorage.getItem(TOKEN_KEY);
+    setButtonLoading(btn, true, 'กำลังลบ...');
     callApi('deleteHoliday', { token: token, holidayId: holidayId }).then(function (result) {
       if (result.success) {
         refreshCalendarAfterHolidayChange();
@@ -1089,6 +1178,8 @@ function deleteHolidayConfirm(holidayId) {
       }
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    }).finally(function () {
+      setButtonLoading(btn, false);
     });
   });
 }
@@ -1118,39 +1209,50 @@ function getContrastTextColor(hex) {
 }
 
 function loadMemberSidebar() {
-  callApi('getPublicStaffList', {}).then(function (result) {
-    var container = document.getElementById('member-list');
-    if (!result.success) {
-      container.innerHTML = '<p style="font-size:12px;color:#b91c1c">โหลดไม่สำเร็จ: ' + (result.message || 'ไม่รู้จัก action นี้') + '</p>';
-      return;
-    }
-    if (result.staff.length === 0) {
-      container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ยังไม่มีผู้ปฏิบัติงาน</p>';
-      return;
-    }
-    container.innerHTML = '';
-    result.staff.forEach(function (s) {
-      var color = s.colorHex || '#888780';
-      var textColor = getContrastTextColor(color);
-      var initial = (s.firstName || '?').charAt(0);
+  var cached = getLocalCache(STAFF_CACHE_KEY);
+  if (cached) renderMemberList(cached);
 
-      var card = document.createElement('div');
-      card.className = 'member-card';
-      card.style.background = color;
-      card.innerHTML =
-        '<div class="member-avatar-wrap">' +
-          (s.photoBase64
-            ? '<img src="' + s.photoBase64 + '" alt="">'
-            : '<span class="member-avatar-fallback" style="color:' + color + '">' + initial + '</span>') +
-        '</div>' +
-        '<div class="member-info">' +
-          '<p class="m-name" style="color:' + textColor + '">' + s.firstName + ' ' + s.lastName + '</p>' +
-          '<p class="m-pos" style="color:' + textColor + '">' + (s.position || '-') + '</p>' +
-        '</div>';
-      container.appendChild(card);
-    });
+  callApi('getPublicStaffList', {}).then(function (result) {
+    if (!result.success) {
+      if (!cached) {
+        document.getElementById('member-list').innerHTML =
+          '<p style="font-size:12px;color:#b91c1c">โหลดไม่สำเร็จ: ' + (result.message || 'ไม่รู้จัก action นี้') + '</p>';
+      }
+      return;
+    }
+    setLocalCache(STAFF_CACHE_KEY, result.staff);
+    renderMemberList(result.staff);
   }).catch(function (err) {
     console.error('โหลดรายชื่อผู้ปฏิบัติงานไม่สำเร็จ', err);
+  });
+}
+
+function renderMemberList(staff) {
+  var container = document.getElementById('member-list');
+  if (staff.length === 0) {
+    container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ยังไม่มีผู้ปฏิบัติงาน</p>';
+    return;
+  }
+  container.innerHTML = '';
+  staff.forEach(function (s) {
+    var color = s.colorHex || '#888780';
+    var textColor = getContrastTextColor(color);
+    var initial = (s.firstName || '?').charAt(0);
+
+    var card = document.createElement('div');
+    card.className = 'member-card';
+    card.style.background = color;
+    card.innerHTML =
+      '<div class="member-avatar-wrap">' +
+        (s.photoBase64
+          ? '<img src="' + s.photoBase64 + '" alt="">'
+          : '<span class="member-avatar-fallback" style="color:' + color + '">' + initial + '</span>') +
+      '</div>' +
+      '<div class="member-info">' +
+        '<p class="m-name" style="color:' + textColor + '">' + s.firstName + ' ' + s.lastName + '</p>' +
+        '<p class="m-pos" style="color:' + textColor + '">' + (s.position || '-') + '</p>' +
+      '</div>';
+    container.appendChild(card);
   });
 }
 
@@ -1215,7 +1317,10 @@ function openMoreMenu() {
     nameEl.textContent = name || '';
     var items = [];
     items.push({ label: 'โปรไฟล์', fn: 'openProfileModal()' });
-    if (role === 'staff') items.push({ label: 'คำขอของฉัน', fn: 'openMyRequestsModal()' });
+    if (role === 'staff') {
+      var badgeText = myRequestsUnseenCount > 0 ? ' 🔴 (' + myRequestsUnseenCount + ')' : '';
+      items.push({ label: 'คำขอของฉัน' + badgeText, fn: 'openMyRequestsModal()' });
+    }
     if (role === 'admin') {
       items.push({ label: 'คำขอที่รออนุมัติ', fn: 'openPendingRequestsModal()' });
       items.push({ label: 'บัญชีผู้ใช้', fn: 'openStaffModal()' });
@@ -1243,6 +1348,7 @@ function requestDeleteTaskConfirm(taskId) {
   }).then(function (res) {
     if (!res.isConfirmed) return;
     var token = localStorage.getItem(TOKEN_KEY);
+    Toast.fire({ icon: 'info', title: 'กำลังส่งคำขอ...' });
     callApi('requestDeleteTask', { token: token, taskId: taskId, reason: res.value || '' }).then(function (result) {
       if (result.success) {
         Toast.fire({ icon: 'success', title: 'ส่งคำขอลบงานแล้ว รออนุมัติจาก Admin' });
@@ -1318,6 +1424,46 @@ function loadNotifBadge() {
   });
 }
 
+// ===== แจ้งเตือนคำขอของฉัน (Staff) - นับเฉพาะคำขอที่ถูกอนุมัติ/ไม่อนุมัติแล้วแต่ยังไม่ได้เปิดดู =====
+var SEEN_REQUESTS_KEY = 'c2tech_seen_requests';
+var myRequestsUnseenCount = 0;
+
+function getSeenRequestIds() {
+  try {
+    return JSON.parse(localStorage.getItem(SEEN_REQUESTS_KEY) || '[]');
+  } catch (e) {
+    return [];
+  }
+}
+
+function markRequestsSeen(requestIds) {
+  var seen = getSeenRequestIds();
+  requestIds.forEach(function (id) {
+    if (seen.indexOf(id) === -1) seen.push(id);
+  });
+  localStorage.setItem(SEEN_REQUESTS_KEY, JSON.stringify(seen));
+}
+
+function loadMyRequestsBadge() {
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('getMyChangeRequests', { token: token }).then(function (result) {
+    if (!result.success) return;
+    var seen = getSeenRequestIds();
+    var unseen = result.requests.filter(function (r) {
+      return r.status !== 'pending' && seen.indexOf(r.requestId) === -1;
+    });
+    myRequestsUnseenCount = unseen.length;
+
+    var badge = document.getElementById('my-requests-badge');
+    if (myRequestsUnseenCount > 0) {
+      badge.textContent = myRequestsUnseenCount;
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
 function openPendingRequestsModal() {
   document.getElementById('pending-requests-modal-overlay').style.display = 'flex';
   var token = localStorage.getItem(TOKEN_KEY);
@@ -1348,8 +1494,8 @@ function openPendingRequestsModal() {
         extra +
         (r.reason ? '<p class="rc-meta">เหตุผล: ' + r.reason + '</p>' : '') +
         '<div class="rc-actions">' +
-          '<button class="btn-approve" onclick="reviewRequest(\'' + r.requestId + '\', true)">อนุมัติ</button>' +
-          '<button class="btn-reject" onclick="reviewRequest(\'' + r.requestId + '\', false)">ไม่อนุมัติ</button>' +
+          '<button class="btn-approve" onclick="reviewRequest(this, \'' + r.requestId + '\', true)">อนุมัติ</button>' +
+          '<button class="btn-reject" onclick="reviewRequest(this, \'' + r.requestId + '\', false)">ไม่อนุมัติ</button>' +
         '</div>';
       container.appendChild(card);
     });
@@ -1359,9 +1505,10 @@ function closePendingRequestsModal() {
   document.getElementById('pending-requests-modal-overlay').style.display = 'none';
 }
 
-function reviewRequest(requestId, isApprove) {
+function reviewRequest(btn, requestId, isApprove) {
   var token = localStorage.getItem(TOKEN_KEY);
   var action = isApprove ? 'approveChangeRequest' : 'rejectChangeRequest';
+  setButtonLoading(btn, true, isApprove ? 'กำลังอนุมัติ...' : 'กำลังปฏิเสธ...');
   callApi(action, { token: token, requestId: requestId }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: isApprove ? 'อนุมัติแล้ว' : 'ไม่อนุมัติคำขอนี้แล้ว' });
@@ -1370,9 +1517,11 @@ function reviewRequest(requestId, isApprove) {
       loadAdminEvents(token);
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
+      setButtonLoading(btn, false);
     }
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    setButtonLoading(btn, false);
   });
 }
 
@@ -1393,7 +1542,9 @@ function openMyRequestsModal() {
       return;
     }
     container.innerHTML = '';
+    var reviewedIds = [];
     result.requests.forEach(function (r) {
+      if (r.status !== 'pending') reviewedIds.push(r.requestId);
       var card = document.createElement('div');
       card.className = 'request-card';
       var extra = r.requestType === 'reschedule'
@@ -1410,6 +1561,8 @@ function openMyRequestsModal() {
         (r.reason ? '<p class="rc-meta">เหตุผล: ' + r.reason + '</p>' : '');
       container.appendChild(card);
     });
+    markRequestsSeen(reviewedIds);
+    loadMyRequestsBadge();
   });
 }
 function closeMyRequestsModal() {
@@ -1421,11 +1574,14 @@ function manualRefresh() {
   icon.classList.add('spinning');
 
   var token = localStorage.getItem(TOKEN_KEY);
+  var role = localStorage.getItem(ROLE_KEY);
   Promise.all([
     loadHolidays(),
     loadMemberSidebar()
   ]).then(function () {
     if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
+    if (role === 'admin') loadNotifBadge();
+    if (role === 'staff') loadMyRequestsBadge();
     Toast.fire({ icon: 'success', title: 'รีเฟรชข้อมูลแล้ว' });
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'รีเฟรชไม่สำเร็จ', text: err.message });
@@ -1497,11 +1653,14 @@ function setupPullToRefresh() {
       textEl.textContent = 'กำลังรีเฟรช...';
 
       var token = localStorage.getItem(TOKEN_KEY);
+      var role = localStorage.getItem(ROLE_KEY);
       Promise.all([
         loadHolidays(),
         loadMemberSidebar()
       ]).then(function () {
         if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
+        if (role === 'admin') loadNotifBadge();
+        if (role === 'staff') loadMyRequestsBadge();
       }).finally(function () {
         setTimeout(function () {
           indicator.classList.remove('pulling', 'refreshing');
@@ -1580,21 +1739,42 @@ function renderCalendar(result) {
         dotsHtml += '<span style="font-size:10px;color:inherit">+' + (staff.length - 4) + '</span>';
       }
 
+      var isListView = arg.view.type.indexOf('list') === 0;
+
       var wrapper = document.createElement('div');
       wrapper.style.display = 'flex';
-      wrapper.style.alignItems = 'center';
+      wrapper.style.flexDirection = isListView ? 'column' : 'row';
+      wrapper.style.alignItems = isListView ? 'flex-start' : 'center';
       wrapper.style.gap = '3px';
       wrapper.style.overflow = 'hidden';
       wrapper.style.padding = '1px 2px';
+      wrapper.style.width = '100%';
+
+      var topRow = document.createElement('div');
+      topRow.style.display = 'flex';
+      topRow.style.alignItems = 'center';
+      topRow.style.gap = '3px';
+      topRow.style.overflow = 'hidden';
+      topRow.style.width = '100%';
+      topRow.innerHTML = dotsHtml;
 
       var titleSpan = document.createElement('span');
       titleSpan.style.overflow = 'hidden';
       titleSpan.style.textOverflow = 'ellipsis';
       titleSpan.style.whiteSpace = 'nowrap';
+      if (isListView) titleSpan.style.fontWeight = '600';
       titleSpan.textContent = arg.event.title;
+      topRow.appendChild(titleSpan);
+      wrapper.appendChild(topRow);
 
-      wrapper.innerHTML = dotsHtml;
-      wrapper.appendChild(titleSpan);
+      if (isListView) {
+        var dateLabel = document.createElement('div');
+        dateLabel.style.fontSize = '12px';
+        dateLabel.style.color = '#6b7280';
+        dateLabel.textContent = formatEventDateRange(arg.event);
+        wrapper.appendChild(dateLabel);
+      }
+
       return { domNodes: [wrapper] };
     },
     eventClick: function (info) {
