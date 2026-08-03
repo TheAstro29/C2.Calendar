@@ -103,6 +103,7 @@ window.onload = function () {
   }
 
   loadMemberSidebar();
+  loadTodoList();
   setupPullToRefresh();
 
   ['username', 'password'].forEach(function (id) {
@@ -299,12 +300,11 @@ function enterAdminMode(fullName, role) {
   document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('my-requests-btn').style.display = isStaff ? 'inline-block' : 'none';
   document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
-  document.getElementById('todo-sidebar-section').style.display = isAdmin ? 'block' : 'none';
   document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
   if (isAdmin) {
     loadNotifBadge();
-    loadTodoList();
   }
+  loadTodoList();
   if (isStaff) {
     loadMyRequestsBadge();
   }
@@ -313,9 +313,9 @@ function enterAdminMode(fullName, role) {
 function exitAdminMode() {
   document.getElementById('login-icon-btn').style.display = 'flex';
   document.getElementById('admin-chip').style.display = 'none';
-  document.getElementById('todo-sidebar-section').style.display = 'none';
   document.getElementById('task-undated-row').style.display = 'none';
   document.getElementById('notif-bell-btn').style.display = 'none';
+  loadTodoList();
 }
 
 function openStaffModal() {
@@ -810,13 +810,13 @@ function proceedSaveTask(payload, btn) {
 var TASK_TYPE_LABELS = { meeting: 'Meeting', onsite: 'On-site', event: 'Event' };
 var TASK_TYPE_DOT_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF' };
 
-// ===== To-Do List (เฉพาะ Admin) - แสดงใน sidebar ขวา ใต้ "วันหยุดเดือนนี้" =====
+// ===== To-Do List - โชว์ให้ทุกคนเห็น แก้ไข/ลบได้เฉพาะ Admin - แสดงใน sidebar ขวา ใต้ "วันหยุดเดือนนี้" =====
 function loadTodoList() {
-  var token = localStorage.getItem(TOKEN_KEY);
   var container = document.getElementById('todo-list-sidebar');
+  var isAdmin = localStorage.getItem(ROLE_KEY) === 'admin';
   container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">กำลังโหลด...</p>';
 
-  callApi('getUndatedTasks', { token: token }).then(function (result) {
+  callApi('getUndatedTasks', {}).then(function (result) {
     if (!result.success) {
       container.innerHTML = '<p style="font-size:12px;color:#b91c1c">' + result.message + '</p>';
       return;
@@ -836,10 +836,11 @@ function loadTodoList() {
           '<span class="ti-name">' + t.taskName + '</span>' +
         '</div>' +
         (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
-        '<div class="ti-actions">' +
-          '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
-          '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
-        '</div>';
+        (isAdmin ?
+          '<div class="ti-actions">' +
+            '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
+            '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
+          '</div>' : '');
       container.appendChild(item);
     });
   });
@@ -1577,7 +1578,8 @@ function manualRefresh() {
   var role = localStorage.getItem(ROLE_KEY);
   Promise.all([
     loadHolidays(),
-    loadMemberSidebar()
+    loadMemberSidebar(),
+    loadTodoList()
   ]).then(function () {
     if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
     if (role === 'admin') loadNotifBadge();
@@ -1628,10 +1630,17 @@ function setupPullToRefresh() {
 
   document.addEventListener('touchmove', function (e) {
     if (!pulling || refreshing) return;
-    if (isBlocked()) { reset(); return; }
+
+    // เช็คซ้ำทุกจังหวะที่นิ้วลาก ถ้าหน้าเว็บเริ่มเลื่อนจริงแล้ว (ไม่ใช่ท่า pull-to-refresh)
+    // ต้องยกเลิกการติดตามไปเลยสำหรับการสัมผัสครั้งนี้ ไม่ใช่แค่ซ่อนข้อความ
+    // กันชนกับการเลื่อนดู list งานยาวๆ ที่ scroll ผ่านตำแหน่งบนสุดไปแล้ว
+    if (isBlocked() || window.scrollY > 0) {
+      reset();
+      return;
+    }
 
     var delta = e.touches[0].clientY - startY;
-    if (delta > MIN_DELTA_TO_SHOW && window.scrollY <= 0) {
+    if (delta > MIN_DELTA_TO_SHOW) {
       indicator.classList.add('pulling');
       ready = delta > THRESHOLD;
       textEl.textContent = ready ? 'ปล่อยเพื่อรีเฟรช' : 'ดึงลงเพื่อรีเฟรช';
@@ -1656,7 +1665,8 @@ function setupPullToRefresh() {
       var role = localStorage.getItem(ROLE_KEY);
       Promise.all([
         loadHolidays(),
-        loadMemberSidebar()
+        loadMemberSidebar(),
+        loadTodoList()
       ]).then(function () {
         if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
         if (role === 'admin') loadNotifBadge();
@@ -1741,6 +1751,11 @@ function renderCalendar(result) {
 
       var isListView = arg.view.type.indexOf('list') === 0;
 
+      // ทุกงานโชว์จุดสีประเภทงานเสมอ (กันปัญหาแบบเดียวกันในโหมด List ที่งานทั้งวันก็เจอปัญหาสีหายเหมือนกัน)
+      var typeColor = arg.event.backgroundColor || arg.event.borderColor || '#888780';
+      var typeDotHtml = '<span style="width:8px;height:8px;border-radius:50%;background:' + typeColor +
+        ';display:inline-block;flex-shrink:0;border:1px solid rgba(0,0,0,0.15)"></span>';
+
       var wrapper = document.createElement('div');
       wrapper.style.display = 'flex';
       wrapper.style.flexDirection = isListView ? 'column' : 'row';
@@ -1756,7 +1771,7 @@ function renderCalendar(result) {
       topRow.style.gap = '3px';
       topRow.style.overflow = 'hidden';
       topRow.style.width = '100%';
-      topRow.innerHTML = dotsHtml;
+      topRow.innerHTML = typeDotHtml + dotsHtml;
 
       var titleSpan = document.createElement('span');
       titleSpan.style.overflow = 'hidden';
