@@ -104,7 +104,6 @@ window.onload = function () {
 
   loadMemberSidebar();
   loadTodoList();
-  setupPullToRefresh();
 
   ['username', 'password'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -1309,11 +1308,11 @@ function openMoreMenu() {
   var name = localStorage.getItem(NAME_KEY);
   var container = document.getElementById('more-menu-list');
   var nameEl = document.getElementById('more-menu-name');
-  container.innerHTML = '';
+  var refreshBtn = '<button onclick="closeMoreMenu(); mobileRefreshFromMenu();">🔄 รีเฟรชข้อมูล</button>';
 
   if (!localStorage.getItem(TOKEN_KEY)) {
     nameEl.textContent = 'ยังไม่ได้เข้าสู่ระบบ';
-    container.innerHTML = '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
+    container.innerHTML = refreshBtn + '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
   } else {
     nameEl.textContent = name || '';
     var items = [];
@@ -1327,12 +1326,30 @@ function openMoreMenu() {
       items.push({ label: 'บัญชีผู้ใช้', fn: 'openStaffModal()' });
       items.push({ label: 'วันหยุด', fn: 'openHolidayModal()' });
     }
-    container.innerHTML = items.map(function (it) {
+    container.innerHTML = refreshBtn + items.map(function (it) {
       return '<button onclick="closeMoreMenu(); ' + it.fn + '">' + it.label + '</button>';
     }).join('') + '<button class="danger" onclick="closeMoreMenu(); doLogout();">ออกจากระบบ</button>';
   }
 
   document.getElementById('more-menu-overlay').classList.add('show');
+}
+
+function mobileRefreshFromMenu() {
+  Toast.fire({ icon: 'info', title: 'กำลังรีเฟรช...' });
+  var token = localStorage.getItem(TOKEN_KEY);
+  var role = localStorage.getItem(ROLE_KEY);
+  Promise.all([
+    loadHolidays(),
+    loadMemberSidebar(),
+    loadTodoList()
+  ]).then(function () {
+    if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
+    if (role === 'admin') loadNotifBadge();
+    if (role === 'staff') loadMyRequestsBadge();
+    Toast.fire({ icon: 'success', title: 'รีเฟรชข้อมูลแล้ว' });
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'รีเฟรชไม่สำเร็จ', text: err.message });
+  });
 }
 
 function closeMoreMenu() {
@@ -1592,98 +1609,6 @@ function manualRefresh() {
   });
 }
 
-function setupPullToRefresh() {
-  if (!isMobileView()) return;
-
-  var indicator = document.getElementById('pull-refresh-indicator');
-  var textEl = document.getElementById('pull-refresh-text');
-  var startY = 0;
-  var pulling = false;
-  var ready = false;
-  var refreshing = false;
-  var THRESHOLD = 70;
-  var MIN_DELTA_TO_SHOW = 15;
-
-  // กันไม่ให้ทำงานเวลามี drawer/modal เปิดอยู่ (สัมผัสเลื่อนเนื้อหาข้างในไม่ควรไปกระตุก pull-to-refresh)
-  function isBlocked() {
-    if (document.getElementById('member-sidebar').classList.contains('drawer-open')) return true;
-    if (document.getElementById('legend-sidebar').classList.contains('drawer-open')) return true;
-    if (document.getElementById('more-menu-overlay').classList.contains('show')) return true;
-    var overlays = document.querySelectorAll('[id$="-modal-overlay"]');
-    for (var i = 0; i < overlays.length; i++) {
-      if (overlays[i].style.display === 'flex') return true;
-    }
-    return false;
-  }
-
-  function reset() {
-    pulling = false;
-    ready = false;
-    indicator.classList.remove('pulling', 'refreshing');
-  }
-
-  document.addEventListener('touchstart', function (e) {
-    if (window.scrollY > 0 || refreshing || isBlocked()) { pulling = false; return; }
-    startY = e.touches[0].clientY;
-    pulling = true;
-  }, { passive: true });
-
-  document.addEventListener('touchmove', function (e) {
-    if (!pulling || refreshing) return;
-
-    // เช็คซ้ำทุกจังหวะที่นิ้วลาก ถ้าหน้าเว็บเริ่มเลื่อนจริงแล้ว (ไม่ใช่ท่า pull-to-refresh)
-    // ต้องยกเลิกการติดตามไปเลยสำหรับการสัมผัสครั้งนี้ ไม่ใช่แค่ซ่อนข้อความ
-    // กันชนกับการเลื่อนดู list งานยาวๆ ที่ scroll ผ่านตำแหน่งบนสุดไปแล้ว
-    if (isBlocked() || window.scrollY > 0) {
-      reset();
-      return;
-    }
-
-    var delta = e.touches[0].clientY - startY;
-    if (delta > MIN_DELTA_TO_SHOW) {
-      indicator.classList.add('pulling');
-      ready = delta > THRESHOLD;
-      textEl.textContent = ready ? 'ปล่อยเพื่อรีเฟรช' : 'ดึงลงเพื่อรีเฟรช';
-    } else if (delta <= 0) {
-      reset();
-    }
-  }, { passive: true });
-
-  document.addEventListener('touchend', handlePullEnd);
-  document.addEventListener('touchcancel', handlePullEnd);
-
-  function handlePullEnd() {
-    if (!pulling || refreshing) { pulling = false; return; }
-    pulling = false;
-
-    if (ready) {
-      refreshing = true;
-      indicator.classList.add('refreshing');
-      textEl.textContent = 'กำลังรีเฟรช...';
-
-      var token = localStorage.getItem(TOKEN_KEY);
-      var role = localStorage.getItem(ROLE_KEY);
-      Promise.all([
-        loadHolidays(),
-        loadMemberSidebar(),
-        loadTodoList()
-      ]).then(function () {
-        if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
-        if (role === 'admin') loadNotifBadge();
-        if (role === 'staff') loadMyRequestsBadge();
-      }).finally(function () {
-        setTimeout(function () {
-          indicator.classList.remove('pulling', 'refreshing');
-          refreshing = false;
-          ready = false;
-        }, 400);
-      });
-    } else {
-      indicator.classList.remove('pulling');
-    }
-  }
-}
-
 function loadPublicEvents() {
   callApi('getPublicCalendarEvents', {}).then(renderCalendar).catch(function (err) {
     console.error('โหลดปฏิทินไม่สำเร็จ', err);
@@ -1717,6 +1642,8 @@ function renderCalendar(result) {
       ? { left: 'prev,next', center: 'title', right: 'today' }
       : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
     locale: 'th',
+    allDayText: 'ทั้งวัน',
+    buttonText: { today: 'วันนี้' },
     events: result.events,
     datesSet: function (arg) {
       renderMonthHolidayList(arg.view.currentStart, arg.view.currentEnd);
@@ -1751,10 +1678,14 @@ function renderCalendar(result) {
 
       var isListView = arg.view.type.indexOf('list') === 0;
 
-      // ทุกงานโชว์จุดสีประเภทงานเสมอ (กันปัญหาแบบเดียวกันในโหมด List ที่งานทั้งวันก็เจอปัญหาสีหายเหมือนกัน)
-      var typeColor = arg.event.backgroundColor || arg.event.borderColor || '#888780';
-      var typeDotHtml = '<span style="width:8px;height:8px;border-radius:50%;background:' + typeColor +
-        ';display:inline-block;flex-shrink:0;border:1px solid rgba(0,0,0,0.15)"></span>';
+      // เพิ่มจุดสีประเภทงานเองแค่โหมด Grid เท่านั้น (งานระบุเวลาในโหมดนี้ไม่มีพื้นหลังสีให้)
+      // โหมด List มีจุดสีของ FullCalendar เองอยู่แล้วในคอลัมน์แยก ไม่ต้องเพิ่มซ้ำ
+      var typeDotHtml = '';
+      if (!isListView) {
+        var typeColor = arg.event.backgroundColor || arg.event.borderColor || '#888780';
+        typeDotHtml = '<span style="width:8px;height:8px;border-radius:50%;background:' + typeColor +
+          ';display:inline-block;flex-shrink:0;border:1px solid rgba(0,0,0,0.15)"></span>';
+      }
 
       var wrapper = document.createElement('div');
       wrapper.style.display = 'flex';
