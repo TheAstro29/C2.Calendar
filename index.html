@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>C2 Calendar - ระบบลงนัดงาน</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#059669">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="C2 Calendar">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.11/index.global.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.1/sweetalert2.all.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="page-loading">
+    <div id="page-loading-inner">
+      <svg id="page-loading-logo-svg" width="120" height="120" viewBox="0 0 64 64" fill="none">
+        <rect x="4" y="6" width="56" height="54" rx="16" fill="rgba(255,255,255,0.14)"/>
+        <rect x="20" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
+        <rect x="39" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
+        <rect x="12" y="12" width="40" height="40" rx="9" fill="#ffffff"/>
+        <rect x="12" y="12" width="40" height="13" rx="9" fill="#047857"/>
+        <circle cx="21" cy="34" r="3" fill="#059669"/>
+        <circle cx="32" cy="34" r="3" fill="#059669"/>
+        <circle cx="43" cy="34" r="3" fill="#a7f3d0"/>
+        <circle cx="21" cy="44" r="3" fill="#059669"/>
+        <circle cx="32" cy="44" r="3" fill="#a7f3d0"/>
+      </svg>
+      <p id="page-loading-logo"><span class="accent">C2</span> Calendar</p>
+      <div class="loading-dots"><span></span><span></span><span></span></div>
+      <p id="page-loading-text">กำลังโหลดปฏิทิน...</p>
+    </div>
+  </div>
+
+
+  <div id="topbar">
+    <div id="topbar-brand">
+      <img src="icons/icon-192.png" alt="" width="30" height="30">
+      <h1><span class="accent">C2</span> Calendar</h1>
+    </div>
+    <div id="topbar-right">
+      <button id="refresh-btn" class="icon-toggle-btn" title="รีเฟรชข้อมูล" onclick="manualRefresh()">
+        <svg id="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </button>
+      <button id="toggle-members-btn" class="icon-toggle-btn active" title="ผู้ปฏิบัติงาน" onclick="toggleSidebar('member-sidebar')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+      </button>
+      <button id="toggle-legend-btn" class="icon-toggle-btn active" title="สัญลักษณ์สี" onclick="toggleSidebar('legend-sidebar')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="13.5" cy="6.5" r=".5"></circle>
+          <circle cx="17.5" cy="10.5" r=".5"></circle>
+          <circle cx="8.5" cy="7.5" r=".5"></circle>
+          <circle cx="6.5" cy="12.5" r=".5"></circle>
+          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-4.4-4-8-10-8z"></path>
+        </svg>
+      </button>
+      <button id="login-icon-btn" title="เข้าสู่ระบบสำหรับแอดมิน" onclick="openLoginModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"></path>
+        </svg>
+      </button>
+      <button id="notif-bell-btn" class="icon-toggle-btn" title="คำขอที่รออนุมัติ" onclick="openPendingRequestsModal()" style="display:none;position:relative">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span id="notif-badge" style="display:none">0</span>
+      </button>
+      <div id="admin-chip">
+        <span id="admin-name"></span>
+        <button onclick="openTaskModal()">+ สร้างงานใหม่</button>
+        <button id="staff-menu-btn" onclick="openStaffModal()">บัญชีผู้ใช้</button>
+        <button id="holiday-menu-btn" onclick="openHolidayModal()">วันหยุด</button>
+        <button id="my-requests-btn" onclick="openMyRequestsModal()" style="display:none">คำขอของฉัน</button>
+        <button onclick="openProfileModal()">โปรไฟล์</button>
+        <button onclick="doLogout()">ออกจากระบบ</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pull-refresh-indicator">
+    <div class="spinner spinner-dark"></div>
+    <span id="pull-refresh-text">ดึงลงเพื่อรีเฟรช</span>
+  </div>
+
+  <div id="app-body">
+    <aside id="member-sidebar" class="side-panel">
+      <h3>🧑‍🔧 ผู้ปฏิบัติงาน</h3>
+      <div id="member-list"></div>
+    </aside>
+
+    <div id="calendar-wrap">
+      <div id="calendar"></div>
+    </div>
+
+    <aside id="legend-sidebar" class="side-panel">
+      <div class="sidebar-card">
+        <h3>🏷️ ประเภทงาน</h3>
+        <div id="type-legend">
+          <span class="legend-item"><span class="legend-dot" style="background:#FCE38A"></span>Meeting</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#FFB48A"></span>On-site</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#C9A6FF"></span>Event</span>
+        </div>
+      </div>
+
+      <div class="sidebar-card">
+        <h3>🗓️ วันหยุด</h3>
+        <div class="legend-item"><span class="legend-dot" style="background:#f87171"></span>วันหยุดองค์กร</div>
+        <h3>📅 วันหยุดเดือนนี้</h3>
+        <div id="month-holiday-list"></div>
+      </div>
+
+      <div class="sidebar-card" id="todo-sidebar-section" style="display:none">
+        <h3>✅ To-Do List</h3>
+        <p class="sub">งานที่ยังไม่ได้ระบุวันที่ — พอกำหนดวันจริงแล้วจะย้ายไปโชว์บนปฏิทินอัตโนมัติ</p>
+        <div id="todo-list-sidebar"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="drawer-backdrop" onclick="closeAllDrawers()"></div>
+
+  <nav id="mobile-float-nav">
+    <button class="mfn-item" onclick="fabAction('home')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
+      <span>ปฏิทิน</span>
+    </button>
+    <button class="mfn-item" onclick="fabAction('team')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+      <span>ทีม</span>
+    </button>
+    <button class="mfn-item mfn-add" onclick="fabAction('addtask')">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+    <button class="mfn-item" onclick="fabAction('legend')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-4.4-4-8-10-8z"></path></svg>
+      <span>สรุป</span>
+    </button>
+    <button class="mfn-item" onclick="fabAction('menu')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4l3 3"></path></svg>
+      <span>เมนู</span>
+    </button>
+  </nav>
+
+  <div id="more-menu-overlay" onclick="closeMoreMenu()">
+    <div id="more-menu-sheet" onclick="event.stopPropagation()">
+      <div id="more-menu-handle"></div>
+      <p id="more-menu-name"></p>
+      <div id="more-menu-list"></div>
+    </div>
+  </div>
+
+  <div id="login-modal-overlay">
+    <div id="login-box">
+      <button id="login-close" onclick="closeLoginModal()">✕</button>
+      <h2>เข้าสู่ระบบ C2 Calendar</h2>
+      <p class="sub">สำหรับจัดการงานต่างๆ</p>
+      <input type="text" id="username" placeholder="ชื่อผู้ใช้">
+      <input type="password" id="password" placeholder="รหัสผ่าน">
+      <p id="login-error-text"></p>
+      <button id="login-submit-btn" class="submit" onclick="doLogin()">เข้าสู่ระบบ</button>
+    </div>
+  </div>
+
+  <div id="staff-modal-overlay">
+    <div id="staff-box">
+      <button id="staff-close" onclick="closeStaffModal()">✕</button>
+      <h2>👤 จัดการบัญชีผู้ใช้</h2>
+      <div id="staff-list"></div>
+
+      <button id="staff-form-toggle-btn" onclick="toggleStaffAddForm()">+ เพิ่มบัญชีผู้ใช้ใหม่</button>
+
+      <div id="staff-form" style="display:none">
+        <h3 id="staff-form-title">เพิ่มบัญชีผู้ใช้ใหม่</h3>
+        <div id="staff-username-field">
+          <input type="text" id="staff-username" placeholder="Username สำหรับเข้าสู่ระบบ (ตั้งเอง)">
+        </div>
+        <div class="row2">
+          <input type="text" id="staff-firstname" placeholder="ชื่อ">
+          <input type="text" id="staff-lastname" placeholder="นามสกุล">
+        </div>
+        <div class="row2">
+          <input type="text" id="staff-position" placeholder="ตำแหน่ง (ไม่บังคับ)">
+          <input type="color" id="staff-color" value="#378ADD">
+        </div>
+        <div class="row2">
+          <input type="text" id="staff-phone" placeholder="เบอร์โทร (ไม่บังคับ)">
+          <select id="staff-role">
+            <option value="staff">Staff</option>
+            <option value="ceo">CEO</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="row2">
+          <select id="staff-gender">
+            <option value="">ไม่ระบุเพศ</option>
+            <option value="ชาย">ชาย</option>
+            <option value="หญิง">หญิง</option>
+          </select>
+          <input type="date" id="staff-birthdate">
+        </div>
+        <button id="staff-submit-btn" onclick="submitAddStaff()">เพิ่มบัญชีผู้ใช้</button>
+        <button id="staff-cancel-edit-btn" style="display:none" onclick="cancelEditStaff()">ยกเลิกการแก้ไข</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="task-modal-overlay">
+    <div id="task-box">
+      <button id="task-close" onclick="closeTaskModal()">✕</button>
+      <h2>📝 สร้างงานใหม่</h2>
+
+      <label class="field-label">ชื่องาน</label>
+      <input type="text" id="task-name" placeholder="เช่น ติดตั้งระบบไฟฟ้า อาคาร A">
+
+      <label class="field-label">ประเภทงาน</label>
+      <select id="task-type">
+        <option value="meeting">Meeting</option>
+        <option value="onsite">On-site</option>
+        <option value="event">Event</option>
+      </select>
+
+      <label class="checkbox-row" id="task-undated-row" style="display:none">
+        <input type="checkbox" id="task-undated" onchange="toggleUndatedFields()">
+        ไม่ระบุวันที่ (เพิ่มเข้า To-Do List)
+      </label>
+
+      <div id="task-date-section">
+        <label class="checkbox-row">
+          <input type="checkbox" id="task-allday" checked onchange="toggleAllDayFields()">
+          งานทั้งวัน (ไม่ระบุเวลา)
+        </label>
+
+        <div id="allday-fields" class="row2">
+          <div>
+            <label class="field-label">วันเริ่มงาน</label>
+            <input type="date" id="task-start-date">
+          </div>
+          <div>
+            <label class="field-label">จำนวนวัน</label>
+            <input type="number" id="task-duration" value="1" min="1">
+          </div>
+        </div>
+
+        <div id="timed-fields" style="display:none">
+          <div class="row2">
+            <div>
+              <label class="field-label">วันและเวลาเริ่ม</label>
+              <input type="date" id="task-start-date-t">
+              <input type="time" id="task-start-time" value="09:00">
+            </div>
+            <div>
+              <label class="field-label">วันและเวลาสิ้นสุด</label>
+            <input type="date" id="task-end-date-t">
+            <input type="time" id="task-end-time" value="12:00">
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <label class="field-label">ผู้ปฏิบัติงาน</label>
+      <div id="task-staff-list" class="staff-checklist"></div>
+
+      <label class="field-label">ตำแหน่งงาน</label>
+      <input type="text" id="task-location" placeholder="พิมพ์ชื่อสถานที่ / ที่อยู่">
+      <div id="task-map" style="display:none"></div>
+
+      <label class="field-label">รายละเอียดงาน</label>
+      <textarea id="task-detail" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
+
+      <button id="task-submit-btn" onclick="submitAddTask()">บันทึกงาน</button>
+    </div>
+  </div>
+
+  <div id="holiday-modal-overlay">
+    <div id="holiday-box">
+      <button id="holiday-close" onclick="closeHolidayModal()">✕</button>
+      <h2>🗓️ วันหยุดองค์กร</h2>
+      <div id="holiday-list"></div>
+
+      <div id="holiday-form">
+        <h3>เพิ่มวันหยุดใหม่</h3>
+        <select id="holiday-type" onchange="toggleHolidayTypeFields()">
+          <option value="date">วันที่เฉพาะ</option>
+          <option value="weekly">หยุดประจำสัปดาห์ (ซ้ำทุกสัปดาห์)</option>
+        </select>
+
+        <div id="holiday-date-field">
+          <input type="date" id="holiday-date">
+        </div>
+        <div id="holiday-weekly-field" style="display:none">
+          <select id="holiday-weekday">
+            <option value="0">ทุกวันอาทิตย์</option>
+            <option value="1">ทุกวันจันทร์</option>
+            <option value="2">ทุกวันอังคาร</option>
+            <option value="3">ทุกวันพุธ</option>
+            <option value="4">ทุกวันพฤหัสบดี</option>
+            <option value="5">ทุกวันศุกร์</option>
+            <option value="6">ทุกวันเสาร์</option>
+          </select>
+        </div>
+
+        <input type="text" id="holiday-name" placeholder="ชื่อวันหยุด">
+        <button id="holiday-submit-btn" onclick="submitAddHoliday()">เพิ่มวันหยุด</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="profile-modal-overlay">
+    <div id="profile-card-box">
+      <button id="profile-close" onclick="closeProfileModal()">✕</button>
+
+      <div id="profile-banner">
+        <span class="banner-left">SERVICE TRACKER · STAFF ID</span>
+        <span class="banner-right">C2TECH</span>
+
+        <div id="profile-photo-wrap">
+          <img id="profile-photo" src="" alt="">
+          <div id="profile-avatar"></div>
+        </div>
+
+        <p id="profile-fullname" class="card-name"></p>
+        <p id="profile-position" class="card-position"></p>
+      </div>
+
+      <div id="profile-body">
+        <div class="profile-row">
+          <span class="profile-row-label">USERNAME</span>
+          <span id="profile-username" class="card-username-pill"></span>
+        </div>
+
+        <div class="profile-row-2col">
+          <div>
+            <span class="profile-row-label">เพศ</span>
+            <p id="profile-gender" class="profile-row-value"></p>
+          </div>
+          <div>
+            <span class="profile-row-label">อายุ</span>
+            <p id="profile-age" class="profile-row-value"></p>
+          </div>
+        </div>
+
+        <div class="profile-row">
+          <span class="profile-row-label">วันเกิด</span>
+          <p id="profile-birthdate" class="profile-row-value"></p>
+        </div>
+
+        <input type="file" id="profile-photo-input" accept="image/*" style="display:none">
+        <div class="profile-action-row">
+          <button id="profile-change-photo-btn" class="btn-outline" onclick="document.getElementById('profile-photo-input').click()">เปลี่ยนรูป</button>
+          <button id="profile-edit-toggle-btn" class="btn-primary" onclick="toggleProfileEdit()">แก้ไขข้อมูล</button>
+        </div>
+
+        <div id="profile-edit-section" style="display:none">
+          <label class="field-label">เบอร์โทร</label>
+          <input type="text" id="profile-phone" placeholder="เบอร์โทร">
+          <label class="field-label">สีประจำตัว</label>
+          <div id="profile-color-swatches" class="color-swatch-row"></div>
+          <input type="hidden" id="profile-color">
+          <button id="profile-save-btn" onclick="submitUpdateProfile()">บันทึกข้อมูล</button>
+
+          <p id="profile-password-toggle-link" onclick="toggleProfilePassword()">เปลี่ยนรหัสผ่าน</p>
+          <div id="profile-password-section" style="display:none">
+            <input type="password" id="profile-old-password" placeholder="รหัสผ่านเดิม">
+            <input type="password" id="profile-new-password" placeholder="รหัสผ่านใหม่">
+            <input type="password" id="profile-confirm-password" placeholder="ยืนยันรหัสผ่านใหม่">
+            <button id="profile-password-btn" onclick="submitChangePassword()">เปลี่ยนรหัสผ่าน</button>
+          </div>
+        </div>
+
+        <button id="profile-logout-link" onclick="doLogout(); closeProfileModal();">ออกจากระบบ</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="reschedule-modal-overlay">
+    <div id="reschedule-box">
+      <button class="modal-close-btn" onclick="closeRescheduleModal()">✕</button>
+      <h2>🔁 ขอเปลี่ยนวัน</h2>
+      <p class="sub">ส่งคำขอให้ Admin อนุมัติ งานจะยังไม่เปลี่ยนจนกว่าจะได้รับการอนุมัติ</p>
+      <div class="row2">
+        <div>
+          <label class="field-label">วันเริ่มใหม่</label>
+          <input type="date" id="reschedule-start-date">
+        </div>
+        <div>
+          <label class="field-label">วันสิ้นสุดใหม่</label>
+          <input type="date" id="reschedule-end-date">
+        </div>
+      </div>
+      <label class="field-label">เหตุผล (ไม่บังคับ)</label>
+      <textarea id="reschedule-reason" placeholder="เช่น ลูกค้าขอเลื่อนนัด"></textarea>
+      <button id="reschedule-submit-btn" onclick="submitRescheduleRequest()">ส่งคำขอ</button>
+    </div>
+  </div>
+
+  <div id="pending-requests-modal-overlay">
+    <div id="pending-requests-box">
+      <button class="modal-close-btn" onclick="closePendingRequestsModal()">✕</button>
+      <h2>🔔 คำขอที่รออนุมัติ</h2>
+      <div id="pending-requests-list"></div>
+    </div>
+  </div>
+
+  <div id="my-requests-modal-overlay">
+    <div id="my-requests-box">
+      <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
+      <h2>📋 คำขอของฉัน</h2>
+      <div id="my-requests-list"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
