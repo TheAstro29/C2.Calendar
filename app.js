@@ -33,7 +33,7 @@ var Toast = Swal.mixin({
 // ===== action ที่เรียกผ่าน Cloud Function ตรงๆ (เขียนข้อมูล + ที่มีเรื่อง permission ซับซ้อน) =====
 var CLOUD_FUNCTION_ACTIONS = [
   'login', 'validateSessionCallable', 'addTask', 'updateTask', 'deleteTask',
-  'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive',
+  'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive', 'deleteStaff',
   'addHoliday', 'deleteHoliday',
   'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
   'getMyProfile', 'updateOwnProfile', 'changeOwnPassword'
@@ -176,6 +176,14 @@ async function buildChangeRequestListFromDocs(docs) {
 }
 
 // ===== ตัวช่วยแสดงสถานะ loading บนปุ่ม กันกดซ้ำและให้รู้ว่ากดสำเร็จ =====
+// ===== สลับโชว์/ซ่อนรหัสผ่านในช่อง input (กดปุ่มตา) =====
+function togglePasswordVisibility(inputId, btn) {
+  var input = document.getElementById(inputId);
+  var showing = input.type === 'text';
+  input.type = showing ? 'password' : 'text';
+  btn.textContent = showing ? '👁' : '🙈';
+}
+
 function setButtonLoading(btn, loading, loadingText) {
   if (loading) {
     btn.dataset.originalText = btn.innerHTML;
@@ -573,6 +581,7 @@ function renderStaffList(result) {
       '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
       '<button class="row-edit-btn" onclick=\'startEditStaff(' + JSON.stringify(s) + ')\'>แก้ไข</button>' +
       '<button class="row-edit-btn" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">รีเซ็ตรหัส</button>' +
+      '<button class="row-edit-btn danger" onclick="deleteStaffConfirm(this, \'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">ลบบัญชี</button>' +
       '<label style="font-size:12px;display:flex;align-items:center;gap:4px">' +
         '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(this, \'' + s.staffId + '\', this.checked)">' +
         'ใช้งาน' +
@@ -708,6 +717,40 @@ function resetPasswordConfirm(btn, staffId, name) {
         });
       } else {
         Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
+      }
+    }).catch(function (err) {
+      Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    }).finally(function () {
+      setButtonLoading(btn, false);
+    });
+  });
+}
+
+// ===== ลบบัญชีผู้ใช้ถาวร - ให้พิมพ์ชื่อยืนยันซ้ำก่อน เพราะกู้คืนไม่ได้ (ต่างจากปิดใช้งานที่แค่ toggle) =====
+function deleteStaffConfirm(btn, staffId, name) {
+  Swal.fire({
+    icon: 'error',
+    title: 'ลบบัญชีของ ' + name + ' ถาวร?',
+    html: '<p style="font-size:13px;color:#6b7280">การลบนี้กู้คืนไม่ได้ ต่างจากการ "ปิดใช้งาน" — ประวัติงานเก่าที่เคยผูกกับคนนี้จะโชว์ "ไม่พบผู้ปฏิบัติงานนี้แล้ว" แทน<br><br>พิมพ์ชื่อเต็ม <b>' + name + '</b> เพื่อยืนยัน</p>',
+    input: 'text',
+    inputPlaceholder: name,
+    showCancelButton: true,
+    confirmButtonText: 'ลบถาวร',
+    cancelButtonText: 'ยกเลิก',
+    confirmButtonColor: '#ef4444',
+    inputValidator: function (value) {
+      if (value !== name) return 'พิมพ์ชื่อให้ตรงกับ "' + name + '" เป๊ะๆก่อนถึงจะลบได้';
+    }
+  }).then(function (res) {
+    if (!res.isConfirmed) return;
+    var token = localStorage.getItem(TOKEN_KEY);
+    setButtonLoading(btn, true, 'กำลังลบ...');
+    callApi('deleteStaff', { token: token, staffId: staffId }).then(function (result) {
+      if (result.success) {
+        Toast.fire({ icon: 'success', title: 'ลบบัญชีถาวรแล้ว' });
+        loadStaffList();
+      } else {
+        Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: result.message });
       }
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
