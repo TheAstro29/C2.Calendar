@@ -1,5 +1,16 @@
-// แก้ URL นี้เป็น URL /exec ของ Apps Script ที่คุณ deploy ไว้
-var APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwM6GOyHz3yB68LfxImkTXbGfjzvqhE0beiQObNjrrKtAVMP93Spb8Egis7AppAOpTn/exec';
+// ===== ตั้งค่า Firebase (เอาค่ามาจาก Firebase Console → Project settings → Your apps) =====
+var firebaseConfig = {
+  apiKey: "AIzaSyBjJLodAV1hkgaxxmgzvccMVAIW5S8hbqw",
+  authDomain: "c2-calendar-c088f.firebaseapp.com",
+  projectId: "c2-calendar-c088f",
+  storageBucket: "c2-calendar-c088f.firebasestorage.app",
+  messagingSenderId: "366484323689",
+  appId: "1:366484323689:web:cce308b7968a77db3791f8"
+};
+firebase.initializeApp(firebaseConfig);
+var fbAuth = firebase.auth();
+var fbDb = firebase.firestore();
+var fbFunctions = firebase.app().functions("asia-southeast1");
 
 // เตรียมไว้สำหรับอนาคต ถ้าได้ Google Maps API key มาแค่ใส่ค่าตรงนี้ระบบจะเปิดแผนที่ให้อัตโนมัติ
 // ตอนนี้ปล่อยว่างไว้ - ฟอร์มจะไม่โชว์ข้อความอะไรเกี่ยวกับแผนที่เลย ใช้ช่องพิมพ์ชื่อสถานที่แทน
@@ -19,12 +30,149 @@ var Toast = Swal.mixin({
   timerProgressBar: true
 });
 
+// ===== action ที่เรียกผ่าน Cloud Function ตรงๆ (เขียนข้อมูล + ที่มีเรื่อง permission ซับซ้อน) =====
+var CLOUD_FUNCTION_ACTIONS = [
+  'login', 'validateSessionCallable', 'addTask', 'updateTask', 'deleteTask',
+  'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive',
+  'addHoliday', 'deleteHoliday',
+  'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
+  'getMyProfile', 'updateOwnProfile', 'changeOwnPassword'
+];
+
+// ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
+// action ที่อยู่ใน CLOUD_FUNCTION_ACTIONS -> ยิงผ่าน Cloud Function เหมือน Apps Script เดิม
+// action อื่นๆ (getCalendarEvents, getHolidays, getUndatedTasks, getMyChangeRequests, getPendingChangeRequests, getTaskDetail)
+//   -> จะทำเป็นอ่านตรงจาก Firestore แทนในรอบ 6.2 (ยังไม่ทำในรอบนี้)
 function callApi(action, params) {
-  return fetch(APPS_SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: action, params: params || {} })
-  }).then(function (res) { return res.json(); });
+  params = params || {};
+
+  if (CLOUD_FUNCTION_ACTIONS.indexOf(action) !== -1) {
+    var fn = fbFunctions.httpsCallable(action);
+    return fn(params).then(function (result) {
+      return result.data;
+    }).catch(function (err) {
+      // ทำให้หน้าตา error คล้ายเดิม (โค้ดส่วนอื่นในไฟล์นี้คาดหวัง err.message)
+      var e = new Error(err.message || 'เกิดข้อผิดพลาด');
+      throw e;
+    });
+  }
+
+  if (action === 'getTaskDetail') return firestoreGetTaskDetail(params);
+  if (action === 'getUndatedTasks') return firestoreGetUndatedTasks();
+  if (action === 'getMyChangeRequests') return firestoreGetMyChangeRequests();
+  if (action === 'getPendingChangeRequests') return firestoreGetPendingChangeRequests();
+
+  return Promise.resolve({ success: false, message: 'ไม่รู้จัก action: ' + action });
+}
+
+// ===== อ่านงาน 1 อันตรงจาก Firestore (แทนที่ getTaskDetail เดิม - ใช้ตอนเปิดฟอร์มแก้ไขงาน) =====
+async function firestoreGetTaskDetail(params) {
+  try {
+    var doc = await fbDb.collection('tasks').doc(params.taskId).get();
+    if (!doc.exists) return { success: false, message: 'ไม่พบงานนี้' };
+    var row = doc.data();
+    return {
+      success: true,
+      task: {
+        taskId: doc.id,
+        taskName: row.taskName,
+        startDateTime: firestoreDateToIso(row.startDateTime),
+        endDateTime: firestoreDateToIso(row.endDateTime),
+        isAllDay: row.isAllDay,
+        locationName: row.locationName,
+        lat: row.lat,
+        lng: row.lng,
+        status: row.status,
+        detail: row.detail,
+        taskType: row.taskType,
+        isUndated: row.isUndated,
+        staffIds: row.staffIds || []
+      }
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function firestoreDateToIso(val) {
+  var d = firestoreDateToJs(val);
+  return d ? d.toISOString() : '';
+}
+
+// ===== อ่านรายการงานไม่ระบุวันที่ตรงจาก Firestore (แทนที่ getUndatedTasks เดิม - ใช้ทำ To-Do List) =====
+async function firestoreGetUndatedTasks() {
+  try {
+    var snapshot = await fbDb.collection('tasks').where('isUndated', '==', true).get();
+    var tasks = [];
+    snapshot.docs.forEach(function (doc) {
+      var row = doc.data();
+      if (row.status === 'ยกเลิกงาน') return;
+      var staff = (row.staffIds || []).map(function (id) {
+        var s = staffMapCache[id];
+        return s ? { name: s.firstName + ' ' + s.lastName, color: s.colorHex } : null;
+      }).filter(function (s) { return s; });
+      tasks.push({ taskId: doc.id, taskName: row.taskName, detail: row.detail, taskType: row.taskType, staff: staff });
+    });
+    return { success: true, tasks: tasks };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ===== อ่านคำขอของฉันตรงจาก Firestore (ใช้ ACCOUNT_ID_KEY ที่เก็บไว้ตอน login แทนการยิงถาม server ว่า token คือใคร) =====
+async function firestoreGetMyChangeRequests() {
+  try {
+    var myId = localStorage.getItem(ACCOUNT_ID_KEY);
+    var snapshot = await fbDb.collection('changeRequests').where('requestedBy', '==', myId).get();
+    var requests = await buildChangeRequestListFromDocs(snapshot.docs);
+    return { success: true, requests: requests };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ===== อ่านคำขอที่รออนุมัติทั้งหมดตรงจาก Firestore (สำหรับ Admin) =====
+async function firestoreGetPendingChangeRequests() {
+  try {
+    var snapshot = await fbDb.collection('changeRequests').where('status', '==', 'pending').get();
+    var requests = await buildChangeRequestListFromDocs(snapshot.docs);
+    return { success: true, requests: requests };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ===== ฟังก์ชันกลาง: join ชื่องาน + ชื่อผู้ขอ ให้คำขอแต่ละรายการ (แทนที่ buildChangeRequestList เดิมของ ChangeRequestData.gs) =====
+async function buildChangeRequestListFromDocs(docs) {
+  var results = [];
+  for (var i = 0; i < docs.length; i++) {
+    var row = docs[i].data();
+    var taskName = '(ไม่พบงานนี้แล้ว)';
+    try {
+      var taskDoc = await fbDb.collection('tasks').doc(row.taskId).get();
+      if (taskDoc.exists) taskName = taskDoc.data().taskName;
+    } catch (e) { /* ไม่พบงาน ปล่อยผ่านใช้ค่า default */ }
+
+    var requesterName = '-';
+    var s = staffMapCache[row.requestedBy];
+    if (s) requesterName = s.firstName + ' ' + s.lastName;
+
+    results.push({
+      requestId: docs[i].id,
+      taskId: row.taskId,
+      taskName: taskName,
+      requestType: row.requestType,
+      requestedBy: row.requestedBy,
+      requestedByName: requesterName,
+      requestedAt: firestoreDateToIso(row.requestedAt),
+      status: row.status,
+      newStartDateTime: firestoreDateToIso(row.newStartDateTime),
+      newEndDateTime: firestoreDateToIso(row.newEndDateTime),
+      reason: row.reason || ''
+    });
+  }
+  results.sort(function (a, b) { return new Date(b.requestedAt) - new Date(a.requestedAt); });
+  return results;
 }
 
 // ===== ตัวช่วยแสดงสถานะ loading บนปุ่ม กันกดซ้ำและให้รู้ว่ากดสำเร็จ =====
@@ -50,11 +198,10 @@ function hidePageLoading() {
 var holidaysCache = [];
 
 // ===== Local Cache (เก็บในเบราว์เซอร์) แบบ Stale-While-Revalidate =====
-// ใช้เฉพาะข้อมูลที่ไม่จำเป็นต้อง real-time เป๊ะๆ: รายชื่อผู้ปฏิบัติงาน + วันหยุด
-// โชว์จาก cache ทันทีถ้ามี (ไม่ต้องรอเน็ต) แล้วเช็คข้อมูลจริงเงียบๆด้านหลังเสมอ
+// ใช้เฉพาะรายชื่อผู้ปฏิบัติงาน (accounts อ่านตรงจาก Firestore ไม่ได้ ต้องผ่าน Cloud Function เท่านั้น)
+// ส่วนวันหยุด/ปฏิทินงาน เปลี่ยนไปใช้ real-time listener ของ Firestore แทนแล้ว (เร็วกว่าและไม่ต้องมี local cache อีก)
 var LOCAL_CACHE_TTL_MS = 60 * 60 * 1000; // 1 ชม. - หมดอายุสำรอง กันโชว์ข้อมูลเก่าเกินไปถ้าเน็ตมีปัญหานาน
 var STAFF_CACHE_KEY = 'c2tech_cache_staff_public';
-var HOLIDAYS_CACHE_KEY = 'c2tech_cache_holidays';
 
 function getLocalCache(key) {
   try {
@@ -76,33 +223,104 @@ function setLocalCache(key, data) {
   }
 }
 
-// ทุกคนเห็นปฏิทินได้เสมอตั้งแต่เปิดหน้าเว็บ ไม่ต้อง login
-window.onload = function () {
-  var cachedHolidays = getLocalCache(HOLIDAYS_CACHE_KEY);
+// ===== ประเภทงาน -> สี (เดิมฝั่ง server เป็นคน map ให้ ตอนนี้ต้องทำเองฝั่ง client) =====
+var TASK_TYPE_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF' };
+var TASK_TYPE_TEXT_COLORS = { meeting: '#7a5c00', onsite: '#7a3300', event: '#4a1a8c' };
+function getTaskTypeColor(t) { return TASK_TYPE_COLORS[t] || '#cccccc'; }
+function getTaskTypeTextColor(t) { return TASK_TYPE_TEXT_COLORS[t] || '#333333'; }
 
-  if (cachedHolidays) {
-    // มี local cache ของวันหยุด: โชว์ปฏิทินทันทีไม่ต้องรอเน็ตเลย
-    holidaysCache = cachedHolidays;
-    loadPublicEvents();
-    checkExistingSession();
-    // เช็คข้อมูลจริงเงียบๆด้านหลัง ถ้าข้อมูลเปลี่ยนจะสร้างปฏิทินใหม่ให้ตรงกับของจริง
-    loadHolidays().then(function () {
-      if (calendarInstance) {
-        calendarInstance.destroy();
-        calendarInstance = null;
+// ===== จับคู่ staffId -> ข้อมูลคน (เดิมฝั่ง server join ให้ ตอนนี้ทำเองฝั่ง client จาก staffMapCache) =====
+var staffMapCache = {};
+var lastRenderedEvents = [];
+
+function firestoreDateToJs(val) {
+  if (!val) return null;
+  return val.toDate ? val.toDate() : new Date(val);
+}
+
+// ===== แปลงเอกสารงานจาก Firestore เป็น event รูปแบบ FullCalendar (แทนที่ buildCalendarEvents เดิมของ Data.gs) =====
+function buildEventsFromTaskDocs(docs) {
+  var events = [];
+  docs.forEach(function (docSnap) {
+    var row = docSnap.data();
+    if (row.status === 'ยกเลิกงาน') return; // งานที่ถูกลบแบบ soft delete ไม่โชว์
+    if (row.isUndated) return; // งานไม่ระบุวันที่ ไปโชว์ที่ To-Do List แทน
+    if (!row.startDateTime) return;
+
+    var assignedStaff = (row.staffIds || []).map(function (id) {
+      var s = staffMapCache[id];
+      return s ? { name: s.firstName + ' ' + s.lastName, color: s.colorHex } : null;
+    }).filter(function (s) { return s; });
+
+    var start = firestoreDateToJs(row.startDateTime);
+    var end = firestoreDateToJs(row.endDateTime) || start;
+    var displayEnd = end;
+    if (row.isAllDay) {
+      displayEnd = new Date(end.getTime() + 86400000); // FullCalendar ถือ end แบบ exclusive ต้อง +1 วัน
+    }
+
+    events.push({
+      id: docSnap.id,
+      title: row.taskName,
+      start: start.toISOString(),
+      end: displayEnd.toISOString(),
+      allDay: row.isAllDay,
+      color: getTaskTypeColor(row.taskType),
+      textColor: getTaskTypeTextColor(row.taskType),
+      extendedProps: {
+        location: row.locationName,
+        lat: row.lat,
+        lng: row.lng,
+        status: row.status,
+        detail: row.detail,
+        taskType: row.taskType,
+        createdBy: row.createdBy,
+        staff: assignedStaff
       }
-      var token = localStorage.getItem(TOKEN_KEY);
-      if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
     });
-  } else {
-    // ไม่มี cache (เปิดครั้งแรก/cache หมดอายุ) ต้องรอโหลดจริงก่อนเหมือนเดิม
-    loadHolidays().then(function () {
-      loadPublicEvents();
-      checkExistingSession();
-    });
-  }
+  });
+  return events;
+}
 
+// ===== ฟังการเปลี่ยนแปลงงานแบบ real-time (แทนที่ loadPublicEvents/loadAdminEvents เดิม) =====
+// อ่านได้ทุกคนเสมอ (แม้ไม่ login) ตาม Security Rules ที่ตั้งไว้ - ไม่ต้องแยก public/admin อีกต่อไป
+function setupTasksRealtimeListener() {
+  fbDb.collection('tasks').onSnapshot(function (snapshot) {
+    lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
+    renderCalendar({ success: true, events: lastRenderedEvents });
+  }, function (err) {
+    console.error('ฟังการเปลี่ยนแปลงงานไม่สำเร็จ', err);
+  });
+}
+
+// ===== ฟังการเปลี่ยนแปลงวันหยุดแบบ real-time (แทนที่ loadHolidays เดิม) =====
+function setupHolidaysRealtimeListener() {
+  fbDb.collection('holidays').onSnapshot(function (snapshot) {
+    holidaysCache = snapshot.docs.map(function (d) {
+      var row = d.data();
+      return { holidayId: d.id, type: row.type, value: row.value, name: row.name };
+    });
+    refreshCalendarDayCells(); // dayCellDidMount ไม่รันซ้ำเอง ต้องบังคับสร้างปฏิทินใหม่
+  }, function (err) {
+    console.error('ฟังการเปลี่ยนแปลงวันหยุดไม่สำเร็จ', err);
+  });
+}
+
+// ===== บังคับสร้างปฏิทินใหม่ (ใช้ตอนวันหยุด/ชื่อผู้ปฏิบัติงานเปลี่ยน ที่ dayCellDidMount ไม่รันซ้ำเอง) =====
+function refreshCalendarDayCells() {
+  if (!calendarInstance) return;
+  calendarInstance.destroy();
+  calendarInstance = null;
+  renderCalendar({ success: true, events: lastRenderedEvents });
+}
+
+// ทุกคนเห็นปฏิทินได้เสมอตั้งแต่เปิดหน้าเว็บ ไม่ต้อง login
+// ไม่ต้องมี local cache/stale-while-revalidate อีกต่อไป เพราะ Firestore real-time เร็วกว่าและทำงานแทนได้ดีกว่าอยู่แล้ว
+window.onload = function () {
   loadMemberSidebar();
+  setupHolidaysRealtimeListener();
+  setupTasksRealtimeListener();
+  checkExistingSession();
   loadTodoList();
 
   ['username', 'password'].forEach(function (id) {
@@ -116,16 +334,10 @@ window.onload = function () {
   });
 };
 
+// เก็บชื่อฟังก์ชันไว้ให้จุดที่เรียกใช้เดิมยังทำงานได้ (คืน Promise เปล่าๆ) แต่ไม่ต้องทำอะไรจริงแล้ว
+// เพราะ setupHolidaysRealtimeListener() อัปเดต holidaysCache + รีเฟรชปฏิทินอัตโนมัติทุกครั้งที่ข้อมูลเปลี่ยนอยู่แล้ว
 function loadHolidays() {
-  return callApi('getHolidays', {}).then(function (result) {
-    if (result.success) {
-      holidaysCache = result.holidays;
-      setLocalCache(HOLIDAYS_CACHE_KEY, result.holidays);
-    }
-    return result;
-  }).catch(function (err) {
-    console.error('โหลดวันหยุดไม่สำเร็จ', err);
-  });
+  return Promise.resolve({ success: true, holidays: holidaysCache });
 }
 
 var WEEKDAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
@@ -211,7 +423,7 @@ function checkExistingSession() {
   var name = localStorage.getItem(NAME_KEY);
   if (!token) return;
 
-  callApi('validateSession', { token: token }).then(function (result) {
+  callApi('validateSessionCallable', { token: token }).then(function (result) {
     if (result.valid) {
       localStorage.setItem(ROLE_KEY, result.role);
       localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
@@ -261,14 +473,18 @@ function doLogin() {
 
   callApi('login', { username: username, password: password }).then(function (result) {
     if (result.success) {
-      localStorage.setItem(TOKEN_KEY, result.token);
-      localStorage.setItem(NAME_KEY, result.fullName);
-      localStorage.setItem(ROLE_KEY, result.role);
-      localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
-      closeLoginModal();
-      enterAdminMode(result.fullName, result.role);
-      loadAdminEvents(result.token);
-      Toast.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ' + result.fullName });
+      // ขั้นตอนสำคัญ: เอา Firebase Custom Token ไปยื่นให้ Firebase Auth
+      // เพื่อให้ Security Rules มองเห็นว่า "login อยู่แล้ว" ตอนอ่านข้อมูลแบบ real-time (Phase 6.2)
+      return fbAuth.signInWithCustomToken(result.firebaseCustomToken).then(function () {
+        localStorage.setItem(TOKEN_KEY, result.token);
+        localStorage.setItem(NAME_KEY, result.fullName);
+        localStorage.setItem(ROLE_KEY, result.role);
+        localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
+        closeLoginModal();
+        enterAdminMode(result.fullName, result.role);
+        loadAdminEvents(result.token);
+        Toast.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ' + result.fullName });
+      });
     } else {
       showLoginError(result.message);
     }
@@ -284,6 +500,7 @@ function doLogout() {
   localStorage.removeItem(NAME_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(ACCOUNT_ID_KEY);
+  fbAuth.signOut();
   exitAdminMode();
   loadPublicEvents();
   Toast.fire({ icon: 'info', title: 'ออกจากระบบแล้ว' });
@@ -807,7 +1024,6 @@ function proceedSaveTask(payload, btn) {
 }
 
 var TASK_TYPE_LABELS = { meeting: 'Meeting', onsite: 'On-site', event: 'Event' };
-var TASK_TYPE_DOT_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF' };
 
 // ===== To-Do List - โชว์ให้ทุกคนเห็น แก้ไข/ลบได้เฉพาะ Admin - แสดงใน sidebar ขวา ใต้ "วันหยุดเดือนนี้" =====
 function loadTodoList() {
@@ -831,7 +1047,7 @@ function loadTodoList() {
       item.className = 'todo-item';
       item.innerHTML =
         '<div class="ti-top">' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:' + (TASK_TYPE_DOT_COLORS[t.taskType] || '#ccc') + ';display:inline-block;flex-shrink:0"></span>' +
+          '<span style="width:8px;height:8px;border-radius:50%;background:' + (TASK_TYPE_COLORS[t.taskType] || '#ccc') + ';display:inline-block;flex-shrink:0"></span>' +
           '<span class="ti-name">' + t.taskName + '</span>' +
         '</div>' +
         (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
@@ -1184,17 +1400,10 @@ function deleteHolidayConfirm(btn, holidayId) {
   });
 }
 
+// เก็บชื่อฟังก์ชันไว้ให้จุดเรียกใช้เดิมยังทำงานได้ แต่ไม่ต้องทำอะไรจริงแล้ว
+// เพราะ setupHolidaysRealtimeListener() destroy+สร้างปฏิทินใหม่ให้อัตโนมัติอยู่แล้วทุกครั้งที่ addHoliday/deleteHoliday เปลี่ยนข้อมูลจริง
 function refreshCalendarAfterHolidayChange() {
-  loadHolidays().then(function () {
-    // dayCellDidMount ไม่รันซ้ำเองตอนแค่เปลี่ยน event source เลยต้อง destroy+สร้างปฏิทินใหม่
-    // เพื่อบังคับให้เซลล์วันหยุดอัปเดตถูกต้องเสมอ
-    if (calendarInstance) {
-      calendarInstance.destroy();
-      calendarInstance = null;
-    }
-    var token = localStorage.getItem(TOKEN_KEY);
-    if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
-  });
+  // no-op: real-time listener จัดการให้แล้ว
 }
 
 // คำนวณความสว่างของสีพื้นหลัง แล้วเลือกสีตัวอักษร (ขาว/เข้ม) ให้อ่านง่ายเสมอไม่ว่าพื้นหลังจะเป็นสีอะไร
@@ -1228,6 +1437,12 @@ function loadMemberSidebar() {
 }
 
 function renderMemberList(staff) {
+  // อัปเดต staffMapCache ไว้ใช้จับคู่ชื่อ+สีตอนสร้าง event ปฏิทินจาก staffIds (แทนที่ server เคย join ให้ตอนอยู่บน Apps Script)
+  staff.forEach(function (s) {
+    if (s.staffId) staffMapCache[s.staffId] = s;
+  });
+  refreshCalendarDayCells(); // ชื่อผู้ปฏิบัติงานอาจเพิ่ง resolve ได้ใหม่ (เช่น เพิ่งโหลดเสร็จ) ต้องรีเฟรช event ให้ตรง
+
   var container = document.getElementById('member-list');
   if (staff.length === 0) {
     container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ยังไม่มีผู้ปฏิบัติงาน</p>';
@@ -1609,16 +1824,14 @@ function manualRefresh() {
   });
 }
 
+// เก็บชื่อฟังก์ชันไว้ให้ทุกจุดที่เรียกใช้ทั่วไฟล์ (~12 จุด) ยังทำงานได้โดยไม่ต้องแก้ทีละจุด
+// แต่ไม่ต้องทำอะไรจริงแล้ว เพราะ setupTasksRealtimeListener() ทำให้ปฏิทินอัปเดตอัตโนมัติทุกครั้งที่ข้อมูลเปลี่ยนอยู่แล้ว
 function loadPublicEvents() {
-  callApi('getPublicCalendarEvents', {}).then(renderCalendar).catch(function (err) {
-    console.error('โหลดปฏิทินไม่สำเร็จ', err);
-  });
+  // no-op: real-time listener จัดการให้แล้ว
 }
 
 function loadAdminEvents(token) {
-  callApi('getCalendarEvents', { token: token }).then(renderCalendar).catch(function (err) {
-    console.error('โหลดปฏิทินไม่สำเร็จ', err);
-  });
+  // no-op: real-time listener จัดการให้แล้ว (พารามิเตอร์ token ไม่ได้ใช้แล้ว เก็บไว้กันจุดเรียกใช้เดิมพัง)
 }
 
 function renderCalendar(result) {
@@ -1739,7 +1952,7 @@ function renderCalendar(result) {
       var detailHtml =
         '<div style="text-align:left;font-size:14px">' +
         '<p><b>ประเภทงาน:</b> ' + (TASK_TYPE_LABELS[props.taskType] || props.taskType) + '</p>' +
-        '<p><b>สถานะ:</b> ' + props.status + '</p>' +
+        '<p><b>วันที่:</b> ' + formatEventDateRange(info.event) + '</p>' +
         '<p><b>ผู้ปฏิบัติงาน:</b><br>' + (staffHtml || '-') + '</p>' +
         '<p><b>สถานที่:</b> ' + (props.location || '-') + '</p>' +
         '<p><b>รายละเอียดงาน:</b><br>' + (props.detail ? props.detail.replace(/\n/g, '<br>') : '-') + '</p>' +
