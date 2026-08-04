@@ -1643,6 +1643,7 @@ function renderCalendar(result) {
       : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
     locale: 'th',
     height: 'auto',
+    eventDisplay: 'block',
     allDayText: 'ทั้งวัน',
     buttonText: { today: 'วันนี้' },
     events: result.events,
@@ -1679,13 +1680,11 @@ function renderCalendar(result) {
 
       var isListView = arg.view.type.indexOf('list') === 0;
 
-      // เพิ่มจุดสีประเภทงานเองแค่โหมด Grid เท่านั้น (งานระบุเวลาในโหมดนี้ไม่มีพื้นหลังสีให้)
-      // โหมด List มีจุดสีของ FullCalendar เองอยู่แล้วในคอลัมน์แยก ไม่ต้องเพิ่มซ้ำ
-      var typeDotHtml = '';
-      if (!isListView) {
-        var typeColor = arg.event.backgroundColor || arg.event.borderColor || '#888780';
-        typeDotHtml = '<span style="width:8px;height:8px;border-radius:50%;background:' + typeColor +
-          ';display:inline-block;flex-shrink:0;border:1px solid rgba(0,0,0,0.15)"></span>';
+      // งานระบุเวลาในโหมด Grid (PC) เดิมไม่โชว์เวลาเลย เพิ่มให้เห็นชัดว่างานเริ่มกี่โมง
+      var timeHtml = '';
+      if (!arg.event.allDay && !isListView) {
+        var timeText = arg.event.start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+        timeHtml = '<span style="font-size:10px;font-weight:700;flex-shrink:0">' + timeText + '</span>';
       }
 
       var wrapper = document.createElement('div');
@@ -1705,7 +1704,7 @@ function renderCalendar(result) {
       topRow.style.overflow = 'hidden';
       topRow.style.width = '100%';
       topRow.style.minWidth = '0';
-      topRow.innerHTML = typeDotHtml + dotsHtml;
+      topRow.innerHTML = timeHtml + dotsHtml;
 
       var titleSpan = document.createElement('span');
       titleSpan.style.overflow = 'hidden';
