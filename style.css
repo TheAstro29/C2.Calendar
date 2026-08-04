@@ -65,6 +65,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* To-Do List - แสดงใน sidebar ขวา (เฉพาะ Admin เห็น) */
 #todo-sidebar-section .sub { font-size: 11px; color: #9aa1a8; margin: 0 0 10px; }
+#todo-list-sidebar { max-height: 260px; overflow-y: auto; padding-right: 4px; }
 .todo-item { border: 1px solid #eef0f2; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
 .todo-item .ti-top { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .todo-item .ti-name { font-size: 13px; font-weight: 600; color: #1f2430; flex: 1; }
@@ -696,12 +697,19 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
   /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น */
-  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; }
+  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; display: block !important; width: 100% !important; }
   .fc-list-day-cushion { font-size: 12px; }
 
   /* บังคับตารางไม่ให้กว้างเกินจอ (สาเหตุที่ข้อความล้นแทนที่จะตัดคำ) */
-  .fc-list-table { table-layout: fixed; width: 100%; }
+  .fc-list-table { table-layout: fixed; width: 100% !important; }
   .fc-list-table td { overflow: hidden; }
+
+  /* บังคับทุกชั้นของ wrapper ปฏิทิน (FullCalendar คำนวณความกว้างเองบางทีไม่เต็ม 100% จริง ทำให้เหลือที่ว่างด้านขวา) */
+  .fc-view-harness, .fc-scroller, .fc-list-view, .fc-view, .fc-daygrid-body {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .fc-scroller { overflow-x: hidden !important; }
 
   /* ซ่อนคอลัมน์ "ทั้งวัน"/เวลาของ FullCalendar เอง เพราะเรามีแถบวันที่ของเราเองอยู่ใต้ชื่องานแล้ว ซ้ำซ้อนกัน */
   /* กำหนดความกว้างแต่ละคอลัมน์ตามตำแหน่งจริงในตาราง (เวลา/จุดสี/ชื่องาน) ให้ชื่องานได้พื้นที่ที่เหลือทั้งหมด */
