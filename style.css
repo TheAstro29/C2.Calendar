@@ -704,10 +704,10 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .fc-list-table td { overflow: hidden; }
 
   /* ซ่อนคอลัมน์ "ทั้งวัน"/เวลาของ FullCalendar เอง เพราะเรามีแถบวันที่ของเราเองอยู่ใต้ชื่องานแล้ว ซ้ำซ้อนกัน */
-  .fc-list-event-time { display: none; }
-  .fc-list-event-graphic { padding: 0 2px 0 6px !important; width: auto !important; }
-  .fc-list-table td:first-child { padding-left: 0 !important; width: 1% !important; white-space: nowrap; }
-  .fc-list-table .fc-list-event-title { padding-left: 2px !important; }
+  /* กำหนดความกว้างแต่ละคอลัมน์ตามตำแหน่งจริงในตาราง (เวลา/จุดสี/ชื่องาน) ให้ชื่องานได้พื้นที่ที่เหลือทั้งหมด */
+  .fc-list-table td:nth-child(1) { display: none; width: 0 !important; padding: 0 !important; }
+  .fc-list-table td:nth-child(2) { width: 30px !important; padding: 0 2px 0 6px !important; }
+  .fc-list-table td:nth-child(3) { width: auto !important; padding-left: 2px !important; }
 
   /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ */
   .fc-toolbar-title { font-size: 18px !important; }
