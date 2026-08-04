@@ -1742,6 +1742,7 @@ function renderCalendar(result) {
         '<p><b>สถานะ:</b> ' + props.status + '</p>' +
         '<p><b>ผู้ปฏิบัติงาน:</b><br>' + (staffHtml || '-') + '</p>' +
         '<p><b>สถานที่:</b> ' + (props.location || '-') + '</p>' +
+        '<p><b>รายละเอียดงาน:</b><br>' + (props.detail ? props.detail.replace(/\n/g, '<br>') : '-') + '</p>' +
         '</div>';
 
       var token = localStorage.getItem(TOKEN_KEY);
