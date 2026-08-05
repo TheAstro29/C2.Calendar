@@ -643,15 +643,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #drawer-backdrop, #more-menu-overlay { display: none; }
 #mobile-float-nav { display: none; }
 
-@media (max-width: 768px) {
-  /* ซ่อนไอคอน toggle/login เดิมบน topbar เพราะย้ายไป FAB แทน */
-  #topbar-right { display: none; }
-  #topbar { justify-content: center; }
-
-  /* Sidebar กลายเป็น Drawer เลื่อนจากข้าง */
+/* ===== Drawer mechanics ที่ Tablet + มือถือใช้ร่วมกัน (ซ่อน sidebar เป็น drawer เลื่อนจากข้าง) ===== */
+@media (max-width: 1024px) {
   #app-body { position: relative; }
   .side-panel {
-    position: fixed; top: 0; bottom: 0; width: 82%; max-width: 300px;
+    position: fixed; top: 0; bottom: 0; width: 82%; max-width: 320px;
     z-index: 1600; border-radius: 0; overflow-y: auto;
     box-shadow: 0 0 24px rgba(0,0,0,0.25);
     transition: transform 0.28s ease;
@@ -659,11 +655,35 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #member-sidebar { left: 0; transform: translateX(-100%); }
   #legend-sidebar { right: 0; transform: translateX(100%); }
   #member-sidebar.drawer-open, #legend-sidebar.drawer-open { transform: translateX(0); }
-  .side-panel.collapsed { display: block; } /* ยกเลิกพฤติกรรม collapse แบบ PC บนมือถือ ใช้ drawer-open คุมแทน */
+  .side-panel.collapsed { display: block; } /* ยกเลิกพฤติกรรม collapse แบบ PC เต็มจอ ใช้ drawer-open คุมแทน */
 
   #drawer-backdrop.show {
     display: block; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1500;
   }
+
+  /* ขยาย touch target ให้กดง่ายขึ้นด้วยนิ้ว (มาตรฐาน ≥40px) - ใช้ได้ทั้ง Tablet และมือถือ */
+  .row-edit-btn { padding: 9px 14px; font-size: 13px; }
+  .staff-row, .holiday-row { flex-wrap: wrap; gap: 8px 10px; padding: 10px 0; }
+  #login-close, #staff-close, #holiday-close, #task-close, #profile-close, .modal-close-btn {
+    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .color-swatch { width: 34px; height: 34px; }
+  .staff-row input[type="checkbox"], .holiday-row input[type="checkbox"],
+  .staff-checklist input[type="checkbox"] {
+    transform: scale(1.3); margin-right: 2px;
+  }
+
+  /* กัน iOS Safari ซูมจอเองอัตโนมัติตอนแตะช่อง input (เกิดเมื่อ font-size < 16px) - ใช้ได้ทั้ง Tablet และมือถือ */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* ซ่อนไอคอน toggle/login เดิมบน topbar เพราะย้ายไป FAB แทน (เฉพาะมือถือ - Tablet ยังเห็นไอคอนบน topbar ปกติ) */
+  #topbar-right { display: none; }
+  #topbar { justify-content: center; }
 
   #calendar-wrap { padding: 4px 2px 90px; border: none; border-radius: 0; }
   #app-body { padding: 0; margin: 0; gap: 0; }
@@ -707,8 +727,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
-  /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น */
-  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; display: block !important; width: 100% !important; }
+  /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น (เฉพาะมือถือ - Tablet ใช้ Grid เดือนเหมือน PC) */
+  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; width: 100% !important; }
   .fc-list-day-cushion { font-size: 12px; }
 
   /* บังคับตารางไม่ให้กว้างเกินจอ (สาเหตุที่ข้อความล้นแทนที่จะตัดคำ) */
@@ -728,29 +748,17 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .fc-list-table td:nth-child(2) { width: 30px !important; padding: 0 2px 0 6px !important; }
   .fc-list-table td:nth-child(3) { width: auto !important; padding-left: 2px !important; }
 
-  /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ */
+  /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ (เฉพาะมือถือ - Tablet ใช้ขนาดเหมือน PC) */
   .fc-toolbar-title { font-size: 18px !important; }
   .fc-toolbar { gap: 6px; margin-bottom: 8px !important; }
   .fc-button { padding: 4px 8px !important; font-size: 13px !important; }
   .fc-today-button { padding: 4px 10px !important; }
   .fc-list-day-cushion { padding: 6px 10px !important; }
   .fc-list-event td { padding: 6px 8px !important; }
+}
 
-  /* ขยาย touch target ให้กดง่ายขึ้นด้วยนิ้ว (มาตรฐาน ≥40px) */
-  .row-edit-btn { padding: 9px 14px; font-size: 13px; }
-  .staff-row, .holiday-row { flex-wrap: wrap; gap: 8px 10px; padding: 10px 0; }
-  #login-close, #staff-close, #holiday-close, #task-close, #profile-close, .modal-close-btn {
-    width: 38px; height: 38px; display: flex; align-items: center; justify-content: center;
-    font-size: 18px;
-  }
-  .color-swatch { width: 34px; height: 34px; }
-  .staff-row input[type="checkbox"], .holiday-row input[type="checkbox"],
-  .staff-checklist input[type="checkbox"] {
-    transform: scale(1.3); margin-right: 2px;
-  }
-
-  /* กัน iOS Safari ซูมจอเองอัตโนมัติตอนแตะช่อง input (เกิดเมื่อ font-size < 16px) */
-  input, select, textarea {
-    font-size: 16px !important;
-  }
+/* ===== Tablet (769px - 1024px) - sidebar เป็น drawer เหมือนมือถือ แต่ปฏิทินแบบ Grid + topbar ไอคอนเหมือน PC ===== */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .side-panel { width: 60%; max-width: 340px; }
+  #calendar-wrap { flex: 1; min-width: 0; }
 }

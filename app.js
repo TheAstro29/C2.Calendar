@@ -1518,10 +1518,15 @@ function isMobileView() {
   return window.innerWidth <= 768;
 }
 
+// Tablet (769-1024px) ใช้ drawer เหมือนมือถือด้วย แต่ปฏิทิน/topbar ยังเหมือน PC
+function isDrawerView() {
+  return window.innerWidth <= 1024;
+}
+
 function toggleSidebar(panelId) {
   var panel = document.getElementById(panelId);
 
-  if (isMobileView()) {
+  if (isDrawerView()) {
     var isOpening = !panel.classList.contains('drawer-open');
     closeAllDrawers();
     if (isOpening) {
