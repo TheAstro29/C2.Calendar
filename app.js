@@ -1728,13 +1728,54 @@ function submitRescheduleRequest() {
 var REQUEST_TYPE_LABELS = { delete: 'ขอลบงาน', reschedule: 'ขอเปลี่ยนวัน' };
 
 // ===== เสียงแจ้งเตือน: ลองใช้เสียงพูดก่อน (ไม่ต้องมีไฟล์เสียง) ถ้าเบราว์เซอร์ไม่รองรับใช้เสียง beep แทนอัตโนมัติ =====
-function playNotificationSound(text) {
+// ===== เลือกเสียงพูดภาษาไทยที่มีในเครื่อง พร้อมเดาเพศจากชื่อเสียง =====
+function pickThaiVoice(voices) {
+  var thaiVoices = voices.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf('th') === 0; });
+  if (thaiVoices.length === 0) return { voice: null, gender: 'male' };
+
+  var femaleHints = ['premwadee', 'kanya', 'female', 'women', 'หญิง'];
+  var femaleMatch = thaiVoices.filter(function (v) {
+    var n = v.name.toLowerCase();
+    return femaleHints.some(function (f) { return n.indexOf(f) !== -1; });
+  })[0];
+  if (femaleMatch) return { voice: femaleMatch, gender: 'female' };
+
+  var maleHints = ['male', 'ชาย'];
+  var maleMatch = thaiVoices.filter(function (v) {
+    var n = v.name.toLowerCase();
+    return maleHints.some(function (f) { return n.indexOf(f) !== -1; });
+  })[0];
+  if (maleMatch) return { voice: maleMatch, gender: 'male' };
+
+  // เดาเพศไม่ได้จากชื่อ ใช้เสียงไทยตัวแรกที่มี ถือเป็นเสียงผู้ชายไว้ก่อน (ปลอดภัยกว่าเดาผิดเป็นผู้หญิง)
+  return { voice: thaiVoices[0], gender: 'male' };
+}
+
+// baseText คือข้อความที่ยังไม่มีคำลงท้าย (ครับ/ค่ะ) - ฟังก์ชันนี้จะเติมให้ตรงกับเพศเสียงที่เลือกได้อัตโนมัติ
+function speakText(baseText) {
+  var synth = window.speechSynthesis;
+  var voices = synth.getVoices();
+  if (voices.length === 0) {
+    // เบราว์เซอร์บางตัว (เช่น Chrome) ยังโหลดรายชื่อเสียงไม่เสร็จตอนเรียกครั้งแรก ต้องรอ event นี้ก่อน
+    synth.onvoiceschanged = function () {
+      synth.onvoiceschanged = null;
+      speakText(baseText);
+    };
+    return;
+  }
+  var picked = pickThaiVoice(voices);
+  var ending = picked.gender === 'female' ? 'ค่ะ' : 'ครับ';
+  var utter = new SpeechSynthesisUtterance(baseText + ending);
+  utter.lang = 'th-TH';
+  utter.rate = 1;
+  if (picked.voice) utter.voice = picked.voice;
+  synth.speak(utter);
+}
+
+function playNotificationSound(baseText) {
   if ('speechSynthesis' in window) {
     try {
-      var utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'th-TH';
-      utter.rate = 1;
-      window.speechSynthesis.speak(utter);
+      speakText(baseText);
       return;
     } catch (e) { /* ตกไป beep ด้านล่าง */ }
   }
@@ -1765,7 +1806,7 @@ function loadNotifBadge() {
       badge.style.display = 'none';
     }
     if (lastPendingCount !== -1 && count > lastPendingCount) {
-      playNotificationSound('มีคำขอเข้ามาใหม่ค่ะ');
+      playNotificationSound('มีคำขอเข้ามาใหม่');
     }
     lastPendingCount = count;
   });
@@ -1819,7 +1860,7 @@ function loadMyRequestsBadge() {
       if (topBadge) topBadge.style.display = 'none';
     }
     if (lastMyUnseenCount !== -1 && myRequestsUnseenCount > lastMyUnseenCount) {
-      playNotificationSound('คำขอของคุณได้รับการตอบกลับแล้วค่ะ');
+      playNotificationSound('คำขอของคุณได้รับการตอบกลับแล้ว');
     }
     lastMyUnseenCount = myRequestsUnseenCount;
   });
