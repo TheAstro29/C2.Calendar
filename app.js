@@ -292,8 +292,11 @@ function buildEventsFromTaskDocs(docs) {
 
 // ===== ฟังการเปลี่ยนแปลงงานแบบ real-time (แทนที่ loadPublicEvents/loadAdminEvents เดิม) =====
 // อ่านได้ทุกคนเสมอ (แม้ไม่ login) ตาม Security Rules ที่ตั้งไว้ - ไม่ต้องแยก public/admin อีกต่อไป
+var lastTaskDocs = [];
+
 function setupTasksRealtimeListener() {
   fbDb.collection('tasks').onSnapshot(function (snapshot) {
+    lastTaskDocs = snapshot.docs;
     lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
     renderCalendar({ success: true, events: lastRenderedEvents });
   }, function (err) {
@@ -315,8 +318,10 @@ function setupHolidaysRealtimeListener() {
 }
 
 // ===== บังคับสร้างปฏิทินใหม่ (ใช้ตอนวันหยุด/ชื่อผู้ปฏิบัติงานเปลี่ยน ที่ dayCellDidMount ไม่รันซ้ำเอง) =====
+// สร้าง event ใหม่จาก lastTaskDocs + staffMapCache ล่าสุดเสมอ (ไม่ใช้ lastRenderedEvents เก่าที่อาจสร้างไว้ตอนยังไม่มีข้อมูลสี)
 function refreshCalendarDayCells() {
   if (!calendarInstance) return;
+  lastRenderedEvents = buildEventsFromTaskDocs(lastTaskDocs);
   calendarInstance.destroy();
   calendarInstance = null;
   renderCalendar({ success: true, events: lastRenderedEvents });
@@ -523,14 +528,17 @@ function enterAdminMode(fullName, role) {
   document.getElementById('staff-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('my-requests-btn').style.display = isStaff ? 'inline-block' : 'none';
+  document.getElementById('my-requests-top-bell').style.display = isStaff ? 'inline-flex' : 'none';
   document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
   if (isAdmin) {
     loadNotifBadge();
+    startAdminNotifPolling();
   }
   loadTodoList();
   if (isStaff) {
     loadMyRequestsBadge();
+    startStaffNotifPolling();
   }
 }
 
@@ -539,6 +547,7 @@ function exitAdminMode() {
   document.getElementById('admin-chip').style.display = 'none';
   document.getElementById('task-undated-row').style.display = 'none';
   document.getElementById('notif-bell-btn').style.display = 'none';
+  document.getElementById('my-requests-top-bell').style.display = 'none';
   loadTodoList();
 }
 
@@ -1717,18 +1726,55 @@ function submitRescheduleRequest() {
 // ===== แจ้งเตือนกระดิ่ง (Admin) =====
 var REQUEST_TYPE_LABELS = { delete: 'ขอลบงาน', reschedule: 'ขอเปลี่ยนวัน' };
 
+// ===== เสียงแจ้งเตือน: ลองใช้เสียงพูดก่อน (ไม่ต้องมีไฟล์เสียง) ถ้าเบราว์เซอร์ไม่รองรับใช้เสียง beep แทนอัตโนมัติ =====
+function playNotificationSound(text) {
+  if ('speechSynthesis' in window) {
+    try {
+      var utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'th-TH';
+      utter.rate = 1;
+      window.speechSynthesis.speak(utter);
+      return;
+    } catch (e) { /* ตกไป beep ด้านล่าง */ }
+  }
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.type = 'sine'; osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.35);
+  } catch (e) { /* เบราว์เซอร์ไม่รองรับเสียงเลย ปล่อยผ่านเงียบๆ */ }
+}
+
+var lastPendingCount = -1;
+var lastMyUnseenCount = -1;
+
 function loadNotifBadge() {
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getPendingChangeRequests', { token: token }).then(function (result) {
     if (!result.success) return;
+    var count = result.requests.length;
     var badge = document.getElementById('notif-badge');
-    if (result.requests.length > 0) {
-      badge.textContent = result.requests.length;
+    if (count > 0) {
+      badge.textContent = count;
       badge.style.display = 'flex';
     } else {
       badge.style.display = 'none';
     }
+    if (lastPendingCount !== -1 && count > lastPendingCount) {
+      playNotificationSound('มีคำขอเข้ามาใหม่ค่ะ');
+    }
+    lastPendingCount = count;
   });
+}
+
+// เช็คคำขอใหม่ทุก 30 วิ ตอนที่เปิดหน้าเว็บทิ้งไว้ (เฉพาะ Admin)
+function startAdminNotifPolling() {
+  setInterval(function () {
+    if (localStorage.getItem(ROLE_KEY) === 'admin') loadNotifBadge();
+  }, 30000);
 }
 
 // ===== แจ้งเตือนคำขอของฉัน (Staff) - นับเฉพาะคำขอที่ถูกอนุมัติ/ไม่อนุมัติแล้วแต่ยังไม่ได้เปิดดู =====
@@ -1762,13 +1808,27 @@ function loadMyRequestsBadge() {
     myRequestsUnseenCount = unseen.length;
 
     var badge = document.getElementById('my-requests-badge');
+    var topBadge = document.getElementById('my-requests-top-badge');
     if (myRequestsUnseenCount > 0) {
       badge.textContent = myRequestsUnseenCount;
       badge.style.display = 'flex';
+      if (topBadge) { topBadge.textContent = myRequestsUnseenCount; topBadge.style.display = 'flex'; }
     } else {
       badge.style.display = 'none';
+      if (topBadge) topBadge.style.display = 'none';
     }
+    if (lastMyUnseenCount !== -1 && myRequestsUnseenCount > lastMyUnseenCount) {
+      playNotificationSound('คำขอของคุณได้รับการตอบกลับแล้วค่ะ');
+    }
+    lastMyUnseenCount = myRequestsUnseenCount;
   });
+}
+
+// เช็คคำขอของฉันทุก 30 วิ ตอนที่เปิดหน้าเว็บทิ้งไว้ (เฉพาะ Staff)
+function startStaffNotifPolling() {
+  setInterval(function () {
+    if (localStorage.getItem(ROLE_KEY) === 'staff') loadMyRequestsBadge();
+  }, 30000);
 }
 
 function openPendingRequestsModal() {
