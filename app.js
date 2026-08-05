@@ -232,10 +232,9 @@ function setLocalCache(key, data) {
 }
 
 // ===== ประเภทงาน -> สี (เดิมฝั่ง server เป็นคน map ให้ ตอนนี้ต้องทำเองฝั่ง client) =====
-var TASK_TYPE_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF' };
-var TASK_TYPE_TEXT_COLORS = { meeting: '#7a5c00', onsite: '#7a3300', event: '#4a1a8c' };
+var TASK_TYPE_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF', leave: '#E5E7EB' };
 function getTaskTypeColor(t) { return TASK_TYPE_COLORS[t] || '#cccccc'; }
-function getTaskTypeTextColor(t) { return TASK_TYPE_TEXT_COLORS[t] || '#333333'; }
+function getTaskTypeTextColor(t) { return getContrastTextColor(getTaskTypeColor(t)); }
 
 // ===== จับคู่ staffId -> ข้อมูลคน (เดิมฝั่ง server join ให้ ตอนนี้ทำเองฝั่ง client จาก staffMapCache) =====
 var staffMapCache = {};
@@ -1076,7 +1075,12 @@ function proceedSaveTask(payload, btn) {
   });
 }
 
-var TASK_TYPE_LABELS = { meeting: 'Meeting', onsite: 'On-site', event: 'Event' };
+var TASK_TYPE_LABELS = {
+  meeting: 'ประชุม (Meeting)',
+  onsite: 'นอกสถานที่ (On-site)',
+  event: 'กิจกรรม (Event)',
+  leave: 'ลา (Leave)'
+};
 
 // ===== To-Do List - โชว์ให้ทุกคนเห็น แก้ไข/ลบได้เฉพาะ Admin - แสดงใน sidebar ขวา ใต้ "วันหยุดเดือนนี้" =====
 function loadTodoList() {
