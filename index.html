@@ -132,9 +132,9 @@
   <div id="drawer-backdrop" onclick="closeAllDrawers()"></div>
 
   <nav id="mobile-float-nav">
-    <button class="mfn-item" onclick="fabAction('home')">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
-      <span>ปฏิทิน</span>
+    <button class="mfn-item" id="mfn-view-toggle-btn" onclick="fabAction('toggleView')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect></svg>
+      <span id="mfn-view-toggle-label">มุมมอง</span>
     </button>
     <button class="mfn-item" onclick="fabAction('team')">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
@@ -167,7 +167,10 @@
       <h2>เข้าสู่ระบบ C2 Calendar</h2>
       <p class="sub">สำหรับจัดการงานต่างๆ</p>
       <input type="text" id="username" placeholder="ชื่อผู้ใช้">
-      <input type="password" id="password" placeholder="รหัสผ่าน">
+      <div class="pw-wrap">
+        <input type="password" id="password" placeholder="รหัสผ่าน">
+        <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('password', this)">👁</button>
+      </div>
       <p id="login-error-text"></p>
       <button id="login-submit-btn" class="submit" onclick="doLogin()">เข้าสู่ระบบ</button>
     </div>
@@ -372,9 +375,18 @@
 
           <p id="profile-password-toggle-link" onclick="toggleProfilePassword()">เปลี่ยนรหัสผ่าน</p>
           <div id="profile-password-section" style="display:none">
-            <input type="password" id="profile-old-password" placeholder="รหัสผ่านเดิม">
-            <input type="password" id="profile-new-password" placeholder="รหัสผ่านใหม่">
-            <input type="password" id="profile-confirm-password" placeholder="ยืนยันรหัสผ่านใหม่">
+            <div class="pw-wrap">
+              <input type="password" id="profile-old-password" placeholder="รหัสผ่านเดิม">
+              <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('profile-old-password', this)">👁</button>
+            </div>
+            <div class="pw-wrap">
+              <input type="password" id="profile-new-password" placeholder="รหัสผ่านใหม่">
+              <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('profile-new-password', this)">👁</button>
+            </div>
+            <div class="pw-wrap">
+              <input type="password" id="profile-confirm-password" placeholder="ยืนยันรหัสผ่านใหม่">
+              <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('profile-confirm-password', this)">👁</button>
+            </div>
             <button id="profile-password-btn" onclick="submitChangePassword()">เปลี่ยนรหัสผ่าน</button>
           </div>
         </div>

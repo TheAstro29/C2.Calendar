@@ -685,7 +685,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #topbar-right { display: none; }
   #topbar { justify-content: center; }
 
-  #calendar-wrap { padding: 4px 2px 90px; border: none; border-radius: 0; }
+  #calendar-wrap { padding: 4px 0 90px; border: none; border-radius: 0; margin: 0; }
+  #calendar { margin: 0; padding: 0; }
   #app-body { padding: 0; margin: 0; gap: 0; }
 
   /* แท่งเมนูลอยเต็มความกว้าง ไม่ชนขอบจอ */
@@ -728,25 +729,28 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
   /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น (เฉพาะมือถือ - Tablet ใช้ Grid เดือนเหมือน PC) */
-  .fc-list-event-title { font-size: 13px; min-width: 0; overflow: hidden; width: 100% !important; }
   .fc-list-day-cushion { font-size: 12px; }
 
-  /* บังคับตารางไม่ให้กว้างเกินจอ (สาเหตุที่ข้อความล้นแทนที่จะตัดคำ) */
-  .fc-list-table { table-layout: fixed; width: 100% !important; }
-  .fc-list-table td { overflow: hidden; }
-
-  /* บังคับทุกชั้นของ wrapper ปฏิทิน (FullCalendar คำนวณความกว้างเองบางทีไม่เต็ม 100% จริง ทำให้เหลือที่ว่างด้านขวา) */
-  .fc-view-harness, .fc-scroller, .fc-list-view, .fc-view, .fc-daygrid-body {
-    width: 100% !important;
-    max-width: 100% !important;
+  /* เลิกพึ่งพา table-layout ของ HTML table (มีปัญหาเพราะแถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน
+     ทำให้เบราว์เซอร์คำนวณความกว้างคอลัมน์สับสน) แปลง "แถวงาน" ให้เป็น flexbox คุมเองทั้งหมดแทน */
+  .fc-list-table { width: 100% !important; border-spacing: 0 !important; border-collapse: collapse !important; margin: 0 !important; }
+  .fc-list-event {
+    display: flex !important;
+    align-items: stretch;
+    width: 100%;
+    border-radius: 8px;
+    margin: 2px 0;
+    overflow: hidden;
   }
-  .fc-scroller { overflow-x: hidden !important; }
-
-  /* ซ่อนคอลัมน์ "ทั้งวัน"/เวลาของ FullCalendar เอง เพราะเรามีแถบวันที่ของเราเองอยู่ใต้ชื่องานแล้ว ซ้ำซ้อนกัน */
-  /* กำหนดความกว้างแต่ละคอลัมน์ตามตำแหน่งจริงในตาราง (เวลา/จุดสี/ชื่องาน) ให้ชื่องานได้พื้นที่ที่เหลือทั้งหมด */
-  .fc-list-table td:nth-child(1) { display: none; width: 0 !important; padding: 0 !important; }
-  .fc-list-table td:nth-child(2) { width: 30px !important; padding: 0 2px 0 6px !important; }
-  .fc-list-table td:nth-child(3) { width: auto !important; padding-left: 2px !important; }
+  .fc-list-event-time { display: none !important; }
+  .fc-list-event-graphic {
+    display: flex !important; align-items: center; justify-content: center;
+    flex: 0 0 30px !important; width: 30px !important; padding: 0 !important;
+  }
+  .fc-list-event-title {
+    display: block !important; flex: 1 1 auto !important; width: auto !important;
+    min-width: 0; overflow: hidden; font-size: 13px; padding: 6px 2px 6px 2px !important;
+  }
 
   /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ (เฉพาะมือถือ - Tablet ใช้ขนาดเหมือน PC) */
   .fc-toolbar-title { font-size: 18px !important; }

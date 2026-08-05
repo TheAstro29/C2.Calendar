@@ -1460,6 +1460,16 @@ function getContrastTextColor(hex) {
   return luminance > 0.55 ? '#1f2430' : '#ffffff';
 }
 
+// ===== แปลงสี hex เป็น rgba แบบจาง (ใช้ทำพื้นหลังจางเต็มแถวในโหมด List) =====
+function hexToRgba(hex, alpha) {
+  hex = (hex || '#888888').replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+  var r = parseInt(hex.substr(0, 2), 16);
+  var g = parseInt(hex.substr(2, 2), 16);
+  var b = parseInt(hex.substr(4, 2), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+}
+
 function loadMemberSidebar() {
   var cached = getLocalCache(STAFF_CACHE_KEY);
   if (cached) renderMemberList(cached);
@@ -1550,9 +1560,8 @@ function closeAllDrawers() {
 
 // ===== เมนูลอยมือถือ (แท่งลอยเต็มความกว้าง) =====
 function fabAction(action) {
-  if (action === 'home') {
-    closeAllDrawers();
-    closeMoreMenu();
+  if (action === 'toggleView') {
+    toggleCalendarViewMode();
   } else if (action === 'team') {
     toggleSidebar('member-sidebar');
   } else if (action === 'addtask') {
@@ -1563,6 +1572,23 @@ function fabAction(action) {
   } else if (action === 'menu') {
     openMoreMenu();
   }
+}
+
+// ===== สลับมุมมองปฏิทิน Grid เดือน <-> List (สำหรับมือถือ/Tablet) จำค่าที่เลือกไว้ใน localStorage =====
+var CALENDAR_VIEW_PREF_KEY = 'c2tech_calendar_view_pref';
+
+function toggleCalendarViewMode() {
+  if (!calendarInstance) return;
+  var newView = calendarInstance.view.type === 'listMonth' ? 'dayGridMonth' : 'listMonth';
+  calendarInstance.changeView(newView);
+  localStorage.setItem(CALENDAR_VIEW_PREF_KEY, newView);
+  updateViewToggleLabel(newView);
+}
+
+function updateViewToggleLabel(viewType) {
+  var label = document.getElementById('mfn-view-toggle-label');
+  if (!label) return;
+  label.textContent = viewType === 'listMonth' ? 'ดูเดือน' : 'ดูรายการ';
 }
 
 function openMoreMenu() {
@@ -1897,8 +1923,10 @@ function renderCalendar(result) {
 
   var calendarEl = document.getElementById('calendar');
   var mobile = isMobileView();
+  var savedViewPref = localStorage.getItem(CALENDAR_VIEW_PREF_KEY);
+  var initialViewToUse = mobile ? (savedViewPref || 'listMonth') : 'dayGridMonth';
   calendarInstance = new FullCalendar.Calendar(calendarEl, {
-    initialView: mobile ? 'listMonth' : 'dayGridMonth',
+    initialView: initialViewToUse,
     headerToolbar: mobile
       ? { left: 'prev,next', center: 'title', right: 'today' }
       : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
@@ -1988,6 +2016,13 @@ function renderCalendar(result) {
 
       return { domNodes: [wrapper] };
     },
+    eventDidMount: function (arg) {
+      if (arg.event.extendedProps.isHoliday) return;
+      var isListView = arg.view.type.indexOf('list') === 0;
+      if (!isListView) return; // Grid มีแถบสีเต็มอยู่แล้ว ไม่ต้องเพิ่ม
+      var color = arg.event.backgroundColor || arg.event.borderColor || '#f4f5f7';
+      arg.el.style.backgroundColor = hexToRgba(color, 0.22);
+    },
     eventClick: function (info) {
       if (info.event.extendedProps.isHoliday) return;
       var props = info.event.extendedProps;
@@ -2051,5 +2086,6 @@ function renderCalendar(result) {
     }
   });
   calendarInstance.render();
+  updateViewToggleLabel(initialViewToUse);
   hidePageLoading();
 }
