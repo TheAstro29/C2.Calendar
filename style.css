@@ -2,6 +2,39 @@
 html { overflow-x: hidden; }
 body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: hidden; max-width: 100vw; }
 
+/* ===== แก้บั๊ก FullCalendar List View ที่ table-layout สับสน (แถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน)
+   ใช้ได้ทุกขนาดจอ (ไม่ผูก breakpoint) เพราะ List view เปิดดูได้ทุกขนาดจอ (มือถือ, Tablet ที่สลับมาดู, PC ที่ resize ทดสอบ) ===== */
+.fc-list-day-cushion {
+  font-size: clamp(10px, 3.2vw, 13px) !important;
+  display: flex !important; overflow: hidden; gap: 6px;
+}
+.fc-list-day-cushion > * {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fc-list-table { width: 100% !important; border-spacing: 0 !important; border-collapse: collapse !important; margin: 0 !important; }
+.fc-list-event {
+  display: flex !important;
+  align-items: stretch;
+  width: 100%;
+  border-radius: 8px;
+  margin: 2px 0;
+  overflow: hidden;
+}
+.fc-list-event-time { display: none !important; }
+.fc-list-event-graphic {
+  display: flex !important; align-items: center; justify-content: center;
+  flex: 0 0 30px !important; width: 30px !important; padding: 0 !important;
+  overflow: hidden !important; flex-wrap: wrap;
+}
+.fc-list-event-title {
+  display: block !important; flex: 1 1 auto !important; width: auto !important;
+  min-width: 0; overflow: hidden; font-size: 13px; padding: 6px 2px 6px 2px !important;
+}
+.fc-toolbar-title { font-size: clamp(14px, 4.5vw, 18px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-toolbar { gap: 4px; flex-wrap: nowrap !important; }
+.fc-toolbar-chunk:nth-child(1), .fc-toolbar-chunk:nth-child(3) { flex-shrink: 0; }
+.fc-toolbar-chunk:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: center; }
+
 /* หน้า Loading ตอนเปิดเว็บครั้งแรก */
 #page-loading {
   position: fixed; inset: 0; z-index: 2000;
@@ -734,43 +767,10 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
-  /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น (เฉพาะมือถือ - Tablet ใช้ Grid เดือนเหมือน PC) */
-  /* ใช้ font-size แบบ fluid (clamp) ปรับตามความกว้างจอเอง + บังคับให้ตัด/หดได้ ไม่ให้ล้นออกไปไม่ว่าจอจะแคบแค่ไหนหรือชื่อเดือน/วันจะยาวแค่ไหน */
-  .fc-list-day-cushion {
-    font-size: clamp(10px, 3.2vw, 13px) !important;
-    display: flex !important; overflow: hidden; gap: 6px;
-  }
-  .fc-list-day-cushion > * {
-    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
+  /* ปฏิทินโหมด list บนมือถือ - ของที่เหลือเฉพาะมือถือจริงๆ (ปุ่ม/หัวปฏิทิน) อยู่ด้านล่างนี้
+     ส่วนการแก้บั๊ก List view (ตัดคำ, flexbox) ย้ายไปเป็น global แล้ว เพราะ List view ใช้ได้ทุกขนาดจอ ไม่ใช่แค่มือถือ */
 
-  /* เลิกพึ่งพา table-layout ของ HTML table (มีปัญหาเพราะแถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน
-     ทำให้เบราว์เซอร์คำนวณความกว้างคอลัมน์สับสน) แปลง "แถวงาน" ให้เป็น flexbox คุมเองทั้งหมดแทน */
-  .fc-list-table { width: 100% !important; border-spacing: 0 !important; border-collapse: collapse !important; margin: 0 !important; }
-  .fc-list-event {
-    display: flex !important;
-    align-items: stretch;
-    width: 100%;
-    border-radius: 8px;
-    margin: 2px 0;
-    overflow: hidden;
-  }
-  .fc-list-event-time { display: none !important; }
-  .fc-list-event-graphic {
-    display: flex !important; align-items: center; justify-content: center;
-    flex: 0 0 30px !important; width: 30px !important; padding: 0 !important;
-    overflow: hidden !important; flex-wrap: wrap;
-  }
-  .fc-list-event-title {
-    display: block !important; flex: 1 1 auto !important; width: auto !important;
-    min-width: 0; overflow: hidden; font-size: 13px; padding: 6px 2px 6px 2px !important;
-  }
-
-  /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ (เฉพาะมือถือ - Tablet ใช้ขนาดเหมือน PC) */
-  .fc-toolbar-title { font-size: clamp(14px, 4.5vw, 18px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fc-toolbar { gap: 4px; margin-bottom: 8px !important; flex-wrap: nowrap !important; }
-  .fc-toolbar-chunk:nth-child(1), .fc-toolbar-chunk:nth-child(3) { flex-shrink: 0; }
-  .fc-toolbar-chunk:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: center; }
+  /* ลดขนาดปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ (เฉพาะมือถือ - Tablet ใช้ขนาดเหมือน PC) */
   .fc-button { padding: 4px 8px !important; font-size: 13px !important; }
   .fc-today-button { padding: 4px 10px !important; }
   .fc-list-day-cushion { padding: 6px 10px !important; }
