@@ -283,6 +283,7 @@ function buildEventsFromTaskDocs(docs) {
         detail: row.detail,
         taskType: row.taskType,
         createdBy: row.createdBy,
+        staffIds: row.staffIds || [],
         staff: assignedStaff
       }
     });
@@ -2125,8 +2126,8 @@ function renderCalendar(result) {
         return;
       }
 
-      // Staff: ขอลบ/ขอเปลี่ยนวัน ได้เฉพาะงานที่ตัวเองสร้างเท่านั้น
-      var isOwner = props.createdBy === myAccountId;
+      // Staff: ขอลบ/ขอเปลี่ยนวัน ได้ทั้งงานที่ตัวเองสร้าง และงานที่มีชื่อตัวเองเป็นผู้ปฏิบัติงาน
+      var isOwner = props.createdBy === myAccountId || (props.staffIds || []).indexOf(myAccountId) !== -1;
       if (!isOwner) {
         Swal.fire({ title: info.event.title, html: detailHtml, confirmButtonText: 'ปิด' });
         return;
