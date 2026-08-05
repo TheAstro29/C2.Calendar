@@ -1,5 +1,6 @@
 * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
-body { margin: 0; background: #f4f5f7; color: #1f2430; }
+html { overflow-x: hidden; }
+body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: hidden; max-width: 100vw; }
 
 /* หน้า Loading ตอนเปิดเว็บครั้งแรก */
 #page-loading {
@@ -734,7 +735,14 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
 
   /* ปฏิทินโหมด list บนมือถือ ให้อ่านง่ายขึ้น (เฉพาะมือถือ - Tablet ใช้ Grid เดือนเหมือน PC) */
-  .fc-list-day-cushion { font-size: 12px; }
+  /* ใช้ font-size แบบ fluid (clamp) ปรับตามความกว้างจอเอง + บังคับให้ตัด/หดได้ ไม่ให้ล้นออกไปไม่ว่าจอจะแคบแค่ไหนหรือชื่อเดือน/วันจะยาวแค่ไหน */
+  .fc-list-day-cushion {
+    font-size: clamp(10px, 3.2vw, 13px) !important;
+    display: flex !important; overflow: hidden; gap: 6px;
+  }
+  .fc-list-day-cushion > * {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
 
   /* เลิกพึ่งพา table-layout ของ HTML table (มีปัญหาเพราะแถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน
      ทำให้เบราว์เซอร์คำนวณความกว้างคอลัมน์สับสน) แปลง "แถวงาน" ให้เป็น flexbox คุมเองทั้งหมดแทน */
@@ -751,6 +759,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .fc-list-event-graphic {
     display: flex !important; align-items: center; justify-content: center;
     flex: 0 0 30px !important; width: 30px !important; padding: 0 !important;
+    overflow: hidden !important; flex-wrap: wrap;
   }
   .fc-list-event-title {
     display: block !important; flex: 1 1 auto !important; width: auto !important;
@@ -758,8 +767,10 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   }
 
   /* ลดขนาดหัวปฏิทิน/ปุ่มต่างๆให้กระชับขึ้น ไม่ใหญ่เทอะทะบนจอมือถือ (เฉพาะมือถือ - Tablet ใช้ขนาดเหมือน PC) */
-  .fc-toolbar-title { font-size: 18px !important; }
-  .fc-toolbar { gap: 6px; margin-bottom: 8px !important; }
+  .fc-toolbar-title { font-size: clamp(14px, 4.5vw, 18px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fc-toolbar { gap: 4px; margin-bottom: 8px !important; flex-wrap: nowrap !important; }
+  .fc-toolbar-chunk:nth-child(1), .fc-toolbar-chunk:nth-child(3) { flex-shrink: 0; }
+  .fc-toolbar-chunk:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: center; }
   .fc-button { padding: 4px 8px !important; font-size: 13px !important; }
   .fc-today-button { padding: 4px 10px !important; }
   .fc-list-day-cushion { padding: 6px 10px !important; }
