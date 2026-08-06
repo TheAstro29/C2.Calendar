@@ -65,6 +65,10 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: hidden; max-w
 #print-report-header p { margin: 2px 0 0; color: #333; }
 #print-report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
 #print-report-table th, #print-report-table td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
+#print-report-workload-title { color: #059669; font-size: 16px; margin: 24px 0 8px; }
+#print-report-workload { width: 100%; border-collapse: collapse; }
+#print-report-workload th, #print-report-workload td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
+#print-report-workload th { background: #f4f5f7; }
 #print-report-table th { background: #f4f5f7; }
 
 @media print {

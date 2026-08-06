@@ -1798,6 +1798,9 @@ function loadDashboardData() {
 }
 
 // ===== พิมพ์รายงาน (เปิด print dialog ของเบราว์เซอร์ ให้ Save เป็น PDF ได้เอง) =====
+// เฉพาะรายงานพิมพ์ - ใช้ภาษาอังกฤษล้วนให้กระชับ (ในแอปใช้ไทย+อังกฤษตามเดิม ไม่เกี่ยวกัน)
+var TASK_TYPE_LABELS_EN = { meeting: 'Meeting', onsite: 'On-site', event: 'Event', leave: 'Leave' };
+
 function printDashboardReport() {
   var d = window._dashboardPrintData;
   if (!d) return;
@@ -1807,17 +1810,29 @@ function printDashboardReport() {
   var summaryHtml = '<p><b>จำนวนงานทั้งหมด:</b> ' + d.curTasks.length + ' งาน</p>';
   document.getElementById('print-report-summary').innerHTML = summaryHtml;
 
-  var rows = '<tr><th>วันที่</th><th>ชื่องาน</th><th>ประเภท</th><th>ผู้ปฏิบัติงาน</th><th>สถานะ</th></tr>';
+  var rows = '<tr><th>วันที่</th><th>ชื่องาน</th><th>ประเภท</th><th>ผู้ปฏิบัติงาน</th><th>สถานที่</th></tr>';
   d.curTasks.sort(function (a, b) { return a.start - b.start; }).forEach(function (t) {
     var staffNames = (t.data.staffIds || []).map(function (id) {
       var s = staffMapCache[id];
       return s ? s.firstName + ' ' + s.lastName : '';
     }).filter(function (n) { return n; }).join(', ');
     rows += '<tr><td>' + t.start.toLocaleDateString('th-TH') + '</td><td>' + t.data.taskName + '</td>' +
-      '<td>' + (TASK_TYPE_LABELS[t.data.taskType] || t.data.taskType) + '</td>' +
-      '<td>' + staffNames + '</td><td>' + t.data.status + '</td></tr>';
+      '<td>' + (TASK_TYPE_LABELS_EN[t.data.taskType] || t.data.taskType) + '</td>' +
+      '<td>' + staffNames + '</td><td>' + (t.data.locationName || '-') + '</td></tr>';
   });
   document.getElementById('print-report-table').innerHTML = rows;
+
+  // ตารางภาระงานของแต่ละคน (สไตล์เดียวกับใน Dashboard)
+  var workloadRows = '<tr><th>ชื่อ</th><th>จำนวนงาน</th></tr>';
+  if (d.sorted.length === 0) {
+    workloadRows += '<tr><td colspan="2">ไม่มีข้อมูล</td></tr>';
+  } else {
+    d.sorted.forEach(function (id) {
+      var s = staffMapCache[id];
+      workloadRows += '<tr><td>' + s.firstName + ' ' + s.lastName + '</td><td>' + d.workload[id] + '</td></tr>';
+    });
+  }
+  document.getElementById('print-report-workload').innerHTML = workloadRows;
 
   window.print();
 }
