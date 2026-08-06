@@ -11,6 +11,7 @@ firebase.initializeApp(firebaseConfig);
 var fbAuth = firebase.auth();
 var fbDb = firebase.firestore();
 var fbFunctions = firebase.app().functions("asia-southeast1");
+var fbStorage = firebase.storage();
 
 // เตรียมไว้สำหรับอนาคต ถ้าได้ Google Maps API key มาแค่ใส่ค่าตรงนี้ระบบจะเปิดแผนที่ให้อัตโนมัติ
 // ตอนนี้ปล่อยว่างไว้ - ฟอร์มจะไม่โชว์ข้อความอะไรเกี่ยวกับแผนที่เลย ใช้ช่องพิมพ์ชื่อสถานที่แทน
@@ -525,8 +526,11 @@ function enterAdminMode(fullName, role) {
   document.getElementById('admin-name').textContent = fullName || 'แอดมิน';
   var isAdmin = role === 'admin';
   var isStaff = role === 'staff';
+  var isAdminOrCeo = role === 'admin' || role === 'ceo';
   document.getElementById('staff-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
+  document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
+  document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('my-requests-btn').style.display = isStaff ? 'inline-block' : 'none';
   document.getElementById('my-requests-top-bell').style.display = isStaff ? 'inline-flex' : 'none';
   document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
@@ -547,6 +551,8 @@ function exitAdminMode() {
   document.getElementById('admin-chip').style.display = 'none';
   document.getElementById('task-undated-row').style.display = 'none';
   document.getElementById('notif-bell-btn').style.display = 'none';
+  document.getElementById('export-excel-btn').style.display = 'none';
+  document.getElementById('dashboard-btn').style.display = 'none';
   document.getElementById('my-requests-top-bell').style.display = 'none';
   loadTodoList();
 }
@@ -1206,8 +1212,8 @@ function openProfileModal() {
     var avatar = document.getElementById('profile-avatar');
     var photoEl = document.getElementById('profile-photo');
 
-    if (p.photoBase64) {
-      photoEl.src = p.photoBase64;
+    if (p.photoURL) {
+      photoEl.src = p.photoURL;
       photoEl.style.display = 'block';
       avatar.style.display = 'none';
     } else {
@@ -1275,25 +1281,34 @@ document.getElementById('profile-photo-input').addEventListener('change', functi
     canvas.getContext('2d').drawImage(img, 0, 0, w, h);
     URL.revokeObjectURL(objectUrl);
 
-    var base64 = canvas.toDataURL('image/jpeg', 0.75);
     var btn = document.getElementById('profile-change-photo-btn');
     setButtonLoading(btn, true, 'กำลังอัปโหลด...');
     var token = localStorage.getItem(TOKEN_KEY);
+    var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
 
-    callApi('updateOwnProfile', { token: token, photoBase64: base64 }).then(function (result) {
-      if (result.success) {
-        document.getElementById('profile-photo').src = base64;
-        document.getElementById('profile-photo').style.display = 'block';
-        document.getElementById('profile-avatar').style.display = 'none';
-        Toast.fire({ icon: 'success', title: 'เปลี่ยนรูปโปรไฟล์แล้ว' });
-      } else {
-        Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
-      }
-    }).catch(function (err) {
-      Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
-    }).finally(function () {
-      setButtonLoading(btn, false);
-    });
+    canvas.toBlob(function (blob) {
+      // อัปโหลดตรงไป Firebase Storage ก่อน (ไม่ผ่าน Cloud Function เพราะไม่ใช่ข้อมูลที่ต้อง validate อะไรซับซ้อน)
+      var storageRef = fbStorage.ref('profile-photos/' + myAccountId);
+      storageRef.put(blob, { contentType: 'image/jpeg' }).then(function () {
+        return storageRef.getDownloadURL();
+      }).then(function (url) {
+        // ได้ URL แล้ว เอาไปบันทึกลง Firestore ผ่าน Cloud Function ตามปกติ
+        return callApi('updateOwnProfile', { token: token, photoURL: url }).then(function (result) {
+          if (result.success) {
+            document.getElementById('profile-photo').src = url;
+            document.getElementById('profile-photo').style.display = 'block';
+            document.getElementById('profile-avatar').style.display = 'none';
+            Toast.fire({ icon: 'success', title: 'เปลี่ยนรูปโปรไฟล์แล้ว' });
+          } else {
+            Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
+          }
+        });
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'อัปโหลดรูปไม่สำเร็จ', text: err.message });
+      }).finally(function () {
+        setButtonLoading(btn, false);
+      });
+    }, 'image/jpeg', 0.75);
   };
 
   img.onerror = function () {
@@ -1526,8 +1541,8 @@ function renderMemberList(staff) {
     card.style.background = color;
     card.innerHTML =
       '<div class="member-avatar-wrap">' +
-        (s.photoBase64
-          ? '<img src="' + s.photoBase64 + '" alt="">'
+        (s.photoURL
+          ? '<img src="' + s.photoURL + '" alt="">'
           : '<span class="member-avatar-fallback" style="color:' + color + '">' + initial + '</span>') +
       '</div>' +
       '<div class="member-info">' +
@@ -1591,6 +1606,55 @@ function fabAction(action) {
 // ===== สลับมุมมองปฏิทิน Grid เดือน <-> List (สำหรับมือถือ/Tablet) จำค่าที่เลือกไว้ใน localStorage =====
 var CALENDAR_VIEW_PREF_KEY = 'c2tech_calendar_view_pref';
 
+// ===== Export งานในเดือนที่กำลังดูอยู่เป็นไฟล์ Excel (ใช้ข้อมูลที่โหลดไว้แล้ว ไม่ต้องยิง API ใหม่) =====
+function exportMonthToExcel() {
+  if (!calendarInstance || !lastTaskDocs.length) {
+    Swal.fire({ icon: 'info', title: 'ยังไม่มีข้อมูลงานให้ export' });
+    return;
+  }
+
+  var rangeStart = calendarInstance.view.currentStart;
+  var rangeEnd = calendarInstance.view.currentEnd;
+  var monthLabel = calendarInstance.view.title;
+
+  var rows = [];
+  lastTaskDocs.forEach(function (docSnap) {
+    var row = docSnap.data();
+    if (row.isUndated || !row.startDateTime) return;
+    var start = firestoreDateToJs(row.startDateTime);
+    if (start < rangeStart || start >= rangeEnd) return; // เอาแค่งานในเดือนที่กำลังดูอยู่
+
+    var end = firestoreDateToJs(row.endDateTime) || start;
+    var staffNames = (row.staffIds || []).map(function (id) {
+      var s = staffMapCache[id];
+      return s ? s.firstName + ' ' + s.lastName : '';
+    }).filter(function (n) { return n; }).join(', ');
+
+    rows.push({
+      'วันที่เริ่ม': start.toLocaleDateString('th-TH'),
+      'วันที่สิ้นสุด': end.toLocaleDateString('th-TH'),
+      'ชื่องาน': row.taskName,
+      'ประเภทงาน': (TASK_TYPE_LABELS[row.taskType] || row.taskType),
+      'ผู้ปฏิบัติงาน': staffNames,
+      'สถานที่': row.locationName || '',
+      'สถานะ': row.status,
+      'รายละเอียด': row.detail || ''
+    });
+  });
+
+  if (rows.length === 0) {
+    Swal.fire({ icon: 'info', title: 'ไม่มีงานในเดือนนี้ให้ export' });
+    return;
+  }
+
+  var ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 30 }];
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'งาน');
+  XLSX.writeFile(wb, 'C2Calendar_' + monthLabel.replace(/\s/g, '_') + '.xlsx');
+  Toast.fire({ icon: 'success', title: 'Export สำเร็จ (' + rows.length + ' งาน)' });
+}
+
 function toggleCalendarViewMode() {
   if (!calendarInstance) return;
   var newView = calendarInstance.view.type === 'listMonth' ? 'dayGridMonth' : 'listMonth';
@@ -1603,6 +1667,159 @@ function updateViewToggleLabel(viewType) {
   var label = document.getElementById('mfn-view-toggle-label');
   if (!label) return;
   label.textContent = viewType === 'listMonth' ? 'ดูเดือน' : 'ดูรายการ';
+}
+
+// ===== Dashboard สรุปงาน (Admin/CEO) =====
+var dashboardChartDaily = null;
+var dashboardChartType = null;
+
+function openDashboardModal() {
+  document.getElementById('dashboard-modal-overlay').style.display = 'flex';
+  loadDashboardData();
+}
+
+function closeDashboardModal() {
+  document.getElementById('dashboard-modal-overlay').style.display = 'none';
+}
+
+// คำนวณช่วงวันที่ของงวดปัจจุบันและงวดก่อนหน้า (สำหรับเทียบเทรนด์) จาก period ที่เลือก
+function getDashboardRanges(period) {
+  var now = new Date();
+  var curStart, curEnd, prevStart, prevEnd, label;
+
+  if (period === 'week') {
+    var day = now.getDay(); // 0=อาทิตย์
+    curStart = new Date(now); curStart.setDate(now.getDate() - day); curStart.setHours(0, 0, 0, 0);
+    curEnd = new Date(curStart); curEnd.setDate(curStart.getDate() + 7);
+    prevStart = new Date(curStart); prevStart.setDate(curStart.getDate() - 7);
+    prevEnd = new Date(curStart);
+    label = 'สัปดาห์นี้ (' + curStart.toLocaleDateString('th-TH') + ' - ' +
+      new Date(curEnd - 86400000).toLocaleDateString('th-TH') + ')';
+  } else {
+    curStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    prevEnd = curStart;
+    label = curStart.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+  }
+  return { curStart: curStart, curEnd: curEnd, prevStart: prevStart, prevEnd: prevEnd, label: label };
+}
+
+// กรองงานจาก lastTaskDocs ที่โหลดไว้แล้ว (ไม่ยิง API ใหม่) ตามช่วงวันที่ที่กำหนด
+function filterTasksByRange(start, end) {
+  var result = [];
+  lastTaskDocs.forEach(function (docSnap) {
+    var row = docSnap.data();
+    if (row.isUndated || !row.startDateTime || row.status === 'ยกเลิกงาน') return;
+    var taskStart = firestoreDateToJs(row.startDateTime);
+    if (taskStart >= start && taskStart < end) result.push({ id: docSnap.id, data: row, start: taskStart });
+  });
+  return result;
+}
+
+function trendBadge(cur, prev) {
+  if (prev === 0) return cur > 0 ? '<span class="trend-up">ใหม่</span>' : '';
+  var diff = cur - prev;
+  var pct = Math.round((diff / prev) * 100);
+  if (diff === 0) return '<span class="trend-flat">±0%</span>';
+  return diff > 0
+    ? '<span class="trend-up">▲ ' + pct + '%</span>'
+    : '<span class="trend-down">▼ ' + Math.abs(pct) + '%</span>';
+}
+
+function loadDashboardData() {
+  var period = document.getElementById('dashboard-period').value;
+  var ranges = getDashboardRanges(period);
+  var curTasks = filterTasksByRange(ranges.curStart, ranges.curEnd);
+  var prevTasks = filterTasksByRange(ranges.prevStart, ranges.prevEnd);
+
+  // ===== การ์ดสรุป (พร้อมเทรนด์เทียบงวดก่อน) =====
+  var typeKeys = ['meeting', 'onsite', 'event', 'leave'];
+  var curByType = {}, prevByType = {};
+  typeKeys.forEach(function (t) { curByType[t] = 0; prevByType[t] = 0; });
+  curTasks.forEach(function (t) { curByType[t.data.taskType] = (curByType[t.data.taskType] || 0) + 1; });
+  prevTasks.forEach(function (t) { prevByType[t.data.taskType] = (prevByType[t.data.taskType] || 0) + 1; });
+
+  var cardsHtml = '<div class="dash-card"><p class="dash-num">' + curTasks.length + '</p>' +
+    '<p class="dash-label">งานทั้งหมด</p>' + trendBadge(curTasks.length, prevTasks.length) + '</div>';
+  typeKeys.forEach(function (t) {
+    cardsHtml += '<div class="dash-card"><p class="dash-num">' + curByType[t] + '</p>' +
+      '<p class="dash-label">' + (TASK_TYPE_LABELS[t] || t) + '</p>' +
+      trendBadge(curByType[t], prevByType[t]) + '</div>';
+  });
+  document.getElementById('dashboard-cards').innerHTML = cardsHtml;
+
+  // ===== กราฟแท่ง: จำนวนงานต่อวัน =====
+  var dayCount = {};
+  curTasks.forEach(function (t) {
+    var key = t.start.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+    dayCount[key] = (dayCount[key] || 0) + 1;
+  });
+  var dayLabels = Object.keys(dayCount);
+  if (dashboardChartDaily) dashboardChartDaily.destroy();
+  dashboardChartDaily = new Chart(document.getElementById('dashboard-chart-daily'), {
+    type: 'bar',
+    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#059669' }] },
+    options: { responsive: true, plugins: { title: { display: true, text: 'จำนวนงานต่อวัน' } } }
+  });
+
+  // ===== กราฟวงกลม: สัดส่วนประเภทงาน =====
+  if (dashboardChartType) dashboardChartType.destroy();
+  dashboardChartType = new Chart(document.getElementById('dashboard-chart-type'), {
+    type: 'doughnut',
+    data: {
+      labels: typeKeys.map(function (t) { return TASK_TYPE_LABELS[t] || t; }),
+      datasets: [{ data: typeKeys.map(function (t) { return curByType[t]; }), backgroundColor: typeKeys.map(getTaskTypeColor) }]
+    },
+    options: { responsive: true, plugins: { title: { display: true, text: 'สัดส่วนประเภทงาน' } } }
+  });
+
+  // ===== ตารางภาระงาน (CEO + Staff เท่านั้น ไม่รวม Admin) =====
+  var workload = {};
+  curTasks.forEach(function (t) {
+    (t.data.staffIds || []).forEach(function (id) {
+      var s = staffMapCache[id];
+      if (!s || s.role === 'admin') return;
+      workload[id] = (workload[id] || 0) + 1;
+    });
+  });
+  var sorted = Object.keys(workload).sort(function (a, b) { return workload[b] - workload[a]; });
+  var tableHtml = '<table class="dash-workload-table"><tr><th>ชื่อ</th><th>จำนวนงาน</th></tr>';
+  if (sorted.length === 0) tableHtml += '<tr><td colspan="2">ไม่มีข้อมูล</td></tr>';
+  sorted.forEach(function (id) {
+    var s = staffMapCache[id];
+    tableHtml += '<tr><td>' + s.firstName + ' ' + s.lastName + '</td><td>' + workload[id] + '</td></tr>';
+  });
+  tableHtml += '</table>';
+  document.getElementById('dashboard-workload-table').innerHTML = tableHtml;
+
+  // เก็บไว้ใช้ตอนพิมพ์รายงาน
+  window._dashboardPrintData = { ranges: ranges, curTasks: curTasks, workload: workload, sorted: sorted };
+}
+
+// ===== พิมพ์รายงาน (เปิด print dialog ของเบราว์เซอร์ ให้ Save เป็น PDF ได้เอง) =====
+function printDashboardReport() {
+  var d = window._dashboardPrintData;
+  if (!d) return;
+
+  document.getElementById('print-report-period').textContent = d.ranges.label;
+
+  var summaryHtml = '<p><b>จำนวนงานทั้งหมด:</b> ' + d.curTasks.length + ' งาน</p>';
+  document.getElementById('print-report-summary').innerHTML = summaryHtml;
+
+  var rows = '<tr><th>วันที่</th><th>ชื่องาน</th><th>ประเภท</th><th>ผู้ปฏิบัติงาน</th><th>สถานะ</th></tr>';
+  d.curTasks.sort(function (a, b) { return a.start - b.start; }).forEach(function (t) {
+    var staffNames = (t.data.staffIds || []).map(function (id) {
+      var s = staffMapCache[id];
+      return s ? s.firstName + ' ' + s.lastName : '';
+    }).filter(function (n) { return n; }).join(', ');
+    rows += '<tr><td>' + t.start.toLocaleDateString('th-TH') + '</td><td>' + t.data.taskName + '</td>' +
+      '<td>' + (TASK_TYPE_LABELS[t.data.taskType] || t.data.taskType) + '</td>' +
+      '<td>' + staffNames + '</td><td>' + t.data.status + '</td></tr>';
+  });
+  document.getElementById('print-report-table').innerHTML = rows;
+
+  window.print();
 }
 
 function openMoreMenu() {
@@ -1628,6 +1845,10 @@ function openMoreMenu() {
       items.push({ label: 'คำขอที่รออนุมัติ', fn: 'openPendingRequestsModal()' });
       items.push({ label: 'บัญชีผู้ใช้', fn: 'openStaffModal()' });
       items.push({ label: 'วันหยุด', fn: 'openHolidayModal()' });
+    }
+    if (role === 'admin' || role === 'ceo') {
+      items.push({ label: 'Dashboard สรุปงาน', fn: 'openDashboardModal()' });
+      items.push({ label: 'Export Excel (เดือนที่ดูอยู่)', fn: 'exportMonthToExcel()' });
     }
     container.innerHTML = refreshBtn + items.map(function (it) {
       return '<button onclick="closeMoreMenu(); ' + it.fn + '">' + it.label + '</button>';

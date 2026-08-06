@@ -37,6 +37,41 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: hidden; max-w
 }
 .fc-scroller { overflow-x: hidden !important; }
 .fc-toolbar-title { font-size: clamp(14px, 4.5vw, 18px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Dashboard ===== */
+#dashboard-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2050; align-items: center; justify-content: center; }
+#dashboard-box { background: #fff; border-radius: 14px; padding: 24px; width: 92%; max-width: 900px; max-height: 88vh; overflow-y: auto; position: relative; }
+#dashboard-close { position: absolute; top: 14px; right: 14px; border: none; background: #f4f5f7; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; }
+#dashboard-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
+#dashboard-controls select { padding: 8px 12px; border-radius: 8px; border: 1px solid #dfe1e6; }
+#dashboard-controls button { padding: 8px 14px; border-radius: 8px; border: none; background: #059669; color: #fff; cursor: pointer; }
+#dashboard-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
+.dash-card { background: #f4f5f7; border-radius: 10px; padding: 14px 8px; text-align: center; }
+.dash-num { font-size: 24px; font-weight: 700; color: #059669; margin: 0; }
+.dash-label { font-size: 11px; color: #6b7280; margin: 2px 0 4px; }
+.trend-up { color: #059669; font-size: 11px; font-weight: 600; }
+.trend-down { color: #ef4444; font-size: 11px; font-weight: 600; }
+.trend-flat { color: #9aa1a8; font-size: 11px; }
+.dashboard-chart-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.dashboard-chart-box { flex: 1; min-width: 280px; background: #f4f5f7; border-radius: 10px; padding: 12px; }
+.dash-workload-table { width: 100%; border-collapse: collapse; }
+.dash-workload-table th, .dash-workload-table td { padding: 8px 10px; border-bottom: 1px solid #eef0f2; text-align: left; font-size: 13px; }
+.dash-workload-table th { background: #f4f5f7; }
+
+/* หน้าพิมพ์รายงาน - ซ่อนไว้ปกติในหน้าเว็บ โผล่มาเฉพาะตอนสั่งพิมพ์เท่านั้น */
+#print-report { display: none; }
+#print-report-header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #059669; padding-bottom: 12px; margin-bottom: 16px; }
+#print-report-header h1 { margin: 0; color: #059669; font-size: 22px; }
+#print-report-header p { margin: 2px 0 0; color: #333; }
+#print-report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+#print-report-table th, #print-report-table td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
+#print-report-table th { background: #f4f5f7; }
+
+@media print {
+  body * { visibility: hidden; }
+  #print-report, #print-report * { visibility: visible; }
+  #print-report { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+}
 .fc-toolbar { gap: 4px; flex-wrap: nowrap !important; }
 .fc-toolbar-chunk:nth-child(1), .fc-toolbar-chunk:nth-child(3) { flex-shrink: 0; }
 .fc-toolbar-chunk:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: center; }
@@ -781,6 +816,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .fc-today-button { padding: 4px 10px !important; }
   .fc-list-day-cushion { padding: 6px 10px !important; }
   .fc-list-event td { padding: 6px 8px !important; }
+  #dashboard-cards { grid-template-columns: repeat(2, 1fr) !important; }
+  #dashboard-box { padding: 16px; }
 }
 
 /* ===== Tablet (769px - 1024px) - sidebar เป็น drawer เหมือนมือถือ แต่ปฏิทินแบบ Grid + topbar ไอคอนเหมือน PC ===== */
