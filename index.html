@@ -50,6 +50,13 @@
         </svg>
         <span id="my-requests-top-badge" style="display:none">0</span>
       </button>
+      <button id="notif-bell-btn" class="icon-toggle-btn" title="คำขอที่รออนุมัติ" onclick="openPendingRequestsModal()" style="display:none;position:relative;margin-left:6px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <span id="notif-badge" style="display:none">0</span>
+      </button>
     </div>
     <div id="topbar-right">
       <button id="refresh-btn" class="icon-toggle-btn" title="รีเฟรชข้อมูล" onclick="manualRefresh()">
@@ -80,13 +87,6 @@
           <circle cx="12" cy="8" r="4"></circle>
           <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"></path>
         </svg>
-      </button>
-      <button id="notif-bell-btn" class="icon-toggle-btn" title="คำขอที่รออนุมัติ" onclick="openPendingRequestsModal()" style="display:none;position:relative">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-        <span id="notif-badge" style="display:none">0</span>
       </button>
       <div id="admin-chip">
         <span id="admin-name"></span>
@@ -338,10 +338,16 @@
       <h2>📊 Dashboard สรุปงาน</h2>
 
       <div id="dashboard-controls">
-        <select id="dashboard-period" onchange="loadDashboardData()">
+        <select id="dashboard-period" onchange="onDashboardPeriodChange()">
           <option value="month">เดือนนี้</option>
           <option value="week">สัปดาห์นี้</option>
+          <option value="custom">กำหนดเอง</option>
         </select>
+        <span id="dashboard-custom-range" style="display:none">
+          <input type="date" id="dashboard-custom-start" onchange="loadDashboardData()">
+          <span>ถึง</span>
+          <input type="date" id="dashboard-custom-end" onchange="loadDashboardData()">
+        </span>
         <button onclick="printDashboardReport()">🖨️ พิมพ์รายงาน</button>
       </div>
 

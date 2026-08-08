@@ -44,6 +44,8 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: hidden; max-w
 #dashboard-close { position: absolute; top: 14px; right: 14px; border: none; background: #f4f5f7; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; }
 #dashboard-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
 #dashboard-controls select { padding: 8px 12px; border-radius: 8px; border: 1px solid #dfe1e6; }
+#dashboard-custom-range { display: inline-flex; align-items: center; gap: 6px; }
+#dashboard-custom-range input { padding: 6px 8px; border-radius: 8px; border: 1px solid #dfe1e6; }
 #dashboard-controls button { padding: 8px 14px; border-radius: 8px; border: none; background: #059669; color: #fff; cursor: pointer; }
 #dashboard-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
 .dash-card { background: #f4f5f7; border-radius: 10px; padding: 14px 8px; text-align: center; }

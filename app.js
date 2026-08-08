@@ -535,6 +535,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('my-requests-top-bell').style.display = isStaff ? 'inline-flex' : 'none';
   document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
+  if (isAdmin || isStaff) requestNotificationPermission();
   if (isAdmin) {
     loadNotifBadge();
     startAdminNotifPolling();
@@ -1673,6 +1674,12 @@ function updateViewToggleLabel(viewType) {
 var dashboardChartDaily = null;
 var dashboardChartType = null;
 
+function onDashboardPeriodChange() {
+  var isCustom = document.getElementById('dashboard-period').value === 'custom';
+  document.getElementById('dashboard-custom-range').style.display = isCustom ? 'inline-flex' : 'none';
+  if (!isCustom) loadDashboardData();
+}
+
 function openDashboardModal() {
   document.getElementById('dashboard-modal-overlay').style.display = 'flex';
   loadDashboardData();
@@ -1686,6 +1693,24 @@ function closeDashboardModal() {
 function getDashboardRanges(period) {
   var now = new Date();
   var curStart, curEnd, prevStart, prevEnd, label;
+
+  if (period === 'custom') {
+    var startVal = document.getElementById('dashboard-custom-start').value;
+    var endVal = document.getElementById('dashboard-custom-end').value;
+    if (!startVal || !endVal) {
+      // ยังไม่ได้เลือกวันที่ครบ ใช้เดือนนี้ไปพลางๆก่อน
+      curStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    } else {
+      curStart = new Date(startVal + 'T00:00:00');
+      curEnd = new Date(endVal + 'T00:00:00');
+      curEnd.setDate(curEnd.getDate() + 1); // รวมวันสิ้นสุดด้วย (exclusive end)
+    }
+    // ช่วงกำหนดเองไม่มีงวดก่อนหน้าให้เทียบ (ความยาวช่วงไม่แน่นอน) ใช้ช่วงเดียวกันไปเปรียบเทียบกับตัวเอง = ไม่มีเทรนด์
+    prevStart = curStart; prevEnd = curStart;
+    label = curStart.toLocaleDateString('th-TH') + ' - ' + new Date(curEnd - 86400000).toLocaleDateString('th-TH');
+    return { curStart: curStart, curEnd: curEnd, prevStart: prevStart, prevEnd: prevEnd, label: label };
+  }
 
   if (period === 'week') {
     var day = now.getDay(); // 0=อาทิตย์
@@ -1732,6 +1757,7 @@ function loadDashboardData() {
   var ranges = getDashboardRanges(period);
   var curTasks = filterTasksByRange(ranges.curStart, ranges.curEnd);
   var prevTasks = filterTasksByRange(ranges.prevStart, ranges.prevEnd);
+  var showTrend = period !== 'custom'; // ช่วงกำหนดเองไม่มีงวดก่อนหน้าให้เทียบจริง ไม่โชว์เทรนด์กันหลอกตา
 
   // ===== การ์ดสรุป (พร้อมเทรนด์เทียบงวดก่อน) =====
   var typeKeys = ['meeting', 'onsite', 'event', 'leave'];
@@ -1741,11 +1767,11 @@ function loadDashboardData() {
   prevTasks.forEach(function (t) { prevByType[t.data.taskType] = (prevByType[t.data.taskType] || 0) + 1; });
 
   var cardsHtml = '<div class="dash-card"><p class="dash-num">' + curTasks.length + '</p>' +
-    '<p class="dash-label">งานทั้งหมด</p>' + trendBadge(curTasks.length, prevTasks.length) + '</div>';
+    '<p class="dash-label">งานทั้งหมด</p>' + (showTrend ? trendBadge(curTasks.length, prevTasks.length) : '') + '</div>';
   typeKeys.forEach(function (t) {
     cardsHtml += '<div class="dash-card"><p class="dash-num">' + curByType[t] + '</p>' +
       '<p class="dash-label">' + (TASK_TYPE_LABELS[t] || t) + '</p>' +
-      trendBadge(curByType[t], prevByType[t]) + '</div>';
+      (showTrend ? trendBadge(curByType[t], prevByType[t]) : '') + '</div>';
   });
   document.getElementById('dashboard-cards').innerHTML = cardsHtml;
 
@@ -1969,56 +1995,24 @@ var REQUEST_TYPE_LABELS = { delete: 'ขอลบงาน', reschedule: 'ขอ
 
 // ===== เสียงแจ้งเตือน: ลองใช้เสียงพูดก่อน (ไม่ต้องมีไฟล์เสียง) ถ้าเบราว์เซอร์ไม่รองรับใช้เสียง beep แทนอัตโนมัติ =====
 // ===== เลือกเสียงพูดภาษาไทยที่มีในเครื่อง พร้อมเดาเพศจากชื่อเสียง =====
-function pickThaiVoice(voices) {
-  var thaiVoices = voices.filter(function (v) { return v.lang && v.lang.toLowerCase().indexOf('th') === 0; });
-  if (thaiVoices.length === 0) return { voice: null, gender: 'male' };
-
-  var femaleHints = ['premwadee', 'kanya', 'female', 'women', 'หญิง'];
-  var femaleMatch = thaiVoices.filter(function (v) {
-    var n = v.name.toLowerCase();
-    return femaleHints.some(function (f) { return n.indexOf(f) !== -1; });
-  })[0];
-  if (femaleMatch) return { voice: femaleMatch, gender: 'female' };
-
-  var maleHints = ['male', 'ชาย'];
-  var maleMatch = thaiVoices.filter(function (v) {
-    var n = v.name.toLowerCase();
-    return maleHints.some(function (f) { return n.indexOf(f) !== -1; });
-  })[0];
-  if (maleMatch) return { voice: maleMatch, gender: 'male' };
-
-  // เดาเพศไม่ได้จากชื่อ ใช้เสียงไทยตัวแรกที่มี ถือเป็นเสียงผู้ชายไว้ก่อน (ปลอดภัยกว่าเดาผิดเป็นผู้หญิง)
-  return { voice: thaiVoices[0], gender: 'male' };
-}
-
-// baseText คือข้อความที่ยังไม่มีคำลงท้าย (ครับ/ค่ะ) - ฟังก์ชันนี้จะเติมให้ตรงกับเพศเสียงที่เลือกได้อัตโนมัติ
-function speakText(baseText) {
-  var synth = window.speechSynthesis;
-  var voices = synth.getVoices();
-  if (voices.length === 0) {
-    // เบราว์เซอร์บางตัว (เช่น Chrome) ยังโหลดรายชื่อเสียงไม่เสร็จตอนเรียกครั้งแรก ต้องรอ event นี้ก่อน
-    synth.onvoiceschanged = function () {
-      synth.onvoiceschanged = null;
-      speakText(baseText);
-    };
-    return;
+// ===== ขออนุญาตแจ้งเตือนระบบ (ครั้งเดียวหลัง login) เพื่อให้เรียก Notification ได้ทีหลัง =====
+function requestNotificationPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
   }
-  var picked = pickThaiVoice(voices);
-  var ending = picked.gender === 'female' ? 'ค่ะ' : 'ครับ';
-  var utter = new SpeechSynthesisUtterance(baseText + ending);
-  utter.lang = 'th-TH';
-  utter.rate = 1;
-  if (picked.voice) utter.voice = picked.voice;
-  synth.speak(utter);
 }
 
-function playNotificationSound(baseText) {
-  if ('speechSynthesis' in window) {
+// ===== โชว์แจ้งเตือนผ่าน Notification API ของเบราว์เซอร์/ระบบปฏิบัติการ =====
+// วิธีนี้ให้ผลเหมือนกันทั้ง PC และมือถือ: ระบบปฏิบัติการเป็นคนเล่น "เสียงแจ้งเตือนมาตรฐาน" ให้เองอัตโนมัติ
+// ไม่ต้องมาเลือกเสียงเองอีกต่อไป (เดิมใช้เสียงพูดสังเคราะห์ ซึ่งบางเครื่องไม่มีเสียงไทยที่ฟังดูเป็นธรรมชาติ)
+function playNotificationSound(title, body) {
+  if ('Notification' in window && Notification.permission === 'granted') {
     try {
-      speakText(baseText);
-      return;
-    } catch (e) { /* ตกไป beep ด้านล่าง */ }
+      new Notification(title, { body: body, icon: 'icons/icon-192.png' });
+      return; // สำเร็จ - เบราว์เซอร์/OS เล่นเสียงแจ้งเตือนมาตรฐานให้เองแล้ว ไม่ต้องทำอะไรเพิ่ม
+    } catch (e) { /* ตกไป beep สำรองด้านล่าง */ }
   }
+  // สำรอง: ถ้ายังไม่ได้อนุญาต หรือเบราว์เซอร์ไม่รองรับ Notification เลย ใช้เสียง beep ธรรมดาแทน
   try {
     var ctx = new (window.AudioContext || window.webkitAudioContext)();
     var osc = ctx.createOscillator();
@@ -2046,7 +2040,7 @@ function loadNotifBadge() {
       badge.style.display = 'none';
     }
     if (lastPendingCount !== -1 && count > lastPendingCount) {
-      playNotificationSound('มีคำขอเข้ามาใหม่');
+      playNotificationSound('C2 Calendar', 'มีคำขอเข้ามาใหม่ รอการอนุมัติ');
     }
     lastPendingCount = count;
   });
@@ -2100,7 +2094,7 @@ function loadMyRequestsBadge() {
       if (topBadge) topBadge.style.display = 'none';
     }
     if (lastMyUnseenCount !== -1 && myRequestsUnseenCount > lastMyUnseenCount) {
-      playNotificationSound('คำขอของคุณได้รับการตอบกลับแล้ว');
+      playNotificationSound('C2 Calendar', 'คำขอของคุณได้รับการตอบกลับแล้ว');
     }
     lastMyUnseenCount = myRequestsUnseenCount;
   });
