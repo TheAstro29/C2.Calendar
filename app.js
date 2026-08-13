@@ -295,13 +295,58 @@ function buildEventsFromTaskDocs(docs) {
 // อ่านได้ทุกคนเสมอ (แม้ไม่ login) ตาม Security Rules ที่ตั้งไว้ - ไม่ต้องแยก public/admin อีกต่อไป
 var lastTaskDocs = [];
 
+var isFirstTasksSnapshot = true;
+var knownTaskStatus = {}; // taskId -> สถานะล่าสุดที่เคยเห็น (ใช้เช็คว่างานถูกยกเลิกจริงไหม ไม่ใช่แค่โหลดครั้งแรก)
+
 function setupTasksRealtimeListener() {
   fbDb.collection('tasks').onSnapshot(function (snapshot) {
+    if (isFirstTasksSnapshot) {
+      // โหลดครั้งแรกตอนเปิดเว็บ ไม่ต้องแจ้งเตือนอะไร แค่บันทึกสถานะตั้งต้นไว้เทียบภายหลัง
+      snapshot.docs.forEach(function (d) { knownTaskStatus[d.id] = d.data().status; });
+      isFirstTasksSnapshot = false;
+    } else {
+      notifyAssignedStaffOfTaskChanges(snapshot.docChanges());
+    }
+
     lastTaskDocs = snapshot.docs;
     lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
     renderCalendar({ success: true, events: lastRenderedEvents });
   }, function (err) {
     console.error('ฟังการเปลี่ยนแปลงงานไม่สำเร็จ', err);
+  });
+}
+
+// ===== แจ้งเตือนคนที่มีชื่อในรายชื่อผู้ปฏิบัติงาน เมื่องานถูกสร้าง/แก้ไข/ยกเลิก (ข้ามคนที่ทำการเปลี่ยนแปลงเอง) =====
+function notifyAssignedStaffOfTaskChanges(changes) {
+  var myId = localStorage.getItem(ACCOUNT_ID_KEY);
+  if (!myId) return; // ไม่ login ไม่มีสิทธิ์ถูก assign อยู่แล้ว ไม่ต้องแจ้ง
+
+  changes.forEach(function (change) {
+    var row = change.doc.data();
+    var taskId = change.doc.id;
+    var staffIds = row.staffIds || [];
+
+    if (row.isUndated) return; // งาน To-Do List ไม่แจ้งเตือน (ยังไม่ระบุวันที่ชัดเจน)
+    if (staffIds.indexOf(myId) === -1) return; // ไม่เกี่ยวกับเรา ข้าม
+    if (row.updatedBy === myId) { knownTaskStatus[taskId] = row.status; return; } // เราทำเอง ไม่ต้องแจ้งตัวเอง
+
+    var dateLabel = formatEventDateRange({
+      start: firestoreDateToJs(row.startDateTime),
+      end: firestoreDateToJs(row.endDateTime),
+      allDay: row.isAllDay
+    });
+
+    if (change.type === 'added') {
+      playNotificationSound('C2 Calendar', 'คุณถูกมอบหมายให้ทำงาน "' + row.taskName + '" วันที่ ' + dateLabel);
+    } else if (change.type === 'modified') {
+      var wasAlreadyCancelled = knownTaskStatus[taskId] === 'ยกเลิกงาน';
+      if (row.status === 'ยกเลิกงาน' && !wasAlreadyCancelled) {
+        playNotificationSound('C2 Calendar', 'งาน "' + row.taskName + '" ที่คุณเกี่ยวข้องถูกยกเลิกแล้ว');
+      } else if (row.status !== 'ยกเลิกงาน') {
+        playNotificationSound('C2 Calendar', 'งาน "' + row.taskName + '" มีการเปลี่ยนแปลงข้อมูล กรุณาตรวจสอบในปฏิทิน');
+      }
+    }
+    knownTaskStatus[taskId] = row.status;
   });
 }
 
@@ -535,7 +580,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('my-requests-top-bell').style.display = isStaff ? 'inline-flex' : 'none';
   document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
   document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
-  if (isAdmin || isStaff) requestNotificationPermission();
+  if (isAdmin || isStaff || role === 'ceo') requestNotificationPermission();
   if (isAdmin) {
     loadNotifBadge();
     startAdminNotifPolling();
