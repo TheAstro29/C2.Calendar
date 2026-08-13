@@ -317,33 +317,56 @@ function setupTasksRealtimeListener() {
 }
 
 // ===== แจ้งเตือนคนที่มีชื่อในรายชื่อผู้ปฏิบัติงาน เมื่องานถูกสร้าง/แก้ไข/ยกเลิก (ข้ามคนที่ทำการเปลี่ยนแปลงเอง) =====
+// หาชื่อคนจาก accountId (ถ้าเป็น Admin คนอื่นที่ staffMapCache ไม่มีข้อมูลชื่อไว้ ใช้คำกลางแทน)
+function resolveActorName(accountId) {
+  var s = staffMapCache[accountId];
+  return s ? (s.firstName + ' ' + s.lastName) : 'ผู้ดูแลระบบ';
+}
+
 function notifyAssignedStaffOfTaskChanges(changes) {
   var myId = localStorage.getItem(ACCOUNT_ID_KEY);
-  if (!myId) return; // ไม่ login ไม่มีสิทธิ์ถูก assign อยู่แล้ว ไม่ต้องแจ้ง
+  if (!myId) return; // ไม่ login ไม่มีสิทธิ์เกี่ยวข้องอยู่แล้ว ไม่ต้องแจ้ง
+  var myRole = localStorage.getItem(ROLE_KEY);
 
   changes.forEach(function (change) {
     var row = change.doc.data();
     var taskId = change.doc.id;
     var staffIds = row.staffIds || [];
 
-    if (row.isUndated) return; // งาน To-Do List ไม่แจ้งเตือน (ยังไม่ระบุวันที่ชัดเจน)
-    if (staffIds.indexOf(myId) === -1) return; // ไม่เกี่ยวกับเรา ข้าม
+    if (row.isUndated) { knownTaskStatus[taskId] = row.status; return; } // งาน To-Do List ไม่แจ้งเตือน
     if (row.updatedBy === myId) { knownTaskStatus[taskId] = row.status; return; } // เราทำเอง ไม่ต้องแจ้งตัวเอง
 
+    var iAmAssigned = staffIds.indexOf(myId) !== -1;
+    var iAmAdminWatching = myRole === 'admin'; // Admin เห็นทุกความเคลื่อนไหว ไม่ใช่แค่งานที่มีชื่อตัวเอง
+    if (!iAmAssigned && !iAmAdminWatching) return; // ไม่เกี่ยวข้องกับเราเลย ข้าม
+
+    var actorName = resolveActorName(row.updatedBy);
     var dateLabel = formatEventDateRange({
       start: firestoreDateToJs(row.startDateTime),
       end: firestoreDateToJs(row.endDateTime),
       allDay: row.isAllDay
     });
 
+    var title = 'C2 Calendar';
+    var body = '';
+
     if (change.type === 'added') {
-      playNotificationSound('C2 Calendar', 'คุณถูกมอบหมายให้ทำงาน "' + row.taskName + '" วันที่ ' + dateLabel);
+      body = iAmAssigned
+        ? 'คุณถูกมอบหมายให้ทำงาน "' + row.taskName + '" วันที่ ' + dateLabel
+        : actorName + ' สร้างงานใหม่: "' + row.taskName + '" วันที่ ' + dateLabel;
+      playNotificationSound(title, body);
     } else if (change.type === 'modified') {
       var wasAlreadyCancelled = knownTaskStatus[taskId] === 'ยกเลิกงาน';
       if (row.status === 'ยกเลิกงาน' && !wasAlreadyCancelled) {
-        playNotificationSound('C2 Calendar', 'งาน "' + row.taskName + '" ที่คุณเกี่ยวข้องถูกยกเลิกแล้ว');
+        body = iAmAssigned
+          ? 'งาน "' + row.taskName + '" ที่คุณเกี่ยวข้องถูกยกเลิกแล้ว'
+          : actorName + ' ยกเลิกงาน "' + row.taskName + '"';
+        playNotificationSound(title, body);
       } else if (row.status !== 'ยกเลิกงาน') {
-        playNotificationSound('C2 Calendar', 'งาน "' + row.taskName + '" มีการเปลี่ยนแปลงข้อมูล กรุณาตรวจสอบในปฏิทิน');
+        body = iAmAssigned
+          ? 'งาน "' + row.taskName + '" มีการเปลี่ยนแปลงข้อมูล กรุณาตรวจสอบในปฏิทิน'
+          : actorName + ' แก้ไขงาน "' + row.taskName + '"';
+        playNotificationSound(title, body);
       }
     }
     knownTaskStatus[taskId] = row.status;
