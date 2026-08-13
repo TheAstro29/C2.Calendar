@@ -143,6 +143,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .member-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.22); }
 .request-card { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .request-card:hover { border-color: #059669; box-shadow: 0 2px 8px rgba(5,150,105,0.12); }
+.notif-unread { background: #f0fdf9; border-left: 3px solid #059669; }
 
 /* To-Do List - แสดงใน sidebar ขวา (เฉพาะ Admin เห็น) */
 #todo-sidebar-section .sub { font-size: 11px; color: #9aa1a8; margin: 0 0 10px; }

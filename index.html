@@ -44,16 +44,9 @@
     <div id="topbar-brand">
       <img src="icons/icon-192.png" alt="" width="30" height="30">
       <h1><span class="accent">C2</span> Calendar</h1>
-      <button id="my-requests-top-bell" class="icon-toggle-btn" title="คำขอของฉัน" onclick="openMyRequestsModal()" style="display:none;position:relative;margin-left:6px">
+      <button id="notif-bell-btn" class="icon-toggle-btn" title="การแจ้งเตือน" onclick="openMyRequestsModal()" style="display:none;position:relative;margin-left:6px">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
-        <span id="my-requests-top-badge" style="display:none">0</span>
-      </button>
-      <button id="notif-bell-btn" class="icon-toggle-btn" title="คำขอที่รออนุมัติ" onclick="openPendingRequestsModal()" style="display:none;position:relative;margin-left:6px">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
         </svg>
         <span id="notif-badge" style="display:none">0</span>
       </button>
@@ -95,9 +88,6 @@
         <button id="holiday-menu-btn" onclick="openHolidayModal()">วันหยุด</button>
         <button id="export-excel-btn" onclick="exportMonthToExcel()" style="display:none">Export Excel</button>
         <button id="dashboard-btn" onclick="openDashboardModal()" style="display:none">Dashboard</button>
-        <button id="my-requests-btn" onclick="openMyRequestsModal()" style="display:none;position:relative">
-          คำขอของฉัน<span id="my-requests-badge" style="display:none">0</span>
-        </button>
         <button onclick="openProfileModal()">โปรไฟล์</button>
         <button onclick="doLogout()">ออกจากระบบ</button>
       </div>
@@ -134,7 +124,7 @@
 
       <div class="sidebar-card" id="todo-sidebar-section">
         <h3>✅ To-Do List</h3>
-        <p class="sub">งานที่ยังไม่ได้ระบุวันที่</p>
+        <p class="sub">งานที่ยังไม่ได้ระบุวันที่ — พอกำหนดวันจริงแล้วจะย้ายไปโชว์บนปฏิทินอัตโนมัติ</p>
         <div id="todo-list-sidebar"></div>
       </div>
     </aside>
@@ -475,18 +465,10 @@
     </div>
   </div>
 
-  <div id="pending-requests-modal-overlay">
-    <div id="pending-requests-box">
-      <button class="modal-close-btn" onclick="closePendingRequestsModal()">✕</button>
-      <h2>🔔 คำขอที่รออนุมัติ</h2>
-      <div id="pending-requests-list"></div>
-    </div>
-  </div>
-
   <div id="my-requests-modal-overlay">
     <div id="my-requests-box">
       <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
-      <h2>📋 คำขอของฉัน</h2>
+      <h2>🔔 การแจ้งเตือน</h2>
       <div id="my-requests-list"></div>
     </div>
   </div>

@@ -37,7 +37,7 @@ var CLOUD_FUNCTION_ACTIONS = [
   'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive', 'deleteStaff',
   'addHoliday', 'deleteHoliday',
   'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
-  'getMyProfile', 'updateOwnProfile', 'changeOwnPassword'
+  'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -295,81 +295,13 @@ function buildEventsFromTaskDocs(docs) {
 // อ่านได้ทุกคนเสมอ (แม้ไม่ login) ตาม Security Rules ที่ตั้งไว้ - ไม่ต้องแยก public/admin อีกต่อไป
 var lastTaskDocs = [];
 
-var isFirstTasksSnapshot = true;
-var knownTaskStatus = {}; // taskId -> สถานะล่าสุดที่เคยเห็น (ใช้เช็คว่างานถูกยกเลิกจริงไหม ไม่ใช่แค่โหลดครั้งแรก)
-
 function setupTasksRealtimeListener() {
   fbDb.collection('tasks').onSnapshot(function (snapshot) {
-    if (isFirstTasksSnapshot) {
-      // โหลดครั้งแรกตอนเปิดเว็บ ไม่ต้องแจ้งเตือนอะไร แค่บันทึกสถานะตั้งต้นไว้เทียบภายหลัง
-      snapshot.docs.forEach(function (d) { knownTaskStatus[d.id] = d.data().status; });
-      isFirstTasksSnapshot = false;
-    } else {
-      notifyAssignedStaffOfTaskChanges(snapshot.docChanges());
-    }
-
     lastTaskDocs = snapshot.docs;
     lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
     renderCalendar({ success: true, events: lastRenderedEvents });
   }, function (err) {
     console.error('ฟังการเปลี่ยนแปลงงานไม่สำเร็จ', err);
-  });
-}
-
-// ===== แจ้งเตือนคนที่มีชื่อในรายชื่อผู้ปฏิบัติงาน เมื่องานถูกสร้าง/แก้ไข/ยกเลิก (ข้ามคนที่ทำการเปลี่ยนแปลงเอง) =====
-// หาชื่อคนจาก accountId (ถ้าเป็น Admin คนอื่นที่ staffMapCache ไม่มีข้อมูลชื่อไว้ ใช้คำกลางแทน)
-function resolveActorName(accountId) {
-  var s = staffMapCache[accountId];
-  return s ? (s.firstName + ' ' + s.lastName) : 'ผู้ดูแลระบบ';
-}
-
-function notifyAssignedStaffOfTaskChanges(changes) {
-  var myId = localStorage.getItem(ACCOUNT_ID_KEY);
-  if (!myId) return; // ไม่ login ไม่มีสิทธิ์เกี่ยวข้องอยู่แล้ว ไม่ต้องแจ้ง
-  var myRole = localStorage.getItem(ROLE_KEY);
-
-  changes.forEach(function (change) {
-    var row = change.doc.data();
-    var taskId = change.doc.id;
-    var staffIds = row.staffIds || [];
-
-    if (row.isUndated) { knownTaskStatus[taskId] = row.status; return; } // งาน To-Do List ไม่แจ้งเตือน
-    if (row.updatedBy === myId) { knownTaskStatus[taskId] = row.status; return; } // เราทำเอง ไม่ต้องแจ้งตัวเอง
-
-    var iAmAssigned = staffIds.indexOf(myId) !== -1;
-    var iAmAdminWatching = myRole === 'admin'; // Admin เห็นทุกความเคลื่อนไหว ไม่ใช่แค่งานที่มีชื่อตัวเอง
-    if (!iAmAssigned && !iAmAdminWatching) return; // ไม่เกี่ยวข้องกับเราเลย ข้าม
-
-    var actorName = resolveActorName(row.updatedBy);
-    var dateLabel = formatEventDateRange({
-      start: firestoreDateToJs(row.startDateTime),
-      end: firestoreDateToJs(row.endDateTime),
-      allDay: row.isAllDay
-    });
-
-    var title = 'C2 Calendar';
-    var body = '';
-
-    if (change.type === 'added') {
-      body = iAmAssigned
-        ? 'คุณถูกมอบหมายให้ทำงาน "' + row.taskName + '" วันที่ ' + dateLabel
-        : actorName + ' สร้างงานใหม่: "' + row.taskName + '" วันที่ ' + dateLabel;
-      playNotificationSound(title, body);
-    } else if (change.type === 'modified') {
-      var wasAlreadyCancelled = knownTaskStatus[taskId] === 'ยกเลิกงาน';
-      if (row.status === 'ยกเลิกงาน' && !wasAlreadyCancelled) {
-        body = iAmAssigned
-          ? 'งาน "' + row.taskName + '" ที่คุณเกี่ยวข้องถูกยกเลิกแล้ว'
-          : actorName + ' ยกเลิกงาน "' + row.taskName + '"';
-        playNotificationSound(title, body);
-      } else if (row.status !== 'ยกเลิกงาน') {
-        body = iAmAssigned
-          ? 'งาน "' + row.taskName + '" มีการเปลี่ยนแปลงข้อมูล กรุณาตรวจสอบในปฏิทิน'
-          : actorName + ' แก้ไขงาน "' + row.taskName + '"';
-        playNotificationSound(title, body);
-      }
-    }
-    knownTaskStatus[taskId] = row.status;
   });
 }
 
@@ -599,20 +531,11 @@ function enterAdminMode(fullName, role) {
   document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
-  document.getElementById('my-requests-btn').style.display = isStaff ? 'inline-block' : 'none';
-  document.getElementById('my-requests-top-bell').style.display = isStaff ? 'inline-flex' : 'none';
-  document.getElementById('notif-bell-btn').style.display = isAdmin ? 'inline-flex' : 'none';
+  document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
   document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
-  if (isAdmin || isStaff || role === 'ceo') requestNotificationPermission();
-  if (isAdmin) {
-    loadNotifBadge();
-    startAdminNotifPolling();
-  }
+  requestNotificationPermission();
+  setupNotificationsRealtimeListener();
   loadTodoList();
-  if (isStaff) {
-    loadMyRequestsBadge();
-    startStaffNotifPolling();
-  }
 }
 
 function exitAdminMode() {
@@ -622,7 +545,8 @@ function exitAdminMode() {
   document.getElementById('notif-bell-btn').style.display = 'none';
   document.getElementById('export-excel-btn').style.display = 'none';
   document.getElementById('dashboard-btn').style.display = 'none';
-  document.getElementById('my-requests-top-bell').style.display = 'none';
+  lastNotifications = [];
+  isFirstNotifSnapshot = true;
   loadTodoList();
 }
 
@@ -1944,14 +1868,12 @@ function openMoreMenu() {
     container.innerHTML = refreshBtn + '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
   } else {
     nameEl.textContent = name || '';
+    var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
+    var badgeText = unreadCount > 0 ? ' 🔴 (' + unreadCount + ')' : '';
     var items = [];
     items.push({ label: 'โปรไฟล์', fn: 'openProfileModal()' });
-    if (role === 'staff') {
-      var badgeText = myRequestsUnseenCount > 0 ? ' 🔴 (' + myRequestsUnseenCount + ')' : '';
-      items.push({ label: 'คำขอของฉัน' + badgeText, fn: 'openMyRequestsModal()' });
-    }
+    items.push({ label: 'การแจ้งเตือน' + badgeText, fn: 'openMyRequestsModal()' });
     if (role === 'admin') {
-      items.push({ label: 'คำขอที่รออนุมัติ', fn: 'openPendingRequestsModal()' });
       items.push({ label: 'บัญชีผู้ใช้', fn: 'openStaffModal()' });
       items.push({ label: 'วันหยุด', fn: 'openHolidayModal()' });
     }
@@ -1977,8 +1899,6 @@ function mobileRefreshFromMenu() {
     loadTodoList()
   ]).then(function () {
     if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
-    if (role === 'admin') loadNotifBadge();
-    if (role === 'staff') loadMyRequestsBadge();
     Toast.fire({ icon: 'success', title: 'รีเฟรชข้อมูลแล้ว' });
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'รีเฟรชไม่สำเร็จ', text: err.message });
@@ -2092,140 +2012,99 @@ function playNotificationSound(title, body) {
   } catch (e) { /* เบราว์เซอร์ไม่รองรับเสียงเลย ปล่อยผ่านเงียบๆ */ }
 }
 
-var lastPendingCount = -1;
-var lastMyUnseenCount = -1;
+// ===== ระบบแจ้งเตือนแบบใหม่ (Real-time + ถาวร 30 วัน) แทนระบบเดิมทั้งหมด =====
+var lastNotifications = [];
+var isFirstNotifSnapshot = true;
 
-function loadNotifBadge() {
-  var token = localStorage.getItem(TOKEN_KEY);
-  callApi('getPendingChangeRequests', { token: token }).then(function (result) {
-    if (!result.success) return;
-    var count = result.requests.length;
-    var badge = document.getElementById('notif-badge');
-    if (count > 0) {
-      badge.textContent = count;
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
-    if (lastPendingCount !== -1 && count > lastPendingCount) {
-      playNotificationSound('C2 Calendar', 'มีคำขอเข้ามาใหม่ รอการอนุมัติ');
-    }
-    lastPendingCount = count;
-  });
+function setupNotificationsRealtimeListener() {
+  var myId = localStorage.getItem(ACCOUNT_ID_KEY);
+  if (!myId) return;
+
+  fbDb.collection('notifications').where('recipientId', '==', myId)
+    .onSnapshot(function (snapshot) {
+      // เล่นเสียงเฉพาะตอนมีรายการใหม่เข้ามาจริง (ไม่ใช่ตอนโหลดครั้งแรก)
+      if (!isFirstNotifSnapshot) {
+        snapshot.docChanges().forEach(function (change) {
+          if (change.type === 'added') {
+            var d = change.doc.data();
+            playNotificationSound(d.title || 'C2 Calendar', d.body || '');
+          }
+        });
+      }
+      isFirstNotifSnapshot = false;
+
+      lastNotifications = snapshot.docs.map(function (d) {
+        return Object.assign({ id: d.id }, d.data());
+      }).sort(function (a, b) {
+        var ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+        var tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+        return tb - ta;
+      });
+
+      var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
+      var badge = document.getElementById('notif-badge');
+      if (badge) {
+        if (unreadCount > 0) { badge.textContent = unreadCount; badge.style.display = 'flex'; }
+        else { badge.style.display = 'none'; }
+      }
+
+      // ถ้า modal เปิดอยู่ ให้ render รายการใหม่ทันที
+      if (document.getElementById('my-requests-modal-overlay').style.display === 'flex') {
+        renderNotificationsList();
+      }
+    }, function (err) {
+      console.error('ฟังการแจ้งเตือนไม่สำเร็จ', err);
+    });
 }
 
-// เช็คคำขอใหม่ทุก 30 วิ ตอนที่เปิดหน้าเว็บทิ้งไว้ (เฉพาะ Admin)
-function startAdminNotifPolling() {
-  setInterval(function () {
-    if (localStorage.getItem(ROLE_KEY) === 'admin') loadNotifBadge();
-  }, 30000);
-}
-
-// ===== แจ้งเตือนคำขอของฉัน (Staff) - นับเฉพาะคำขอที่ถูกอนุมัติ/ไม่อนุมัติแล้วแต่ยังไม่ได้เปิดดู =====
-var SEEN_REQUESTS_KEY = 'c2tech_seen_requests';
-var myRequestsUnseenCount = 0;
-
-function getSeenRequestIds() {
-  try {
-    return JSON.parse(localStorage.getItem(SEEN_REQUESTS_KEY) || '[]');
-  } catch (e) {
-    return [];
+function renderNotificationsList() {
+  var container = document.getElementById('my-requests-list');
+  if (lastNotifications.length === 0) {
+    container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">ยังไม่มีการแจ้งเตือน</p>';
+    return;
   }
-}
+  container.innerHTML = '';
+  lastNotifications.forEach(function (n) {
+    var card = document.createElement('div');
+    card.className = 'request-card' + (n.read ? '' : ' notif-unread');
+    var timeLabel = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString('th-TH') : '';
 
-function markRequestsSeen(requestIds) {
-  var seen = getSeenRequestIds();
-  requestIds.forEach(function (id) {
-    if (seen.indexOf(id) === -1) seen.push(id);
-  });
-  localStorage.setItem(SEEN_REQUESTS_KEY, JSON.stringify(seen));
-}
-
-function loadMyRequestsBadge() {
-  var token = localStorage.getItem(TOKEN_KEY);
-  callApi('getMyChangeRequests', { token: token }).then(function (result) {
-    if (!result.success) return;
-    var seen = getSeenRequestIds();
-    var unseen = result.requests.filter(function (r) {
-      return r.status !== 'pending' && seen.indexOf(r.requestId) === -1;
-    });
-    myRequestsUnseenCount = unseen.length;
-
-    var badge = document.getElementById('my-requests-badge');
-    var topBadge = document.getElementById('my-requests-top-badge');
-    if (myRequestsUnseenCount > 0) {
-      badge.textContent = myRequestsUnseenCount;
-      badge.style.display = 'flex';
-      if (topBadge) { topBadge.textContent = myRequestsUnseenCount; topBadge.style.display = 'flex'; }
-    } else {
-      badge.style.display = 'none';
-      if (topBadge) topBadge.style.display = 'none';
-    }
-    if (lastMyUnseenCount !== -1 && myRequestsUnseenCount > lastMyUnseenCount) {
-      playNotificationSound('C2 Calendar', 'คำขอของคุณได้รับการตอบกลับแล้ว');
-    }
-    lastMyUnseenCount = myRequestsUnseenCount;
-  });
-}
-
-// เช็คคำขอของฉันทุก 30 วิ ตอนที่เปิดหน้าเว็บทิ้งไว้ (เฉพาะ Staff)
-function startStaffNotifPolling() {
-  setInterval(function () {
-    if (localStorage.getItem(ROLE_KEY) === 'staff') loadMyRequestsBadge();
-  }, 30000);
-}
-
-function openPendingRequestsModal() {
-  document.getElementById('pending-requests-modal-overlay').style.display = 'flex';
-  var token = localStorage.getItem(TOKEN_KEY);
-  var container = document.getElementById('pending-requests-list');
-  container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">กำลังโหลด...</p>';
-
-  callApi('getPendingChangeRequests', { token: token }).then(function (result) {
-    if (!result.success) {
-      container.innerHTML = '<p style="font-size:13px;color:#b91c1c">' + result.message + '</p>';
-      return;
-    }
-    if (result.requests.length === 0) {
-      container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">ไม่มีคำขอที่รออนุมัติ</p>';
-      return;
-    }
-    container.innerHTML = '';
-    result.requests.forEach(function (r) {
-      var card = document.createElement('div');
-      card.className = 'request-card';
-      var extra = r.requestType === 'reschedule'
-        ? '<p class="rc-meta">วันใหม่: ' + new Date(r.newStartDateTime).toLocaleDateString('th-TH') +
-          ' - ' + new Date(r.newEndDateTime).toLocaleDateString('th-TH') + '</p>'
-        : '';
-      card.innerHTML =
-        '<div class="rc-top"><span class="rc-task">' + r.taskName + '</span>' +
-        '<span class="status-pill pending">' + (REQUEST_TYPE_LABELS[r.requestType] || r.requestType) + '</span></div>' +
-        '<p class="rc-meta">ผู้ขอ: ' + r.requestedByName + '</p>' +
-        extra +
-        (r.reason ? '<p class="rc-meta">เหตุผล: ' + r.reason + '</p>' : '') +
-        '<div class="rc-actions">' +
-          '<button class="btn-approve" onclick="reviewRequest(this, \'' + r.requestId + '\', true)">อนุมัติ</button>' +
-          '<button class="btn-reject" onclick="reviewRequest(this, \'' + r.requestId + '\', false)">ไม่อนุมัติ</button>' +
+    var actionsHtml = '';
+    if (n.type === 'changeRequestNew' && !n.read) {
+      actionsHtml = '<div class="rc-actions">' +
+        '<button class="btn-approve" onclick="approveFromNotification(this, \'' + n.requestId + '\', \'' + n.id + '\')">อนุมัติ</button>' +
+        '<button class="btn-reject" onclick="rejectFromNotification(this, \'' + n.requestId + '\', \'' + n.id + '\')">ไม่อนุมัติ</button>' +
         '</div>';
-      container.appendChild(card);
-    });
+    }
+
+    card.innerHTML =
+      '<div class="rc-top"><span class="rc-task">' + n.body + '</span></div>' +
+      '<p class="rc-meta">' + timeLabel + '</p>' + actionsHtml;
+
+    if (!n.read && n.type !== 'changeRequestNew') {
+      card.style.cursor = 'pointer';
+      card.onclick = function () { markNotificationReadAndRefresh(n.id); };
+    }
+    container.appendChild(card);
   });
 }
-function closePendingRequestsModal() {
-  document.getElementById('pending-requests-modal-overlay').style.display = 'none';
+
+function markNotificationReadAndRefresh(notificationId) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('markNotificationRead', { token: token, notificationId: notificationId }).then(function () {
+    var n = lastNotifications.find(function (x) { return x.id === notificationId; });
+    if (n) n.read = true;
+    renderNotificationsList();
+  });
 }
 
-function reviewRequest(btn, requestId, isApprove) {
+function approveFromNotification(btn, requestId, notificationId) {
   var token = localStorage.getItem(TOKEN_KEY);
-  var action = isApprove ? 'approveChangeRequest' : 'rejectChangeRequest';
-  setButtonLoading(btn, true, isApprove ? 'กำลังอนุมัติ...' : 'กำลังปฏิเสธ...');
-  callApi(action, { token: token, requestId: requestId }).then(function (result) {
+  setButtonLoading(btn, true, 'กำลังอนุมัติ...');
+  callApi('approveChangeRequest', { token: token, requestId: requestId }).then(function (result) {
     if (result.success) {
-      Toast.fire({ icon: 'success', title: isApprove ? 'อนุมัติแล้ว' : 'ไม่อนุมัติคำขอนี้แล้ว' });
-      openPendingRequestsModal();
-      loadNotifBadge();
-      loadAdminEvents(token);
+      Toast.fire({ icon: 'success', title: 'อนุมัติแล้ว' });
+      markNotificationReadAndRefresh(notificationId);
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
       setButtonLoading(btn, false);
@@ -2236,45 +2115,26 @@ function reviewRequest(btn, requestId, isApprove) {
   });
 }
 
-// ===== คำขอของฉัน (Staff) =====
+function rejectFromNotification(btn, requestId, notificationId) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  setButtonLoading(btn, true, 'กำลังปฏิเสธ...');
+  callApi('rejectChangeRequest', { token: token, requestId: requestId }).then(function (result) {
+    if (result.success) {
+      Toast.fire({ icon: 'success', title: 'ไม่อนุมัติคำขอนี้แล้ว' });
+      markNotificationReadAndRefresh(notificationId);
+    } else {
+      Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
+      setButtonLoading(btn, false);
+    }
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    setButtonLoading(btn, false);
+  });
+}
+
 function openMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'flex';
-  var token = localStorage.getItem(TOKEN_KEY);
-  var container = document.getElementById('my-requests-list');
-  container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">กำลังโหลด...</p>';
-
-  callApi('getMyChangeRequests', { token: token }).then(function (result) {
-    if (!result.success) {
-      container.innerHTML = '<p style="font-size:13px;color:#b91c1c">' + result.message + '</p>';
-      return;
-    }
-    if (result.requests.length === 0) {
-      container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">ยังไม่มีคำขอ</p>';
-      return;
-    }
-    container.innerHTML = '';
-    var reviewedIds = [];
-    result.requests.forEach(function (r) {
-      if (r.status !== 'pending') reviewedIds.push(r.requestId);
-      var card = document.createElement('div');
-      card.className = 'request-card';
-      var extra = r.requestType === 'reschedule'
-        ? '<p class="rc-meta">วันใหม่ที่ขอ: ' + new Date(r.newStartDateTime).toLocaleDateString('th-TH') +
-          ' - ' + new Date(r.newEndDateTime).toLocaleDateString('th-TH') + '</p>'
-        : '';
-      card.innerHTML =
-        '<div class="rc-top"><span class="rc-task">' + r.taskName + '</span>' +
-        '<span class="status-pill ' + r.status + '">' +
-          (r.status === 'pending' ? 'รออนุมัติ' : r.status === 'approved' ? 'อนุมัติแล้ว' : 'ไม่อนุมัติ') +
-        '</span></div>' +
-        '<p class="rc-meta">ประเภท: ' + (REQUEST_TYPE_LABELS[r.requestType] || r.requestType) + '</p>' +
-        extra +
-        (r.reason ? '<p class="rc-meta">เหตุผล: ' + r.reason + '</p>' : '');
-      container.appendChild(card);
-    });
-    markRequestsSeen(reviewedIds);
-    loadMyRequestsBadge();
-  });
+  renderNotificationsList();
 }
 function closeMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'none';
@@ -2292,8 +2152,6 @@ function manualRefresh() {
     loadTodoList()
   ]).then(function () {
     if (token) { loadAdminEvents(token); } else { loadPublicEvents(); }
-    if (role === 'admin') loadNotifBadge();
-    if (role === 'staff') loadMyRequestsBadge();
     Toast.fire({ icon: 'success', title: 'รีเฟรชข้อมูลแล้ว' });
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'รีเฟรชไม่สำเร็จ', text: err.message });
