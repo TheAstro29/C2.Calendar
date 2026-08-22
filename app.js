@@ -2144,6 +2144,34 @@ function rejectFromNotification(btn, requestId, notificationId) {
   });
 }
 
+/** ปุ่ม "อ่านทั้งหมด" ในเมนูแจ้งเตือน — ยิง markNotificationRead พร้อมกันทีละหลายรายการสำหรับทุกรายการที่ยังไม่ได้อ่าน
+ * (ไม่รวมรายการ changeRequestNew ที่ยังไม่ได้กดอนุมัติ/ไม่อนุมัติ เพราะการันตีว่า Admin ยังต้องเปิดมาดำเนินการอยู่ดี) */
+function markAllNotificationsRead(btn) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  var unread = lastNotifications.filter(function (n) { return !n.read && n.type !== 'changeRequestNew'; });
+  if (unread.length === 0) {
+    Toast.fire({ icon: 'info', title: 'อ่านหมดแล้ว' });
+    return;
+  }
+  var originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'กำลังทำเครื่องหมาย...';
+  Promise.all(unread.map(function (n) {
+    return callApi('markNotificationRead', { token: token, notificationId: n.id }).then(function () {
+      n.read = true;
+    });
+  })).then(function () {
+    renderNotificationsList();
+    Toast.fire({ icon: 'success', title: 'อ่านทั้งหมดแล้ว' });
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'ทำเครื่องหมายไม่สำเร็จบางรายการ', text: err.message });
+    renderNotificationsList();
+  }).finally(function () {
+    btn.disabled = false;
+    btn.textContent = originalText;
+  });
+}
+
 function openMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'flex';
   renderNotificationsList();

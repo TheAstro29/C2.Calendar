@@ -468,7 +468,10 @@
   <div id="my-requests-modal-overlay">
     <div id="my-requests-box">
       <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
-      <h2>🔔 การแจ้งเตือน</h2>
+      <div class="my-requests-head">
+        <h2>🔔 การแจ้งเตือน</h2>
+        <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
+      </div>
       <div id="my-requests-list"></div>
     </div>
   </div>
