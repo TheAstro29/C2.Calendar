@@ -824,12 +824,13 @@ function openTaskModalForEdit(taskId) {
     document.getElementById('task-submit-btn').textContent = 'บันทึกการแก้ไข';
 
     document.getElementById('task-name').value = task.taskName;
-    document.getElementById('task-type').value = task.taskType || 'meeting';
+    setTaskType(task.taskType || 'meeting');
     document.getElementById('task-undated').checked = task.isUndated;
     toggleUndatedFields();
 
     if (!task.isUndated) {
-      document.getElementById('task-allday').checked = task.isAllDay;
+      document.getElementById('task-allday-radio').checked = task.isAllDay;
+      document.getElementById('task-timed-radio').checked = !task.isAllDay;
       var start = new Date(task.startDateTime);
       var end = new Date(task.endDateTime);
 
@@ -862,9 +863,10 @@ function closeTaskModal() {
 
 function resetTaskForm() {
   document.getElementById('task-name').value = '';
-  document.getElementById('task-type').value = 'meeting';
+  setTaskType('meeting');
   document.getElementById('task-undated').checked = false;
-  document.getElementById('task-allday').checked = true;
+  document.getElementById('task-allday-radio').checked = true;
+  document.getElementById('task-timed-radio').checked = false;
   document.getElementById('task-start-date').value = '';
   document.getElementById('task-duration').value = 1;
   document.getElementById('task-start-date-t').value = '';
@@ -885,9 +887,18 @@ function toggleUndatedFields() {
 }
 
 function toggleAllDayFields() {
-  var isAllDay = document.getElementById('task-allday').checked;
+  var isAllDay = document.getElementById('task-allday-radio').checked;
   document.getElementById('allday-fields').style.display = isAllDay ? 'flex' : 'none';
   document.getElementById('timed-fields').style.display = isAllDay ? 'none' : 'block';
+}
+
+// ปุ่ม segmented เลือกประเภทงาน - เก็บค่าจริงไว้ใน <select id="task-type"> ที่ซ่อนอยู่ (ของเดิม backend ยังอ่านจากตรงนี้)
+function setTaskType(value) {
+  document.getElementById('task-type').value = value;
+  var buttons = document.querySelectorAll('#task-type-segmented button');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('active', buttons[i].getAttribute('data-value') === value);
+  }
 }
 
 function loadTaskStaffChecklist(selectedIds) {
@@ -945,7 +956,7 @@ function loadGoogleMapsScript(callback) {
   };
   var script = document.createElement('script');
   script.src = 'https://maps.googleapis.com/maps/api/js?key=' + GOOGLE_MAPS_API_KEY +
-    '&libraries=places&callback=__onGoogleMapsLoaded';
+    '&libraries=places&loading=async&callback=__onGoogleMapsLoaded';
   document.head.appendChild(script);
 }
 
@@ -956,16 +967,7 @@ function initTaskMap() {
   });
 
   var locationInput = document.getElementById('task-location');
-  var autocomplete = new google.maps.places.Autocomplete(locationInput);
-  autocomplete.bindTo('bounds', taskMap);
-
-  autocomplete.addListener('place_changed', function () {
-    var place = autocomplete.getPlace();
-    if (!place.geometry) return;
-    placeMarker(place.geometry.location);
-    taskMap.setCenter(place.geometry.location);
-    taskMap.setZoom(16);
-  });
+  setupLocationAutocomplete(locationInput);
 
   taskMap.addListener('click', function (e) {
     placeMarker(e.latLng);
@@ -978,6 +980,81 @@ function initTaskMap() {
   });
 }
 
+// ===== Phase 13: ค้นหาสถานที่แบบพิมพ์แล้วขึ้นตัวเลือก (Autocomplete) =====
+// เดิมใช้ google.maps.places.Autocomplete (วิดเจ็ตผูกกับ input โดยตรง) แต่ Google ปิดไม่ให้โปรเจกต์/API key ที่สร้าง
+// ใหม่หลัง 1 มี.ค. 2568 ใช้วิดเจ็ตตัวนี้แล้ว (ขึ้น error เงียบๆ ใช้งานไม่ได้) จึงเปลี่ยนมาใช้ AutocompleteSuggestion
+// ซึ่งเป็นชุดคำสั่งแบบ "ขอข้อมูลมาเอง" (ไม่ใช่วิดเจ็ตสำเร็จรูป) แล้วสร้างดรอปดาวน์ผลลัพธ์เองแทน ข้อดีคือยังผูกกับ
+// input เดิมได้ปกติ (ตอนแก้ไขงานเดิมที่ต้องเซ็ตค่าข้อความลง input ตรงๆ ก็ยังทำได้เหมือนเดิมทุกประการ)
+var locationAutocompleteSessionToken = null;
+var locationAutocompleteDebounceTimer = null;
+
+function setupLocationAutocomplete(inputEl) {
+  var dropdown = document.getElementById('task-location-suggestions');
+
+  inputEl.oninput = function () {
+    var text = inputEl.value.trim();
+    clearTimeout(locationAutocompleteDebounceTimer);
+    if (!text) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; return; }
+    locationAutocompleteDebounceTimer = setTimeout(function () {
+      fetchLocationSuggestions(text, dropdown, inputEl);
+    }, 300);
+  };
+
+  document.addEventListener('click', function (e) {
+    if (e.target !== inputEl && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+}
+
+async function fetchLocationSuggestions(text, dropdown, inputEl) {
+  try {
+    var placesLib = await google.maps.importLibrary('places');
+    if (!locationAutocompleteSessionToken) {
+      locationAutocompleteSessionToken = new placesLib.AutocompleteSessionToken();
+    }
+    var result = await placesLib.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input: text,
+      sessionToken: locationAutocompleteSessionToken,
+      region: 'th',
+    });
+    var suggestions = result.suggestions || [];
+    if (!suggestions.length) { dropdown.innerHTML = ''; dropdown.style.display = 'none'; return; }
+
+    dropdown.innerHTML = '';
+    suggestions.forEach(function (s) {
+      var pred = s.placePrediction;
+      if (!pred) return;
+      var item = document.createElement('div');
+      item.className = 'location-suggestion-item';
+      item.textContent = pred.text.text;
+      item.onclick = function () { selectLocationSuggestion(pred, inputEl, dropdown); };
+      dropdown.appendChild(item);
+    });
+    dropdown.style.display = 'block';
+  } catch (err) {
+    console.error('ค้นหาสถานที่ไม่สำเร็จ', err);
+  }
+}
+
+async function selectLocationSuggestion(placePrediction, inputEl, dropdown) {
+  dropdown.style.display = 'none';
+  try {
+    var place = placePrediction.toPlace();
+    await place.fetchFields({ fields: ['formattedAddress', 'location'] });
+    inputEl.value = place.formattedAddress || placePrediction.text.text;
+    if (place.location && taskMap) {
+      placeMarker(place.location);
+      taskMap.setCenter(place.location);
+      taskMap.setZoom(16);
+    }
+    // เริ่ม session ใหม่หลังเลือกเสร็จ 1 รอบ (ตามคำแนะนำ Google ให้คิดค่าบริการเป็นก้อนต่อ session การค้นหาแต่ละครั้ง)
+    locationAutocompleteSessionToken = null;
+  } catch (err) {
+    console.error('โหลดรายละเอียดสถานที่ไม่สำเร็จ', err);
+  }
+}
+
 function placeMarker(latLng) {
   if (taskMarker) taskMarker.setMap(null);
   taskMarker = new google.maps.Marker({ position: latLng, map: taskMap });
@@ -986,7 +1063,7 @@ function placeMarker(latLng) {
 function submitAddTask() {
   var taskName = document.getElementById('task-name').value.trim();
   var isUndated = document.getElementById('task-undated').checked;
-  var isAllDay = document.getElementById('task-allday').checked;
+  var isAllDay = document.getElementById('task-allday-radio').checked;
   var btn = document.getElementById('task-submit-btn');
 
   if (!taskName) {
@@ -1159,8 +1236,8 @@ function deleteTodoTask(btn, taskId) {
 
 function deleteTaskConfirm(taskId) {
   Swal.fire({
-    icon: 'warning', title: 'ยืนยันลบงานนี้?',
-    text: 'งานจะถูกซ่อนจากปฏิทิน แต่ข้อมูลยังเก็บไว้ดูย้อนหลังได้',
+    title: 'ยืนยันลบงานนี้?',
+    html: '<div class="td-warning-banner" style="text-align:left;justify-content:flex-start">⚠️ งานจะถูกซ่อนจากปฏิทิน แต่ข้อมูลยังเก็บไว้ดูย้อนหลังได้</div>',
     showCancelButton: true, confirmButtonText: 'ลบงาน', cancelButtonText: 'ยกเลิก'
   }).then(function (res) {
     if (!res.isConfirmed) return;
@@ -1790,7 +1867,7 @@ function loadDashboardData() {
   if (dashboardChartDaily) dashboardChartDaily.destroy();
   dashboardChartDaily = new Chart(document.getElementById('dashboard-chart-daily'), {
     type: 'bar',
-    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#059669' }] },
+    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#3F654D' }] },
     options: { responsive: true, plugins: { title: { display: true, text: 'จำนวนงานต่อวัน' } } }
   });
 
@@ -1925,9 +2002,9 @@ function closeMoreMenu() {
 // ===== Staff: ขอลบงาน =====
 function requestDeleteTaskConfirm(taskId) {
   Swal.fire({
-    icon: 'warning', title: 'ส่งคำขอลบงานนี้?',
+    title: 'ส่งคำขอลบงานนี้?',
     input: 'text', inputPlaceholder: 'เหตุผล (ไม่บังคับ)',
-    text: 'Admin จะต้องอนุมัติก่อนงานถึงจะถูกลบจริง',
+    html: '<div class="td-warning-banner" style="text-align:left;justify-content:flex-start">⚠️ Admin จะต้องอนุมัติก่อนงานถึงจะถูกลบจริง</div>',
     showCancelButton: true, confirmButtonText: 'ส่งคำขอ', cancelButtonText: 'ยกเลิก'
   }).then(function (res) {
     if (!res.isConfirmed) return;
@@ -1943,6 +2020,75 @@ function requestDeleteTaskConfirm(taskId) {
       Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
     });
   });
+}
+
+// ===== Modal ดูรายละเอียดงาน (กดที่งานในปฏิทิน) =====
+function closeTaskDetailModal() {
+  document.getElementById('task-detail-modal-overlay').style.display = 'none';
+}
+
+function openTaskDetailModal(event) {
+  var props = event.extendedProps;
+  var taskId = event.id;
+
+  document.getElementById('td-title').textContent = event.title;
+  document.getElementById('td-type').textContent = TASK_TYPE_LABELS[props.taskType] || props.taskType;
+  document.getElementById('td-date').textContent = formatEventDateRange(event);
+  document.getElementById('td-location').textContent = props.location || '-';
+  document.getElementById('td-detail').textContent = props.detail || '-';
+
+  var warningEl = document.getElementById('td-warning-banner');
+  warningEl.style.display = 'none';
+
+  var staffCard = document.getElementById('td-staff-card');
+  staffCard.innerHTML = '';
+  var staffList = props.staff || [];
+  if (!staffList.length) {
+    staffCard.innerHTML = '<span style="font-size:13px;color:#6b7280">-</span>';
+  } else {
+    staffList.forEach(function (s) {
+      var item = document.createElement('div');
+      item.className = 'td-staff-item';
+      var dot = document.createElement('span');
+      dot.className = 'td-staff-dot';
+      dot.style.background = s.color;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(s.name));
+      staffCard.appendChild(item);
+    });
+  }
+
+  var actionsEl = document.getElementById('td-actions');
+  actionsEl.innerHTML = '';
+
+  function addBtn(label, cls, onClick) {
+    var btn = document.createElement('button');
+    btn.className = cls;
+    btn.textContent = label;
+    btn.onclick = onClick;
+    actionsEl.appendChild(btn);
+  }
+
+  var token = localStorage.getItem(TOKEN_KEY);
+  var myRole = localStorage.getItem(ROLE_KEY);
+  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
+
+  if (!token) {
+    addBtn('ปิด', 'td-btn-plain', closeTaskDetailModal);
+  } else if (myRole === 'admin' || myRole === 'ceo') {
+    addBtn('ปิด', 'td-btn-plain', closeTaskDetailModal);
+    addBtn('ลบงาน', 'td-btn-danger', function () { closeTaskDetailModal(); deleteTaskConfirm(taskId); });
+    addBtn('แก้ไข', 'td-btn-primary', function () { closeTaskDetailModal(); openTaskModalForEdit(taskId); });
+  } else {
+    var isOwner = props.createdBy === myAccountId || (props.staffIds || []).indexOf(myAccountId) !== -1;
+    addBtn('ปิด', 'td-btn-plain', closeTaskDetailModal);
+    if (isOwner) {
+      addBtn('ขอลบงาน', 'td-btn-danger', function () { closeTaskDetailModal(); requestDeleteTaskConfirm(taskId); });
+      addBtn('ขอเปลี่ยนวัน', 'td-btn-primary', function () { closeTaskDetailModal(); openRescheduleModal(taskId); });
+    }
+  }
+
+  document.getElementById('task-detail-modal-overlay').style.display = 'flex';
 }
 
 // ===== Staff: ขอเปลี่ยนวัน =====
@@ -2328,64 +2474,7 @@ function renderCalendar(result) {
     },
     eventClick: function (info) {
       if (info.event.extendedProps.isHoliday) return;
-      var props = info.event.extendedProps;
-      var taskId = info.event.id;
-      var staffHtml = props.staff.map(function (s) {
-        return '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:10px">' +
-          '<span style="width:9px;height:9px;border-radius:50%;background:' + s.color + ';display:inline-block"></span>' +
-          s.name + '</span>';
-      }).join('');
-      var detailHtml =
-        '<div style="text-align:left;font-size:14px">' +
-        '<p><b>ประเภทงาน:</b> ' + (TASK_TYPE_LABELS[props.taskType] || props.taskType) + '</p>' +
-        '<p><b>วันที่:</b> ' + formatEventDateRange(info.event) + '</p>' +
-        '<p><b>ผู้ปฏิบัติงาน:</b><br>' + (staffHtml || '-') + '</p>' +
-        '<p><b>สถานที่:</b> ' + (props.location || '-') + '</p>' +
-        '<p><b>รายละเอียดงาน:</b><br>' + (props.detail ? props.detail.replace(/\n/g, '<br>') : '-') + '</p>' +
-        '</div>';
-
-      var token = localStorage.getItem(TOKEN_KEY);
-      var myRole = localStorage.getItem(ROLE_KEY);
-      var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
-
-      if (!token) {
-        Swal.fire({ title: info.event.title, html: detailHtml, confirmButtonText: 'ปิด' });
-        return;
-      }
-
-      if (myRole === 'admin' || myRole === 'ceo') {
-        Swal.fire({
-          title: info.event.title, html: detailHtml,
-          showDenyButton: true, showCancelButton: true,
-          confirmButtonText: 'แก้ไข', denyButtonText: 'ลบงาน', cancelButtonText: 'ปิด'
-        }).then(function (res) {
-          if (res.isConfirmed) {
-            openTaskModalForEdit(taskId);
-          } else if (res.isDenied) {
-            deleteTaskConfirm(taskId);
-          }
-        });
-        return;
-      }
-
-      // Staff: ขอลบ/ขอเปลี่ยนวัน ได้ทั้งงานที่ตัวเองสร้าง และงานที่มีชื่อตัวเองเป็นผู้ปฏิบัติงาน
-      var isOwner = props.createdBy === myAccountId || (props.staffIds || []).indexOf(myAccountId) !== -1;
-      if (!isOwner) {
-        Swal.fire({ title: info.event.title, html: detailHtml, confirmButtonText: 'ปิด' });
-        return;
-      }
-
-      Swal.fire({
-        title: info.event.title, html: detailHtml,
-        showDenyButton: true, showCancelButton: true,
-        confirmButtonText: 'ขอเปลี่ยนวัน', denyButtonText: 'ขอลบงาน', cancelButtonText: 'ปิด'
-      }).then(function (res) {
-        if (res.isConfirmed) {
-          openRescheduleModal(taskId);
-        } else if (res.isDenied) {
-          requestDeleteTaskConfirm(taskId);
-        }
-      });
+      openTaskDetailModal(info.event);
     }
   });
   calendarInstance.render();

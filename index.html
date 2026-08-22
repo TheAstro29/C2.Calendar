@@ -7,7 +7,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <meta name="theme-color" content="#059669">
+  <meta name="theme-color" content="#3F654D">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="C2 Calendar">
@@ -26,12 +26,12 @@
         <rect x="20" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
         <rect x="39" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
         <rect x="12" y="12" width="40" height="40" rx="9" fill="#ffffff"/>
-        <rect x="12" y="12" width="40" height="13" rx="9" fill="#047857"/>
-        <circle cx="21" cy="34" r="3" fill="#059669"/>
-        <circle cx="32" cy="34" r="3" fill="#059669"/>
-        <circle cx="43" cy="34" r="3" fill="#a7f3d0"/>
-        <circle cx="21" cy="44" r="3" fill="#059669"/>
-        <circle cx="32" cy="44" r="3" fill="#a7f3d0"/>
+        <rect x="12" y="12" width="40" height="13" rx="9" fill="#2f4d3a"/>
+        <circle cx="21" cy="34" r="3" fill="#3F654D"/>
+        <circle cx="32" cy="34" r="3" fill="#3F654D"/>
+        <circle cx="43" cy="34" r="3" fill="#D2DCD8"/>
+        <circle cx="21" cy="44" r="3" fill="#3F654D"/>
+        <circle cx="32" cy="44" r="3" fill="#D2DCD8"/>
       </svg>
       <p id="page-loading-logo"><span class="accent">C2</span> Calendar</p>
       <div class="loading-dots"><span></span><span></span><span></span></div>
@@ -222,69 +222,93 @@
 
   <div id="task-modal-overlay">
     <div id="task-box">
-      <button id="task-close" onclick="closeTaskModal()">✕</button>
-      <h2>📝 สร้างงานใหม่</h2>
+      <div class="tb-head">
+        <h2>📝 สร้างงานใหม่</h2>
+        <button id="task-close" onclick="closeTaskModal()">✕</button>
+      </div>
+      <div class="tb-info-banner">งานจะแสดงในปฏิทินทันที เว้นแต่เลือก "ไม่ระบุวันที่" ด้านล่าง</div>
 
-      <label class="field-label">ชื่องาน</label>
-      <input type="text" id="task-name" placeholder="เช่น ติดตั้งระบบไฟฟ้า อาคาร A">
+      <div class="tb-body">
+        <label class="field-label">ชื่องาน</label>
+        <input type="text" id="task-name" placeholder="เช่น ติดตั้งระบบไฟฟ้า อาคาร A">
 
-      <label class="field-label">ประเภทงาน</label>
-      <select id="task-type">
-        <option value="meeting">ประชุม (Meeting)</option>
-        <option value="onsite">นอกสถานที่ (On-site)</option>
-        <option value="event">กิจกรรม (Event)</option>
-        <option value="leave">ลา (Leave)</option>
-      </select>
+        <label class="field-label">ประเภทงาน</label>
+        <select id="task-type" style="display:none">
+          <option value="meeting">ประชุม (Meeting)</option>
+          <option value="onsite">นอกสถานที่ (On-site)</option>
+          <option value="event">กิจกรรม (Event)</option>
+          <option value="leave">ลา (Leave)</option>
+        </select>
+        <div class="segmented" id="task-type-segmented">
+          <button type="button" data-value="meeting" title="ประชุม (Meeting)" onclick="setTaskType('meeting')">ประชุม</button>
+          <button type="button" data-value="onsite" title="นอกสถานที่ (On-site)" onclick="setTaskType('onsite')">นอกสถานที่</button>
+          <button type="button" data-value="event" title="กิจกรรม (Event)" onclick="setTaskType('event')">กิจกรรม</button>
+          <button type="button" data-value="leave" title="ลา (Leave)" onclick="setTaskType('leave')">ลา</button>
+        </div>
 
-      <label class="checkbox-row" id="task-undated-row" style="display:none">
-        <input type="checkbox" id="task-undated" onchange="toggleUndatedFields()">
-        ไม่ระบุวันที่ (เพิ่มเข้า To-Do List)
-      </label>
+        <hr class="tb-divider">
 
-      <div id="task-date-section">
-        <label class="checkbox-row">
-          <input type="checkbox" id="task-allday" checked onchange="toggleAllDayFields()">
-          งานทั้งวัน (ไม่ระบุเวลา)
+        <label class="checkbox-row" id="task-undated-row" style="display:none">
+          <input type="checkbox" id="task-undated" onchange="toggleUndatedFields()">
+          ไม่ระบุวันที่ (เพิ่มเข้า To-Do List)
         </label>
 
-        <div id="allday-fields" class="row2">
-          <div>
-            <label class="field-label">วันเริ่มงาน</label>
-            <input type="date" id="task-start-date">
-          </div>
-          <div>
-            <label class="field-label">จำนวนวัน</label>
-            <input type="number" id="task-duration" value="1" min="1">
-          </div>
-        </div>
-
-        <div id="timed-fields" style="display:none">
-          <div class="row2">
+        <div id="task-date-section">
+          <label class="radio-row">
+            <input type="radio" name="task-datemode" id="task-allday-radio" checked onchange="toggleAllDayFields()">
+            <span>งานทั้งวัน (ไม่ระบุเวลา)</span>
+          </label>
+          <div id="allday-fields" class="row2 tb-indent">
             <div>
-              <label class="field-label">วันและเวลาเริ่ม</label>
-              <input type="date" id="task-start-date-t">
-              <input type="time" id="task-start-time" value="09:00">
+              <label class="field-label">วันเริ่มงาน</label>
+              <input type="date" id="task-start-date">
             </div>
             <div>
-              <label class="field-label">วันและเวลาสิ้นสุด</label>
-            <input type="date" id="task-end-date-t">
-            <input type="time" id="task-end-time" value="12:00">
+              <label class="field-label">จำนวนวัน</label>
+              <input type="number" id="task-duration" value="1" min="1">
+            </div>
+          </div>
+
+          <label class="radio-row">
+            <input type="radio" name="task-datemode" id="task-timed-radio" onchange="toggleAllDayFields()">
+            <span>ระบุวันและเวลา</span>
+          </label>
+          <div id="timed-fields" class="tb-indent" style="display:none">
+            <div class="row2">
+              <div>
+                <label class="field-label">วันและเวลาเริ่ม</label>
+                <input type="date" id="task-start-date-t">
+                <input type="time" id="task-start-time" value="09:00">
+              </div>
+              <div>
+                <label class="field-label">วันและเวลาสิ้นสุด</label>
+                <input type="date" id="task-end-date-t">
+                <input type="time" id="task-end-time" value="12:00">
+              </div>
+            </div>
           </div>
         </div>
+
+        <hr class="tb-divider">
+
+        <label class="field-label">ผู้ปฏิบัติงาน</label>
+        <div id="task-staff-list" class="staff-checklist"></div>
+
+        <label class="field-label">สถานที่</label>
+        <div id="task-location-wrap" style="position:relative;">
+          <input type="text" id="task-location" placeholder="พิมพ์ชื่อสถานที่ / ที่อยู่" autocomplete="off">
+          <div id="task-location-suggestions" class="location-suggestions" style="display:none;"></div>
+        </div>
+        <div id="task-map" style="display:none"></div>
+
+        <label class="field-label">รายละเอียดงาน</label>
+        <textarea id="task-detail" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
       </div>
+
+      <div class="tb-footer">
+        <button class="td-btn-plain" onclick="closeTaskModal()">ยกเลิก</button>
+        <button id="task-submit-btn" onclick="submitAddTask()">บันทึกงาน</button>
       </div>
-
-      <label class="field-label">ผู้ปฏิบัติงาน</label>
-      <div id="task-staff-list" class="staff-checklist"></div>
-
-      <label class="field-label">สถานที่</label>
-      <input type="text" id="task-location" placeholder="พิมพ์ชื่อสถานที่ / ที่อยู่">
-      <div id="task-map" style="display:none"></div>
-
-      <label class="field-label">รายละเอียดงาน</label>
-      <textarea id="task-detail" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
-
-      <button id="task-submit-btn" onclick="submitAddTask()">บันทึกงาน</button>
     </div>
   </div>
 
@@ -473,6 +497,27 @@
         <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
       </div>
       <div id="my-requests-list"></div>
+    </div>
+  </div>
+
+  <div id="task-detail-modal-overlay">
+    <div id="task-detail-box">
+      <button class="modal-close-btn" onclick="closeTaskDetailModal()">✕</button>
+      <div class="td-head">
+        <h2 id="td-title"></h2>
+      </div>
+      <div id="td-warning-banner" class="td-warning-banner" style="display:none;"></div>
+      <div class="td-rows">
+        <div class="td-row"><span class="td-label">ประเภทงาน</span><span class="td-value" id="td-type"></span></div>
+        <div class="td-row"><span class="td-label">วันที่</span><span class="td-value" id="td-date"></span></div>
+        <div class="td-row"><span class="td-label">สถานที่</span><span class="td-value" id="td-location"></span></div>
+        <div class="td-row td-row-block"><span class="td-label">รายละเอียดงาน</span><span class="td-value" id="td-detail"></span></div>
+      </div>
+      <div class="td-section">
+        <div class="td-section-title">ผู้ปฏิบัติงาน</div>
+        <div id="td-staff-card" class="td-card"></div>
+      </div>
+      <div id="td-actions" class="td-actions"></div>
     </div>
   </div>
 
