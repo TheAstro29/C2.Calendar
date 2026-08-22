@@ -179,43 +179,66 @@
 
   <div id="staff-modal-overlay">
     <div id="staff-box">
-      <button id="staff-close" onclick="closeStaffModal()">✕</button>
-      <h2>👤 จัดการบัญชีผู้ใช้</h2>
-      <div id="staff-list"></div>
+      <div class="tb-head">
+        <h2>👤 จัดการบัญชีผู้ใช้</h2>
+        <button id="staff-close" onclick="closeStaffModal()">✕</button>
+      </div>
+      <div class="tb-info-banner">การแก้ไข/ปิดใช้งานบัญชีมีผลทันที ประวัติงานเก่าจะยังเก็บไว้เหมือนเดิม</div>
 
-      <button id="staff-form-toggle-btn" onclick="toggleStaffAddForm()">+ เพิ่มบัญชีผู้ใช้ใหม่</button>
+      <div class="tb-body">
+        <div id="staff-list"></div>
 
-      <div id="staff-form" style="display:none">
-        <h3 id="staff-form-title">เพิ่มบัญชีผู้ใช้ใหม่</h3>
-        <div id="staff-username-field">
-          <input type="text" id="staff-username" placeholder="Username สำหรับเข้าสู่ระบบ (ตั้งเอง)">
-        </div>
-        <div class="row2">
-          <input type="text" id="staff-firstname" placeholder="ชื่อ">
-          <input type="text" id="staff-lastname" placeholder="นามสกุล">
-        </div>
-        <div class="row2">
-          <input type="text" id="staff-position" placeholder="ตำแหน่ง (ไม่บังคับ)">
-          <input type="color" id="staff-color" value="#378ADD">
-        </div>
-        <div class="row2">
-          <input type="text" id="staff-phone" placeholder="เบอร์โทร (ไม่บังคับ)">
-          <select id="staff-role">
+        <button id="staff-form-toggle-btn" onclick="toggleStaffAddForm()">+ เพิ่มบัญชีผู้ใช้ใหม่</button>
+
+        <div id="staff-form" style="display:none">
+          <hr class="tb-divider">
+          <h3 id="staff-form-title" class="tb-subhead">เพิ่มบัญชีผู้ใช้ใหม่</h3>
+          <div id="staff-username-field">
+            <label class="field-label">Username สำหรับเข้าสู่ระบบ</label>
+            <input type="text" id="staff-username" placeholder="ตั้งเอง">
+          </div>
+          <div class="row2">
+            <div><label class="field-label">ชื่อ</label><input type="text" id="staff-firstname"></div>
+            <div><label class="field-label">นามสกุล</label><input type="text" id="staff-lastname"></div>
+          </div>
+          <div class="row2">
+            <div><label class="field-label">ตำแหน่ง (ไม่บังคับ)</label><input type="text" id="staff-position"></div>
+            <div><label class="field-label">สีประจำตัว</label><input type="color" id="staff-color" value="#378ADD"></div>
+          </div>
+          <label class="field-label">เบอร์โทร (ไม่บังคับ)</label>
+          <input type="text" id="staff-phone">
+
+          <label class="field-label">สิทธิ์การใช้งาน</label>
+          <select id="staff-role" style="display:none">
             <option value="staff">Staff</option>
             <option value="ceo">CEO</option>
             <option value="admin">Admin</option>
           </select>
-        </div>
-        <div class="row2">
-          <select id="staff-gender">
+          <div class="segmented" id="staff-role-segmented">
+            <button type="button" class="active" data-value="staff" onclick="setStaffRole('staff')">Staff</button>
+            <button type="button" data-value="ceo" onclick="setStaffRole('ceo')">CEO</button>
+            <button type="button" data-value="admin" onclick="setStaffRole('admin')">Admin</button>
+          </div>
+
+          <label class="field-label">เพศ</label>
+          <select id="staff-gender" style="display:none">
             <option value="">ไม่ระบุเพศ</option>
             <option value="ชาย">ชาย</option>
             <option value="หญิง">หญิง</option>
           </select>
+          <div class="segmented" id="staff-gender-segmented">
+            <button type="button" class="active" data-value="" onclick="setStaffGender('')">ไม่ระบุ</button>
+            <button type="button" data-value="ชาย" onclick="setStaffGender('ชาย')">ชาย</button>
+            <button type="button" data-value="หญิง" onclick="setStaffGender('หญิง')">หญิง</button>
+          </div>
+
+          <label class="field-label">วันเกิด</label>
           <input type="date" id="staff-birthdate">
         </div>
+      </div>
+      <div class="tb-footer">
+        <button id="staff-cancel-edit-btn" class="td-btn-plain" style="display:none" onclick="cancelEditStaff()">ยกเลิกการแก้ไข</button>
         <button id="staff-submit-btn" onclick="submitAddStaff()">เพิ่มบัญชีผู้ใช้</button>
-        <button id="staff-cancel-edit-btn" style="display:none" onclick="cancelEditStaff()">ยกเลิกการแก้ไข</button>
       </div>
     </div>
   </div>
@@ -314,21 +337,36 @@
 
   <div id="holiday-modal-overlay">
     <div id="holiday-box">
-      <button id="holiday-close" onclick="closeHolidayModal()">✕</button>
-      <h2>🗓️ วันหยุดองค์กร</h2>
-      <div id="holiday-list"></div>
+      <div class="tb-head">
+        <h2>🗓️ วันหยุดองค์กร</h2>
+        <button id="holiday-close" onclick="closeHolidayModal()">✕</button>
+      </div>
+      <div class="tb-info-banner">วันหยุดที่เพิ่มจะถูกซ่อนออกจากปฏิทินงานให้อัตโนมัติ</div>
 
-      <div id="holiday-form">
-        <h3>เพิ่มวันหยุดใหม่</h3>
-        <select id="holiday-type" onchange="toggleHolidayTypeFields()">
+      <div class="tb-body">
+        <div id="holiday-list"></div>
+
+        <hr class="tb-divider">
+        <h3 class="tb-subhead">เพิ่มวันหยุดใหม่</h3>
+
+        <select id="holiday-type" style="display:none" onchange="toggleHolidayTypeFields()">
           <option value="date">วันที่เฉพาะ</option>
           <option value="weekly">หยุดประจำสัปดาห์ (ซ้ำทุกสัปดาห์)</option>
         </select>
 
-        <div id="holiday-date-field">
+        <label class="radio-row">
+          <input type="radio" name="holiday-datemode" id="holiday-type-date-radio" checked onchange="toggleHolidayTypeFields()">
+          <span>วันที่เฉพาะ</span>
+        </label>
+        <div id="holiday-date-field" class="tb-indent">
           <input type="date" id="holiday-date">
         </div>
-        <div id="holiday-weekly-field" style="display:none">
+
+        <label class="radio-row">
+          <input type="radio" name="holiday-datemode" id="holiday-type-weekly-radio" onchange="toggleHolidayTypeFields()">
+          <span>หยุดประจำสัปดาห์ (ซ้ำทุกสัปดาห์)</span>
+        </label>
+        <div id="holiday-weekly-field" class="tb-indent" style="display:none">
           <select id="holiday-weekday">
             <option value="0">ทุกวันอาทิตย์</option>
             <option value="1">ทุกวันจันทร์</option>
@@ -340,7 +378,10 @@
           </select>
         </div>
 
-        <input type="text" id="holiday-name" placeholder="ชื่อวันหยุด">
+        <label class="field-label">ชื่อวันหยุด</label>
+        <input type="text" id="holiday-name" placeholder="เช่น วันขึ้นปีใหม่">
+      </div>
+      <div class="tb-footer">
         <button id="holiday-submit-btn" onclick="submitAddHoliday()">เพิ่มวันหยุด</button>
       </div>
     </div>
@@ -348,32 +389,35 @@
 
   <div id="dashboard-modal-overlay">
     <div id="dashboard-box">
-      <button id="dashboard-close" onclick="closeDashboardModal()">✕</button>
-      <h2>📊 Dashboard สรุปงาน</h2>
-
-      <div id="dashboard-controls">
-        <select id="dashboard-period" onchange="onDashboardPeriodChange()">
-          <option value="month">เดือนนี้</option>
-          <option value="week">สัปดาห์นี้</option>
-          <option value="custom">กำหนดเอง</option>
-        </select>
-        <span id="dashboard-custom-range" style="display:none">
-          <input type="date" id="dashboard-custom-start" onchange="loadDashboardData()">
-          <span>ถึง</span>
-          <input type="date" id="dashboard-custom-end" onchange="loadDashboardData()">
-        </span>
-        <button onclick="printDashboardReport()">🖨️ พิมพ์รายงาน</button>
+      <div class="tb-head">
+        <h2>📊 Dashboard สรุปงาน</h2>
+        <button id="dashboard-close" onclick="closeDashboardModal()">✕</button>
       </div>
+      <div class="tb-body">
+        <div id="dashboard-controls">
+          <select id="dashboard-period" onchange="onDashboardPeriodChange()">
+            <option value="month">เดือนนี้</option>
+            <option value="week">สัปดาห์นี้</option>
+            <option value="custom">กำหนดเอง</option>
+          </select>
+          <span id="dashboard-custom-range" style="display:none">
+            <input type="date" id="dashboard-custom-start" onchange="loadDashboardData()">
+            <span>ถึง</span>
+            <input type="date" id="dashboard-custom-end" onchange="loadDashboardData()">
+          </span>
+          <button onclick="printDashboardReport()">🖨️ พิมพ์รายงาน</button>
+        </div>
 
-      <div id="dashboard-cards"></div>
+        <div id="dashboard-cards"></div>
 
-      <div class="dashboard-chart-row">
-        <div class="dashboard-chart-box"><canvas id="dashboard-chart-daily"></canvas></div>
-        <div class="dashboard-chart-box"><canvas id="dashboard-chart-type"></canvas></div>
+        <div class="dashboard-chart-row">
+          <div class="dashboard-chart-box"><canvas id="dashboard-chart-daily"></canvas></div>
+          <div class="dashboard-chart-box"><canvas id="dashboard-chart-type"></canvas></div>
+        </div>
+
+        <h3>ภาระงานของแต่ละคน</h3>
+        <div id="dashboard-workload-table"></div>
       </div>
-
-      <h3>ภาระงานของแต่ละคน</h3>
-      <div id="dashboard-workload-table"></div>
     </div>
   </div>
 
@@ -470,33 +514,42 @@
 
   <div id="reschedule-modal-overlay">
     <div id="reschedule-box">
-      <button class="modal-close-btn" onclick="closeRescheduleModal()">✕</button>
-      <h2>🔁 ขอเปลี่ยนวัน</h2>
-      <p class="sub">ส่งคำขอให้ Admin อนุมัติ งานจะยังไม่เปลี่ยนจนกว่าจะได้รับการอนุมัติ</p>
-      <div class="row2">
-        <div>
-          <label class="field-label">วันเริ่มใหม่</label>
-          <input type="date" id="reschedule-start-date">
-        </div>
-        <div>
-          <label class="field-label">วันสิ้นสุดใหม่</label>
-          <input type="date" id="reschedule-end-date">
-        </div>
+      <div class="tb-head">
+        <h2>🔁 ขอเปลี่ยนวัน</h2>
+        <button class="modal-close-btn" onclick="closeRescheduleModal()">✕</button>
       </div>
-      <label class="field-label">เหตุผล (ไม่บังคับ)</label>
-      <textarea id="reschedule-reason" placeholder="เช่น ลูกค้าขอเลื่อนนัด"></textarea>
-      <button id="reschedule-submit-btn" onclick="submitRescheduleRequest()">ส่งคำขอ</button>
+      <div class="tb-info-banner">ส่งคำขอให้ Admin อนุมัติ งานจะยังไม่เปลี่ยนจนกว่าจะได้รับการอนุมัติ</div>
+      <div class="tb-body">
+        <div class="row2">
+          <div>
+            <label class="field-label">วันเริ่มใหม่</label>
+            <input type="date" id="reschedule-start-date">
+          </div>
+          <div>
+            <label class="field-label">วันสิ้นสุดใหม่</label>
+            <input type="date" id="reschedule-end-date">
+          </div>
+        </div>
+        <label class="field-label">เหตุผล (ไม่บังคับ)</label>
+        <textarea id="reschedule-reason" placeholder="เช่น ลูกค้าขอเลื่อนนัด"></textarea>
+      </div>
+      <div class="tb-footer">
+        <button id="reschedule-submit-btn" onclick="submitRescheduleRequest()">ส่งคำขอ</button>
+      </div>
     </div>
   </div>
 
   <div id="my-requests-modal-overlay">
     <div id="my-requests-box">
-      <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
-      <div class="my-requests-head">
+      <div class="tb-head">
         <h2>🔔 การแจ้งเตือน</h2>
+        <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
+      </div>
+      <div class="tb-info-banner my-requests-head">
+        <span>รายการแจ้งเตือนล่าสุดของคุณ</span>
         <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
       </div>
-      <div id="my-requests-list"></div>
+      <div id="my-requests-list" class="tb-body"></div>
     </div>
   </div>
 

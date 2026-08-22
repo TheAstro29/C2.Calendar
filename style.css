@@ -44,8 +44,12 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 
 /* ===== Dashboard ===== */
 #dashboard-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2050; align-items: center; justify-content: center; }
-#dashboard-box { background: #fff; border-radius: 14px; padding: 24px; width: 92%; max-width: 900px; max-height: 88vh; overflow-y: auto; position: relative; }
-#dashboard-close { position: absolute; top: 14px; right: 14px; border: none; background: #f4f5f7; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; font-size: 16px; }
+#dashboard-box {
+  background: #fff; border-radius: 14px; padding: 0; width: 92%; max-width: 900px;
+  max-height: 88vh; overflow-y: hidden; position: relative;
+  display: flex; flex-direction: column;
+}
+#dashboard-box .tb-body { padding: 20px 24px; }
 #dashboard-controls { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; }
 #dashboard-controls select { padding: 8px 12px; border-radius: 8px; border: 1px solid #dfe1e6; }
 #dashboard-custom-range { display: inline-flex; align-items: center; gap: 6px; }
@@ -362,9 +366,10 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   align-items: center; justify-content: center; z-index: 2050;
 }
 #staff-box {
-  background: #ffffff; border-radius: 14px; padding: 28px;
+  background: #ffffff; border-radius: 14px; padding: 0;
   width: 480px; max-width: 92vw;
-  max-height: 92vh; overflow-y: auto; position: relative;
+  max-height: 92vh; overflow-y: hidden; position: relative;
+  display: flex; flex-direction: column;
 }
 #staff-list { max-height: 260px; overflow-y: auto; padding-right: 4px; }
 #staff-form-toggle-btn {
@@ -382,41 +387,52 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #staff-form .row2 { flex-direction: column; }
   .staff-row { flex-wrap: wrap; }
 }
-#staff-box h2 { font-size: 16px; margin: 0 0 16px; color: #059669; }
-#staff-close {
-  position: absolute; top: 12px; right: 14px; background: none; border: none;
-  font-size: 16px; cursor: pointer; color: #6b7280;
+#staff-form {
+  margin-top: 4px;
 }
+#staff-form .tb-subhead { margin-top: 0; }
+#staff-form input, #staff-form select {
+  width: 100%; padding: 9px 10px; font-size: 13px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+}
+#staff-form .row2 { display: flex; gap: 12px; margin-top: 4px; }
+#staff-form .row2 > div { flex: 1; }
+#staff-form input[type="color"] { padding: 2px; height: 38px; }
+
+/* แถวรายชื่อผู้ใช้แบบใหม่: avatar วงกลม + badge สิทธิ์ข้างชื่อ + ปุ่มไอคอนวงกลม (แทนปุ่มข้อความเดิม) */
 .staff-row {
-  display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  display: flex; align-items: flex-start; gap: 12px; padding: 12px 4px;
   border-bottom: 1px solid #f0f1f3;
 }
-.staff-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.staff-info { flex: 1; }
-.staff-info .name { font-size: 14px; margin: 0; }
-.staff-info .pos { font-size: 12px; color: #6b7280; margin: 0; }
+.sr-avatar {
+  width: 42px; height: 42px; border-radius: 50%; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 16px; font-weight: 700; overflow: hidden;
+}
+.sr-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.staff-info { flex: 1; min-width: 0; }
+.staff-info .name-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.staff-info .name { font-size: 14px; margin: 0; font-weight: 600; }
+.staff-info .pos { font-size: 12px; color: #6b7280; margin: 3px 0 0; }
+.staff-info .meta { font-size: 12px; color: #9aa1a8; margin: 2px 0 0; }
+.sr-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: 0 0 auto; }
+.sr-icon-row { display: flex; gap: 6px; }
+.sr-icon-btn {
+  width: 28px; height: 28px; border-radius: 50%; border: 1px solid #d1d5db;
+  background: #fff; color: #059669; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sr-icon-btn.danger { color: #ef4444; border-color: #fecaca; }
+.sr-icon-btn svg { width: 14px; height: 14px; }
+.sr-toggle { font-size: 11px; display: flex; align-items: center; gap: 4px; color: #6b7280; white-space: nowrap; }
+.sr-toggle input { width: 13px; height: 13px; margin: 0; }
 .row-edit-btn {
   background: none; border: 1px solid #d1d5db; color: #059669;
   font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer;
 }
 .row-edit-btn.danger { border-color: #fecaca; color: #ef4444; }
 #staff-cancel-edit-btn {
-  width: 100%; padding: 9px; background: #fff; color: #6b7280; border: 1px solid #d1d5db;
-  border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 6px;
-}
-#staff-form {
-  margin-top: 18px; padding-top: 16px; border-top: 1px solid #dfe1e6;
-}
-#staff-form h3 { font-size: 13px; color: #6b7280; margin: 0 0 10px; }
-#staff-form input, #staff-form select {
-  width: 100%; padding: 9px 10px; margin-bottom: 8px; font-size: 13px;
-  border: 1px solid #d1d5db; border-radius: 6px;
-}
-#staff-form .row2 { display: flex; gap: 8px; }
-#staff-form input[type="color"] { padding: 2px; height: 36px; }
-#staff-form button {
-  width: 100%; padding: 9px; background: #059669; color: #fff; border: none;
-  border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 4px;
+  background: none; color: #6b7280; border: none;
 }
 .role-badge {
   font-size: 10px; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
@@ -432,13 +448,16 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   align-items: center; justify-content: center; z-index: 2050;
 }
 #holiday-box {
-  background: #ffffff; border-radius: 10px; padding: 28px; width: 360px;
-  max-height: 80vh; overflow-y: auto; position: relative;
+  background: #ffffff; border-radius: 10px; padding: 0; width: 380px; max-width: 92vw;
+  max-height: 85vh; overflow-y: hidden; position: relative;
+  display: flex; flex-direction: column;
 }
-#holiday-box h2 { font-size: 16px; margin: 0 0 16px; color: #059669; }
-#holiday-close {
-  position: absolute; top: 12px; right: 14px; background: none; border: none;
-  font-size: 16px; cursor: pointer; color: #6b7280;
+#holiday-box input, #holiday-box select {
+  width: 100%; padding: 9px 10px; font-size: 13px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+}
+#holiday-box input[type="radio"] {
+  width: 16px; height: 16px; flex: 0 0 auto; margin: 0; padding: 0; border: none;
 }
 .holiday-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 0;
@@ -446,18 +465,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 .holiday-row .hdate { color: #6b7280; font-size: 12px; white-space: nowrap; }
 .holiday-row .hname { flex: 1; }
-#holiday-form {
-  margin-top: 18px; padding-top: 16px; border-top: 1px solid #dfe1e6;
-}
-#holiday-form h3 { font-size: 13px; color: #6b7280; margin: 0 0 10px; }
-#holiday-form input, #holiday-form select {
-  width: 100%; padding: 9px 10px; margin-bottom: 8px; font-size: 13px;
-  border: 1px solid #d1d5db; border-radius: 6px;
-}
-#holiday-form button {
-  width: 100%; padding: 9px; background: #059669; color: #fff; border: none;
-  border-radius: 6px; font-size: 13px; cursor: pointer;
-}
+#holiday-submit-btn { background: #059669; border: none; color: #fff; }
 .holiday-badge {
   font-size: 10px; padding: 2px 6px; border-radius: 4px; white-space: nowrap;
   background: #eef1f5; color: #6b7280;
@@ -585,31 +593,28 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   align-items: center; justify-content: center; z-index: 2050;
 }
 #reschedule-box, #pending-requests-box, #my-requests-box {
-  background: #ffffff; border-radius: 14px; padding: 26px; width: 420px; max-width: 92vw;
-  max-height: 85vh; overflow-y: auto; position: relative;
-}
-#reschedule-box h2, #pending-requests-box h2, #my-requests-box h2 {
-  font-size: 16px; margin: 0 0 6px; color: #059669;
+  background: #ffffff; border-radius: 14px; padding: 0; width: 420px; max-width: 92vw;
+  max-height: 85vh; overflow-y: hidden; position: relative;
+  display: flex; flex-direction: column;
 }
 .my-requests-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
 }
-.my-requests-head h2 { margin: 0; }
 #mark-all-read-btn { font-size: 12px; padding: 5px 10px; flex-shrink: 0; }
-#reschedule-box .sub { font-size: 12px; color: #6b7280; margin: 0 0 16px; }
 .modal-close-btn {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: #6b7280;
 }
+.tb-head .modal-close-btn { position: static; color: rgba(255,255,255,0.75); }
+.tb-head .modal-close-btn:hover { color: #fff; }
 #reschedule-box .field-label { font-size: 12px; color: #6b7280; display: block; margin: 8px 0 6px; }
 #reschedule-box input, #reschedule-box textarea {
   width: 100%; padding: 9px 10px; font-size: 13px;
-  border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 8px;
+  border: 1px solid #d1d5db; border-radius: 8px;
 }
 #reschedule-box textarea { min-height: 60px; }
 #reschedule-submit-btn {
-  width: 100%; padding: 10px; background: #059669; color: #fff; border: none;
-  border-radius: 8px; font-size: 13px; cursor: pointer; margin-top: 6px;
+  width: 100%; background: #059669; color: #fff; border: none;
 }
 
 /* Modal ดูรายละเอียดงาน (กดที่งานในปฏิทิน) - แทนที่ Swal.fire เดิม ให้เข้าธีมเดียวกับ modal อื่นๆ */
@@ -684,21 +689,23 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   display: flex; flex-direction: column;
 }
 .tb-head {
-  background: #14213d; color: #fff; padding: 18px 22px;
+  background: #059669; color: #fff; padding: 18px 22px;
   display: flex; align-items: center; justify-content: space-between;
   border-radius: 10px 10px 0 0; flex: 0 0 auto;
 }
 .tb-head h2 { font-size: 16px; margin: 0; }
-#task-close {
+.tb-head button, #task-close {
   background: none; border: none;
-  font-size: 15px; cursor: pointer; color: #c7ccd8;
+  font-size: 15px; cursor: pointer; color: rgba(255,255,255,0.75);
 }
+.tb-head button:hover { color: #fff; }
 .tb-info-banner {
   background: #eef0fb; color: #374151; font-size: 12px; padding: 10px 22px; flex: 0 0 auto;
 }
 .tb-body { padding: 18px 22px 6px; overflow-y: auto; flex: 1 1 auto; }
 .tb-divider { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
 .tb-indent { padding-left: 24px; }
+.tb-subhead { font-size: 13px; font-weight: 700; color: #1f2430; margin: 0 0 10px; }
 #task-box .field-label {
   font-size: 13px; color: #6b7280; display: block; margin: 12px 0 6px;
 }
@@ -766,23 +773,21 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #login-error-text { font-size: 15px; }
 
   /* จัดการบัญชีผู้ใช้ */
-  #staff-box h2 { font-size: 20px; }
   .staff-info .name { font-size: 17px; }
   .staff-info .pos { font-size: 15px; }
+  .staff-info .meta { font-size: 14px; }
   .row-edit-btn { font-size: 14px; }
   #staff-cancel-edit-btn { font-size: 16px; }
-  #staff-form h3 { font-size: 16px; }
+  .tb-subhead { font-size: 16px; }
   #staff-form input, #staff-form select { font-size: 16px; }
-  #staff-form button { font-size: 16px; }
+  #staff-submit-btn { font-size: 16px; }
   .role-badge { font-size: 13px; }
 
   /* วันหยุดองค์กร */
-  #holiday-box h2 { font-size: 20px; }
   .holiday-row { font-size: 16px; }
   .holiday-row .hdate { font-size: 15px; }
-  #holiday-form h3 { font-size: 16px; }
-  #holiday-form input, #holiday-form select { font-size: 16px; }
-  #holiday-form button { font-size: 16px; }
+  #holiday-box input, #holiday-box select { font-size: 16px; }
+  #holiday-submit-btn { font-size: 16px; }
   .holiday-badge { font-size: 13px; }
 
   /* โปรไฟล์ */
@@ -800,8 +805,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #profile-logout-link { font-size: 16px; }
 
   /* ขอเปลี่ยนวัน / รายการคำขอ */
-  #reschedule-box h2, #pending-requests-box h2, #my-requests-box h2 { font-size: 20px; }
-  #reschedule-box .sub { font-size: 15px; }
   #reschedule-box .field-label { font-size: 15px; }
   #reschedule-box input, #reschedule-box textarea { font-size: 16px; }
   #reschedule-submit-btn { font-size: 16px; }
@@ -923,7 +926,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .fc-list-day-cushion { padding: 6px 10px !important; }
   .fc-list-event td { padding: 6px 8px !important; }
   #dashboard-cards { grid-template-columns: repeat(2, 1fr) !important; }
-  #dashboard-box { padding: 16px; }
+  #dashboard-box .tb-body { padding: 16px; }
 }
 
 /* ===== Tablet (769px - 1024px) - sidebar เป็น drawer เหมือนมือถือ แต่ปฏิทินแบบ Grid + topbar ไอคอนเหมือน PC ===== */

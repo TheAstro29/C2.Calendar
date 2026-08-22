@@ -580,29 +580,65 @@ function renderStaffList(result) {
     return;
   }
 
+  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>';
+  var ICON_KEY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="M21 2l-9.6 9.6"></path><path d="M15.5 7.5 18 10"></path><path d="M18.5 4.5 21 7"></path></svg>';
+  var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
+
   container.innerHTML = '';
   result.staff.forEach(function (s) {
+    var color = s.colorHex || '#888780';
+    var textColor = getContrastTextColor(color);
+    var initial = (s.firstName || '?').charAt(0);
+    var fullName = (s.firstName + ' ' + s.lastName).replace(/'/g, '');
+
     var row = document.createElement('div');
     row.className = 'staff-row';
     row.innerHTML =
-      '<span class="staff-dot" style="background:' + s.colorHex + '"></span>' +
-      '<div class="staff-info">' +
-        '<p class="name">' + s.firstName + ' ' + s.lastName + '</p>' +
-        '<p class="pos">' + (s.position || '-') + '</p>' +
+      '<div class="sr-avatar" style="background:' + color + '">' +
+        (s.photoURL
+          ? '<img src="' + s.photoURL + '" alt="">'
+          : '<span style="color:' + textColor + '">' + initial + '</span>') +
       '</div>' +
-      '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
-      '<button class="row-edit-btn" onclick=\'startEditStaff(' + JSON.stringify(s) + ')\'>แก้ไข</button>' +
-      '<button class="row-edit-btn" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">รีเซ็ตรหัส</button>' +
-      '<button class="row-edit-btn danger" onclick="deleteStaffConfirm(this, \'' + s.staffId + '\', \'' + (s.firstName + ' ' + s.lastName).replace(/'/g, '') + '\')">ลบบัญชี</button>' +
-      '<label style="font-size:12px;display:flex;align-items:center;gap:4px">' +
-        '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(this, \'' + s.staffId + '\', this.checked)">' +
-        'ใช้งาน' +
-      '</label>';
+      '<div class="staff-info">' +
+        '<div class="name-line">' +
+          '<p class="name">' + s.firstName + ' ' + s.lastName + '</p>' +
+          '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
+        '</div>' +
+        '<p class="pos">' + (s.position || 'ไม่ระบุตำแหน่ง') + '</p>' +
+        '<p class="meta">' + (s.phone || 'ไม่ระบุเบอร์โทร') + '</p>' +
+      '</div>' +
+      '<div class="sr-actions">' +
+        '<div class="sr-icon-row">' +
+          '<button class="sr-icon-btn" title="แก้ไข" onclick=\'startEditStaff(' + JSON.stringify(s) + ')\'>' + ICON_EDIT + '</button>' +
+          '<button class="sr-icon-btn" title="รีเซ็ตรหัส" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_KEY + '</button>' +
+          '<button class="sr-icon-btn danger" title="ลบบัญชี" onclick="deleteStaffConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_TRASH + '</button>' +
+        '</div>' +
+        '<label class="sr-toggle">' +
+          '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(this, \'' + s.staffId + '\', this.checked)">' +
+          'ใช้งาน' +
+        '</label>' +
+      '</div>';
     container.appendChild(row);
   });
 }
 
 var editingStaffId = null;
+
+// ปุ่ม segmented เลือกสิทธิ์/เพศ - เก็บค่าจริงไว้ใน <select> ที่ซ่อนอยู่ (ของเดิม backend ยังอ่านจากตรงนี้)
+function setStaffRole(value) {
+  document.getElementById('staff-role').value = value;
+  var buttons = document.querySelectorAll('#staff-role-segmented button');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('active', buttons[i].getAttribute('data-value') === value);
+  }
+}
+function setStaffGender(value) {
+  document.getElementById('staff-gender').value = value;
+  var buttons = document.querySelectorAll('#staff-gender-segmented button');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('active', buttons[i].getAttribute('data-value') === value);
+  }
+}
 
 function toggleStaffAddForm() {
   var form = document.getElementById('staff-form');
@@ -621,8 +657,8 @@ function startEditStaff(s) {
   document.getElementById('staff-position').value = s.position || '';
   document.getElementById('staff-phone').value = s.phone || '';
   document.getElementById('staff-color').value = s.colorHex || '#378ADD';
-  document.getElementById('staff-role').value = s.role || 'staff';
-  document.getElementById('staff-gender').value = s.gender || '';
+  setStaffRole(s.role || 'staff');
+  setStaffGender(s.gender || '');
   document.getElementById('staff-birthdate').value = s.birthDate || '';
   document.getElementById('staff-form-title').textContent = 'แก้ไขบัญชีผู้ใช้';
   document.getElementById('staff-submit-btn').textContent = 'บันทึกการแก้ไข';
@@ -641,8 +677,8 @@ function cancelEditStaff() {
   document.getElementById('staff-position').value = '';
   document.getElementById('staff-phone').value = '';
   document.getElementById('staff-color').value = '#378ADD';
-  document.getElementById('staff-role').value = 'staff';
-  document.getElementById('staff-gender').value = '';
+  setStaffRole('staff');
+  setStaffGender('');
   document.getElementById('staff-birthdate').value = '';
   document.getElementById('staff-form-title').textContent = 'เพิ่มบัญชีผู้ใช้ใหม่';
   document.getElementById('staff-submit-btn').textContent = 'เพิ่มบัญชีผู้ใช้';
@@ -1467,7 +1503,8 @@ function closeHolidayModal() {
 }
 
 function toggleHolidayTypeFields() {
-  var isWeekly = document.getElementById('holiday-type').value === 'weekly';
+  var isWeekly = document.getElementById('holiday-type-weekly-radio').checked;
+  document.getElementById('holiday-type').value = isWeekly ? 'weekly' : 'date';
   document.getElementById('holiday-date-field').style.display = isWeekly ? 'none' : 'block';
   document.getElementById('holiday-weekly-field').style.display = isWeekly ? 'block' : 'none';
 }
