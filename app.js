@@ -13,9 +13,10 @@ var fbDb = firebase.firestore();
 var fbFunctions = firebase.app().functions("asia-southeast1");
 var fbStorage = firebase.storage();
 
-// เตรียมไว้สำหรับอนาคต ถ้าได้ Google Maps API key มาแค่ใส่ค่าตรงนี้ระบบจะเปิดแผนที่ให้อัตโนมัติ
-// ตอนนี้ปล่อยว่างไว้ - ฟอร์มจะไม่โชว์ข้อความอะไรเกี่ยวกับแผนที่เลย ใช้ช่องพิมพ์ชื่อสถานที่แทน
-var GOOGLE_MAPS_API_KEY = '';
+// key นี้ถูก restrict ไว้แล้ว (Application restriction: จำกัดเฉพาะโดเมนเว็บนี้, API restriction: จำกัดเฉพาะ
+// Firestore/Storage/Auth/Installations + Maps JavaScript/Places/Geocoding เท่านั้น) — ถ้าจะเปลี่ยน key ใหม่
+// อย่าลืม restrict ให้ครบทั้งสองแบบเหมือนกันก่อนใช้งานจริง
+var GOOGLE_MAPS_API_KEY = 'AIzaSyBjJLodAV1hkgaxxmgzvccMVAIW5S8hbqw';
 
 var TOKEN_KEY = 'c2tech_token';
 var NAME_KEY = 'c2tech_admin_name';
