@@ -1867,7 +1867,7 @@ function loadDashboardData() {
   if (dashboardChartDaily) dashboardChartDaily.destroy();
   dashboardChartDaily = new Chart(document.getElementById('dashboard-chart-daily'), {
     type: 'bar',
-    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#3F654D' }] },
+    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#059669' }] },
     options: { responsive: true, plugins: { title: { display: true, text: 'จำนวนงานต่อวัน' } } }
   });
 

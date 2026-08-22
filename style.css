@@ -50,12 +50,12 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 #dashboard-controls select { padding: 8px 12px; border-radius: 8px; border: 1px solid #dfe1e6; }
 #dashboard-custom-range { display: inline-flex; align-items: center; gap: 6px; }
 #dashboard-custom-range input { padding: 6px 8px; border-radius: 8px; border: 1px solid #dfe1e6; }
-#dashboard-controls button { padding: 8px 14px; border-radius: 8px; border: none; background: #3F654D; color: #fff; cursor: pointer; }
+#dashboard-controls button { padding: 8px 14px; border-radius: 8px; border: none; background: #059669; color: #fff; cursor: pointer; }
 #dashboard-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
 .dash-card { background: #f4f5f7; border-radius: 10px; padding: 14px 8px; text-align: center; }
-.dash-num { font-size: 24px; font-weight: 700; color: #3F654D; margin: 0; }
+.dash-num { font-size: 24px; font-weight: 700; color: #059669; margin: 0; }
 .dash-label { font-size: 11px; color: #6b7280; margin: 2px 0 4px; }
-.trend-up { color: #3F654D; font-size: 11px; font-weight: 600; }
+.trend-up { color: #059669; font-size: 11px; font-weight: 600; }
 .trend-down { color: #ef4444; font-size: 11px; font-weight: 600; }
 .trend-flat { color: #9aa1a8; font-size: 11px; }
 .dashboard-chart-row { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -66,12 +66,12 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 
 /* หน้าพิมพ์รายงาน - ซ่อนไว้ปกติในหน้าเว็บ โผล่มาเฉพาะตอนสั่งพิมพ์เท่านั้น */
 #print-report { display: none; }
-#print-report-header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #3F654D; padding-bottom: 12px; margin-bottom: 16px; }
-#print-report-header h1 { margin: 0; color: #3F654D; font-size: 22px; }
+#print-report-header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #059669; padding-bottom: 12px; margin-bottom: 16px; }
+#print-report-header h1 { margin: 0; color: #059669; font-size: 22px; }
 #print-report-header p { margin: 2px 0 0; color: #333; }
 #print-report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
 #print-report-table th, #print-report-table td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
-#print-report-workload-title { color: #3F654D; font-size: 16px; margin: 24px 0 8px; }
+#print-report-workload-title { color: #059669; font-size: 16px; margin: 24px 0 8px; }
 #print-report-workload { width: 100%; border-collapse: collapse; }
 #print-report-workload th, #print-report-workload td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
 #print-report-workload th { background: #f4f5f7; }
@@ -89,7 +89,7 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 /* หน้า Loading ตอนเปิดเว็บครั้งแรก */
 #page-loading {
   position: fixed; inset: 0; z-index: 2000;
-  background: linear-gradient(160deg, #63816F, #3F654D 55%, #223a2b);
+  background: linear-gradient(160deg, #10b981, #059669 55%, #065f46);
   display: flex; align-items: center; justify-content: center;
   transition: opacity 0.4s ease;
 }
@@ -99,7 +99,7 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 #page-loading-logo {
   font-size: 34px; font-weight: 600; letter-spacing: 0.5px; margin: 20px 0 6px;
 }
-#page-loading-logo .accent { color: #D2DCD8; font-weight: 800; }
+#page-loading-logo .accent { color: #a7f3d0; font-weight: 800; }
 #page-loading-text { font-size: 16px; color: rgba(255,255,255,0.75); margin: 6px 0 0; }
 
 .loading-dots { display: flex; gap: 9px; justify-content: center; margin: 18px 0 12px; }
@@ -120,7 +120,7 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
   border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
   animation: spin 0.7s linear infinite; display: inline-block; vertical-align: -3px;
 }
-.spinner-dark { border-color: rgba(63,101,77,0.25); border-top-color: #3F654D; }
+.spinner-dark { border-color: rgba(5,150,105,0.25); border-top-color: #059669; }
 .spinner-lg { width: 32px; height: 32px; border-width: 3px; margin: 0 auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -146,8 +146,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .member-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
 .member-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.22); }
 .request-card { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
-.request-card:hover { border-color: #3F654D; box-shadow: 0 2px 8px rgba(63,101,77,0.12); }
-.notif-unread { background: #eef3f0; border-left: 3px solid #3F654D; }
+.request-card:hover { border-color: #059669; box-shadow: 0 2px 8px rgba(5,150,105,0.12); }
+.notif-unread { background: #f0fdf9; border-left: 3px solid #059669; }
 
 /* To-Do List - แสดงใน sidebar ขวา (เฉพาะ Admin เห็น) */
 #todo-sidebar-section .sub { font-size: 11px; color: #9aa1a8; margin: 0 0 10px; }
@@ -160,7 +160,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .todo-item .ti-actions button { flex: 1; padding: 5px; border-radius: 6px; font-size: 11px; cursor: pointer; }
 
 #topbar {
-  background: #3F654D; color: #fff; padding: 14px 24px;
+  background: #059669; color: #fff; padding: 14px 24px;
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 10px;
   /* ให้ header ลอยค้างอยู่บนสุดเสมอตอนเลื่อนหน้าจอ ไม่เลื่อนตามเนื้อหาไป
@@ -170,7 +170,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #topbar-brand { display: flex; align-items: center; gap: 10px; }
 #topbar-brand img { border-radius: 8px; flex-shrink: 0; }
 #topbar h1 { font-size: 16px; margin: 0; font-weight: 600; }
-#topbar h1 .accent { color: #D2DCD8; font-weight: 800; }
+#topbar h1 .accent { color: #a7f3d0; font-weight: 800; }
 #topbar-right {
   display: flex; align-items: center; flex-wrap: wrap;
   justify-content: flex-end; gap: 8px; row-gap: 8px;
@@ -292,7 +292,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 /* Modal login - Glassmorphism */
 #login-modal-overlay {
   display: none; position: fixed; inset: 0;
-  background: linear-gradient(135deg, rgba(63,101,77,0.55), rgba(4,120,87,0.5));
+  background: linear-gradient(135deg, rgba(5,150,105,0.55), rgba(4,120,87,0.5));
   backdrop-filter: blur(2px);
   align-items: center; justify-content: center; z-index: 2050;
 }
@@ -342,12 +342,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #login-box button.submit {
   width: 100%; padding: 11px; color: #fff; border: none;
-  background: linear-gradient(135deg, #63816F, #3F654D);
+  background: linear-gradient(135deg, #10b981, #059669);
   border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 4px;
-  box-shadow: 0 4px 14px rgba(63,101,77,0.4);
+  box-shadow: 0 4px 14px rgba(5,150,105,0.4);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-#login-box button.submit:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(63,101,77,0.5); }
+#login-box button.submit:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(5,150,105,0.5); }
 #login-close {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: rgba(255,255,255,0.7);
@@ -368,7 +368,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #staff-list { max-height: 260px; overflow-y: auto; padding-right: 4px; }
 #staff-form-toggle-btn {
-  width: 100%; padding: 9px; background: #fff; color: #3F654D; border: 1px dashed #3F654D;
+  width: 100%; padding: 9px; background: #fff; color: #059669; border: 1px dashed #059669;
   border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 14px;
 }
 @media (max-width: 640px) {
@@ -382,7 +382,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #staff-form .row2 { flex-direction: column; }
   .staff-row { flex-wrap: wrap; }
 }
-#staff-box h2 { font-size: 16px; margin: 0 0 16px; color: #3F654D; }
+#staff-box h2 { font-size: 16px; margin: 0 0 16px; color: #059669; }
 #staff-close {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: #6b7280;
@@ -396,7 +396,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .staff-info .name { font-size: 14px; margin: 0; }
 .staff-info .pos { font-size: 12px; color: #6b7280; margin: 0; }
 .row-edit-btn {
-  background: none; border: 1px solid #d1d5db; color: #3F654D;
+  background: none; border: 1px solid #d1d5db; color: #059669;
   font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer;
 }
 .row-edit-btn.danger { border-color: #fecaca; color: #ef4444; }
@@ -415,14 +415,14 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #staff-form .row2 { display: flex; gap: 8px; }
 #staff-form input[type="color"] { padding: 2px; height: 36px; }
 #staff-form button {
-  width: 100%; padding: 9px; background: #3F654D; color: #fff; border: none;
+  width: 100%; padding: 9px; background: #059669; color: #fff; border: none;
   border-radius: 6px; font-size: 13px; cursor: pointer; margin-top: 4px;
 }
 .role-badge {
   font-size: 10px; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
   background: #eef1f5; color: #6b7280;
 }
-.role-badge.admin { background: #3F654D; color: #fff; }
+.role-badge.admin { background: #059669; color: #fff; }
 .role-badge.ceo { background: #f4e6ff; color: #7b3fb0; }
 .role-badge.staff { background: #eef1f5; color: #6b7280; }
 
@@ -435,7 +435,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   background: #ffffff; border-radius: 10px; padding: 28px; width: 360px;
   max-height: 80vh; overflow-y: auto; position: relative;
 }
-#holiday-box h2 { font-size: 16px; margin: 0 0 16px; color: #3F654D; }
+#holiday-box h2 { font-size: 16px; margin: 0 0 16px; color: #059669; }
 #holiday-close {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: #6b7280;
@@ -455,7 +455,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   border: 1px solid #d1d5db; border-radius: 6px;
 }
 #holiday-form button {
-  width: 100%; padding: 9px; background: #3F654D; color: #fff; border: none;
+  width: 100%; padding: 9px; background: #059669; color: #fff; border: none;
   border-radius: 6px; font-size: 13px; cursor: pointer;
 }
 .holiday-badge {
@@ -481,7 +481,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* แบนเนอร์เขียวด้านบน - แบบ Staff ID Card */
 #profile-banner {
-  background: linear-gradient(160deg, #3F654D, #2f4d3a);
+  background: linear-gradient(160deg, #059669, #047857);
   border-radius: 22px 22px 0 0; padding: 16px 20px 24px; text-align: center; color: #fff;
 }
 .banner-left, .banner-right {
@@ -495,10 +495,10 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #profile-photo {
   width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
-  border: 3px solid #2f4d3a; display: none;
+  border: 3px solid #047857; display: none;
 }
 #profile-photo-wrap #profile-avatar {
-  width: 100%; height: 100%; border-radius: 50%; border: 3px solid #2f4d3a;
+  width: 100%; height: 100%; border-radius: 50%; border: 3px solid #047857;
   display: flex; align-items: center; justify-content: center;
   color: #fff; font-size: 32px; font-weight: 700;
 }
@@ -518,7 +518,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .profile-row-label { font-size: 11px; color: #9aa1a8; letter-spacing: 0.5px; }
 .profile-row-value { font-size: 14px; color: #1f2430; margin: 2px 0 0; font-weight: 500; }
 .card-username-pill {
-  font-size: 12px; background: #e8efe9; color: #2f4d3a; padding: 4px 10px; border-radius: 12px; font-weight: 600;
+  font-size: 12px; background: #eefaf3; color: #047857; padding: 4px 10px; border-radius: 12px; font-weight: 600;
 }
 
 .profile-action-row { display: flex; gap: 10px; margin-top: 18px; }
@@ -526,7 +526,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   flex: 1; padding: 11px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer;
 }
 .btn-outline { background: #fff; border: 1px solid #d1d5db; color: #4a4a4a; }
-.btn-primary { background: #3F654D; border: none; color: #fff; }
+.btn-primary { background: #059669; border: none; color: #fff; }
 
 #profile-edit-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid #eef0f2; }
 #profile-edit-section .field-label {
@@ -537,15 +537,15 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   border: 1px solid #d1d5db; border-radius: 8px; margin-bottom: 8px;
 }
 #profile-save-btn {
-  width: 100%; padding: 10px; background: #3F654D; color: #fff; border: none;
+  width: 100%; padding: 10px; background: #059669; color: #fff; border: none;
   border-radius: 8px; font-size: 13px; cursor: pointer; margin-top: 4px;
 }
 #profile-password-toggle-link {
-  font-size: 12px; color: #3F654D; text-align: center; margin: 14px 0 0; cursor: pointer; text-decoration: underline;
+  font-size: 12px; color: #059669; text-align: center; margin: 14px 0 0; cursor: pointer; text-decoration: underline;
 }
 #profile-password-section { margin-top: 12px; }
 #profile-password-btn {
-  width: 100%; padding: 10px; background: #fff; color: #3F654D; border: 1px solid #3F654D;
+  width: 100%; padding: 10px; background: #fff; color: #059669; border: 1px solid #059669;
   border-radius: 8px; font-size: 13px; cursor: pointer;
 }
 #profile-logout-link {
@@ -589,7 +589,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   max-height: 85vh; overflow-y: auto; position: relative;
 }
 #reschedule-box h2, #pending-requests-box h2, #my-requests-box h2 {
-  font-size: 16px; margin: 0 0 6px; color: #3F654D;
+  font-size: 16px; margin: 0 0 6px; color: #059669;
 }
 .my-requests-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px;
@@ -608,7 +608,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #reschedule-box textarea { min-height: 60px; }
 #reschedule-submit-btn {
-  width: 100%; padding: 10px; background: #3F654D; color: #fff; border: none;
+  width: 100%; padding: 10px; background: #059669; color: #fff; border: none;
   border-radius: 8px; font-size: 13px; cursor: pointer; margin-top: 6px;
 }
 
@@ -652,7 +652,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   padding-top: 16px; border-top: 1px solid #eef0f2;
 }
 .td-actions button { padding: 8px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; }
-.td-btn-primary { background: #3F654D; color: #fff; border: none; }
+.td-btn-primary { background: #059669; color: #fff; border: none; }
 .td-btn-danger { background: #fff; color: #ef4444; border: 1px solid #ef4444; }
 .td-btn-plain { background: none; color: #6b7280; border: none; }
 
@@ -666,11 +666,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .request-card .rc-actions button {
   flex: 1; padding: 7px; border-radius: 6px; font-size: 12px; cursor: pointer;
 }
-.btn-approve { background: #3F654D; color: #fff; border: none; }
+.btn-approve { background: #059669; color: #fff; border: none; }
 .btn-reject { background: #fff; color: #ef4444; border: 1px solid #ef4444; }
 .status-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
 .status-pill.pending { background: #fef3c7; color: #92620a; }
-.status-pill.approved { background: #dbe7de; color: #2f4d3a; }
+.status-pill.approved { background: #d1fae5; color: #047857; }
 .status-pill.rejected { background: #fee2e2; color: #b91c1c; }
 
 /* Modal สร้างงานใหม่ */
@@ -706,17 +706,17 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   width: 100%; padding: 9px 10px; font-size: 13px;
   border: 1px solid #d1d5db; border-radius: 6px;
 }
-.segmented { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #3F654D; }
+.segmented { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #059669; }
 .segmented button {
-  flex: 1; padding: 9px 6px; font-size: 12px; background: #fff; color: #3F654D; border: none;
-  border-right: 1px solid #3F654D; cursor: pointer; font-weight: 600;
+  flex: 1; padding: 9px 6px; font-size: 12px; background: #fff; color: #059669; border: none;
+  border-right: 1px solid #059669; cursor: pointer; font-weight: 600;
 }
 .segmented button:last-child { border-right: none; }
-.segmented button.active { background: #3F654D; color: #fff; }
+.segmented button.active { background: #059669; color: #fff; }
 .radio-row {
   display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 12px 0 8px; cursor: pointer; font-weight: 600;
 }
-.radio-row input[type="radio"] { width: 16px; height: 16px; accent-color: #3F654D; margin: 0; flex: 0 0 auto; }
+.radio-row input[type="radio"] { width: 16px; height: 16px; accent-color: #059669; margin: 0; flex: 0 0 auto; }
 .location-suggestions {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
   background: #fff; border: 1px solid #d1d5db; border-radius: 8px;
@@ -745,7 +745,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; font-size: 12px; cursor: pointer;
   border: 1px solid #d1d5db; border-radius: 20px; transition: border-color 0.12s ease, background 0.12s ease;
 }
-.staff-checklist label:has(input:checked) { background: #eef3f0; border-color: #3F654D; color: #2f4d3a; font-weight: 600; }
+.staff-checklist label:has(input:checked) { background: #f0fdf9; border-color: #059669; color: #047857; font-weight: 600; }
 .staff-checklist input[type="checkbox"] { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .staff-checklist .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 #task-map { height: 180px; border-radius: 6px; margin-top: 8px; border: 1px solid #d1d5db; }
@@ -755,7 +755,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   border-radius: 0 0 10px 10px;
 }
 .tb-footer button { padding: 9px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 600; }
-#task-submit-btn { background: #3F654D; border: none; color: #fff; }
+#task-submit-btn { background: #059669; border: none; color: #fff; }
 
 /* ===== ขยายขนาดตัวอักษรใน modal ทั้งหมด เฉพาะจอกว้าง (PC) ไม่กระทบมือถือ ===== */
 @media (min-width: 900px) {
@@ -886,14 +886,14 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
     flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
     background: none; border: none; color: #9aa1a8; font-size: 10px; padding: 5px 0; cursor: pointer;
   }
-  .mfn-item:active { color: #3F654D; }
+  .mfn-item:active { color: #059669; }
   .mfn-add {
     flex: 0 0 auto;
-    background: #3F654D; color: #fff; border-radius: 50%;
+    background: #059669; color: #fff; border-radius: 50%;
     width: 48px; height: 48px; margin: -14px auto 0; justify-content: center;
-    box-shadow: 0 4px 12px rgba(63,101,77,0.4);
+    box-shadow: 0 4px 12px rgba(5,150,105,0.4);
   }
-  .mfn-add:active { background: #2f4d3a; }
+  .mfn-add:active { background: #047857; }
 
   /* More menu (bottom sheet) */
   #more-menu-overlay {
