@@ -112,7 +112,10 @@ async function firestoreGetUndatedTasks() {
         var s = staffMapCache[id];
         return s ? { name: s.firstName + ' ' + s.lastName, color: s.colorHex } : null;
       }).filter(function (s) { return s; });
-      tasks.push({ taskId: doc.id, taskName: row.taskName, detail: row.detail, taskType: row.taskType, staff: staff });
+      tasks.push({
+        taskId: doc.id, taskName: row.taskName, detail: row.detail, taskType: row.taskType, staff: staff,
+        createdBy: row.createdBy || '', staffIds: row.staffIds || []
+      });
     });
     return { success: true, tasks: tasks };
   } catch (err) {
@@ -532,7 +535,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
-  document.getElementById('task-undated-row').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('task-undated-row').style.display = (isAdmin || isStaff) ? 'flex' : 'none';
   requestNotificationPermission();
   setupNotificationsRealtimeListener();
   loadTodoList();
@@ -1062,7 +1065,8 @@ function proceedSaveTask(payload, btn) {
       closeTaskModal();
       var token = localStorage.getItem(TOKEN_KEY);
       loadAdminEvents(token);
-      if (localStorage.getItem(ROLE_KEY) === 'admin') loadTodoList();
+      // รีเฟรช To-Do List ทุกครั้งที่บันทึกงานแบบไม่ระบุวันที่ (ไม่ใช่แค่ Admin แล้ว เพราะตอนนี้ Staff ก็สร้างงานแบบนี้ได้)
+      if (localStorage.getItem(ROLE_KEY) === 'admin' || payload.isUndated) loadTodoList();
       Toast.fire({ icon: 'success', title: editingTaskId ? 'บันทึกการแก้ไขแล้ว' : 'สร้างงานใหม่แล้ว' });
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
@@ -1085,6 +1089,7 @@ var TASK_TYPE_LABELS = {
 function loadTodoList() {
   var container = document.getElementById('todo-list-sidebar');
   var isAdmin = localStorage.getItem(ROLE_KEY) === 'admin';
+  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
   container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">กำลังโหลด...</p>';
 
   callApi('getUndatedTasks', {}).then(function (result) {
@@ -1099,6 +1104,8 @@ function loadTodoList() {
     container.innerHTML = '';
     result.tasks.forEach(function (t) {
       var staffNames = t.staff.map(function (s) { return s.name; }).join(', ');
+      // Staff: แจ้งขอเปลี่ยนวัน/ขอลบงานที่ตัวเองสร้าง หรือมีชื่อเป็นผู้ปฏิบัติงานได้ (เหมือนที่ทำได้บนปฏิทิน)
+      var isOwner = t.createdBy === myAccountId || (t.staffIds || []).indexOf(myAccountId) !== -1;
       var item = document.createElement('div');
       item.className = 'todo-item';
       item.innerHTML =
@@ -1111,7 +1118,12 @@ function loadTodoList() {
           '<div class="ti-actions">' +
             '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
             '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
-          '</div>' : '');
+          '</div>' :
+          (isOwner ?
+            '<div class="ti-actions">' +
+              '<button class="btn-outline" onclick="openRescheduleModal(\'' + t.taskId + '\')">แจ้งกำหนดวัน</button>' +
+              '<button class="btn-reject" onclick="requestDeleteTaskConfirm(\'' + t.taskId + '\')">แจ้งขอลบ</button>' +
+            '</div>' : ''));
       container.appendChild(item);
     });
   });

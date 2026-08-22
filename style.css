@@ -159,7 +159,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   background: #059669; color: #fff; padding: 14px 24px;
   display: flex; justify-content: space-between; align-items: center;
   flex-wrap: wrap; gap: 10px;
-  position: fixed; top: 0; left: 0; right: 0; width: 100%; z-index: 1300;
 }
 #topbar-brand { display: flex; align-items: center; gap: 10px; }
 #topbar-brand img { border-radius: 8px; flex-shrink: 0; }
@@ -196,7 +195,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #app-body {
   display: flex; gap: 18px; max-width: 1500px; margin: 24px auto; padding: 0 20px;
   align-items: flex-start;
-  margin-top: 88px; /* เผื่อพื้นที่ให้ #topbar ที่เป็น position:fixed ไม่บังเนื้อหา */
 }
 .side-panel {
   width: 220px; flex-shrink: 0; background: #fff;
@@ -776,7 +774,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
   #calendar-wrap { padding: 4px 0 90px; border: none; border-radius: 0; margin: 0; }
   #calendar { margin: 0; padding: 0; }
-  #app-body { padding: 0; margin: 0; gap: 0; margin-top: 60px; }
+  #app-body { padding: 0; margin: 0; gap: 0; }
 
   /* แท่งเมนูลอยเต็มความกว้าง ไม่ชนขอบจอ */
   #mobile-float-nav {
