@@ -1823,6 +1823,44 @@ function toggleCalendarViewMode() {
   calendarInstance.changeView(newView);
   localStorage.setItem(CALENDAR_VIEW_PREF_KEY, newView);
   updateViewToggleLabel(newView);
+  // หมายเหตุ: ไม่ต้องเรียก reverseListViewDayOrder() ซ้ำตรงนี้ — changeView() ทำให้ eventsSet
+  // ของปฏิทิน (ที่ผูก reverseListViewDayOrder ไว้แล้ว) ยิงเองอยู่แล้ว เรียกซ้ำจะกลายเป็นสลับ 2 ครั้ง
+  // (สลับแล้วสลับกลับ) ทำให้ list กลับไปเรียงแบบเดิม (เก่า->ใหม่) เหมือนไม่ได้แก้อะไรเลย — นี่คือบั๊กที่พบ
+}
+
+// ===== สลับลำดับปฏิทินมุมมอง List ให้วันล่าสุดอยู่บนสุด =====
+// FullCalendar (ปลั๊กอิน List) ไม่มีตัวเลือกให้เรียงจากใหม่ไปเก่าในตัว เรียงเก่า->ใหม่เสมอ
+// ฟังก์ชันนี้จึงสลับตำแหน่งกลุ่ม "วัน" (tr.fc-list-day + แถวงานของวันนั้น) ใน DOM หลัง render เสร็จ
+// โดยไม่แตะลำดับงานภายในวันเดียวกัน (เวลาเช้า->เย็นยังเรียงปกติ) และไม่ลบ/สร้าง element ใหม่
+// (แค่ appendChild ย้ายตำแหน่ง) เพื่อไม่ให้ event listener ของ FullCalendar ที่ผูกกับแถวหลุด
+function reverseListViewDayOrder() {
+  if (!calendarInstance || calendarInstance.view.type.indexOf('list') !== 0) return;
+  var calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
+  var tbody = calendarEl.querySelector('.fc-list-table tbody');
+  if (!tbody) return;
+
+  var rows = Array.prototype.slice.call(tbody.children);
+  var groups = [];
+  var current = null;
+  rows.forEach(function (row) {
+    if (row.classList.contains('fc-list-day')) {
+      current = [row];
+      groups.push(current);
+    } else if (current) {
+      current.push(row);
+    } else {
+      // กันเคสแปลกที่มีแถวไม่มี day header นำหน้า (ไม่ควรเกิดกับโครงสร้างของ FullCalendar ปกติ)
+      groups.push([row]);
+    }
+  });
+
+  groups.reverse();
+  var frag = document.createDocumentFragment();
+  groups.forEach(function (g) {
+    g.forEach(function (row) { frag.appendChild(row); });
+  });
+  tbody.appendChild(frag);
 }
 
 function updateViewToggleLabel(viewType) {
@@ -2470,6 +2508,11 @@ function renderCalendar(result) {
     events: result.events,
     datesSet: function (arg) {
       renderMonthHolidayList(arg.view.currentStart, arg.view.currentEnd);
+    },
+    eventsSet: function () {
+      // ยิงทุกครั้งที่ FullCalendar render เนื้อหาชุดใหม่เสร็จ (เปลี่ยนเดือน/เพิ่ม-แก้-ลบงาน/โหลดครั้งแรก)
+      // ใช้จุดนี้เรียง list view ใหม่ให้วันล่าสุดอยู่บนสุด แทนที่จะเรียงเก่า->ใหม่ตามค่าเริ่มต้นของไลบรารี
+      reverseListViewDayOrder();
     },
     dayCellDidMount: function (arg) {
       var d = arg.date;
