@@ -18,6 +18,42 @@ var fbStorage = firebase.storage();
 // อย่าลืม restrict ให้ครบทั้งสองแบบเหมือนกันก่อนใช้งานจริง
 var GOOGLE_MAPS_API_KEY = 'AIzaSyBjJLodAV1hkgaxxmgzvccMVAIW5S8hbqw';
 
+// ============================================================
+// เชื่อมปุ่ม Back ของระบบ (มือถือ/เบราว์เซอร์) เข้ากับการปิด modal ต่างๆ
+// หลักการ: ทุกครั้งที่เปิด modal ใดๆ ให้บันทึกไว้ใน browser history (pushState) ด้วย ไม่ใช่แค่โชว์ DOM เฉยๆ
+// แล้วดักฟัง popstate (ตอนกด back) เพื่อสั่งปิด modal ที่เปิดอยู่ (เรียกฟังก์ชันปิดจริงเพื่อให้ cleanup ทำงานครบ)
+// แทนที่จะปล่อยให้เบราว์เซอร์ปิดแอป/ออกจากหน้าปฏิทินไปเลยทั้งที่ผู้ใช้แค่อยากปิดหน้าต่างที่เปิดอยู่
+// ============================================================
+var _navRestoringCal = false;
+
+var _MODAL_CLOSE_FN = {
+  "login-modal-overlay": function () { closeLoginModal(); },
+  "staff-modal-overlay": function () { closeStaffModal(); },
+  "task-modal-overlay": function () { closeTaskModal(); },
+  "holiday-modal-overlay": function () { closeHolidayModal(); },
+  "dashboard-modal-overlay": function () { closeDashboardModal(); },
+  "profile-modal-overlay": function () { closeProfileModal(); },
+  "reschedule-modal-overlay": function () { closeRescheduleModal(); },
+  "my-requests-modal-overlay": function () { closeMyRequestsModal(); },
+  "task-detail-modal-overlay": function () { closeTaskDetailModal(); },
+};
+
+function _pushModalNav(overlayId) {
+  if (_navRestoringCal) return;
+  try { history.pushState({ __c2calnav: true, modal: overlayId }, ""); } catch (e) {}
+}
+
+window.addEventListener("popstate", function () {
+  _navRestoringCal = true;
+  // ปิด modal overlay ที่เปิดอยู่ทั้งหมด (ปกติเปิดทีละอันในเวลาเดียวกัน)
+  document.querySelectorAll('[id$="-modal-overlay"]').forEach(function (el) {
+    if (el.style.display === "flex" && _MODAL_CLOSE_FN[el.id]) {
+      _MODAL_CLOSE_FN[el.id]();
+    }
+  });
+  _navRestoringCal = false;
+});
+
 var TOKEN_KEY = 'c2tech_token';
 var NAME_KEY = 'c2tech_admin_name';
 var ROLE_KEY = 'c2tech_role';
@@ -458,6 +494,7 @@ function openLoginModal() {
   document.getElementById('login-modal-overlay').style.display = 'flex';
   document.getElementById('login-error-text').style.display = 'none';
   document.getElementById('username').focus();
+  _pushModalNav('login-modal-overlay');
 }
 function closeLoginModal() {
   document.getElementById('login-modal-overlay').style.display = 'none';
@@ -557,6 +594,7 @@ function exitAdminMode() {
 function openStaffModal() {
   document.getElementById('staff-modal-overlay').style.display = 'flex';
   loadStaffList();
+  _pushModalNav('staff-modal-overlay');
 }
 function closeStaffModal() {
   document.getElementById('staff-modal-overlay').style.display = 'none';
@@ -838,6 +876,7 @@ function openTaskModal() {
   document.getElementById('task-modal-overlay').style.display = 'flex';
   loadTaskStaffChecklist([]);
   setupTaskMap();
+  _pushModalNav('task-modal-overlay');
 }
 
 function openTaskModalForEdit(taskId) {
@@ -888,6 +927,7 @@ function openTaskModalForEdit(taskId) {
     document.getElementById('task-modal-overlay').style.display = 'flex';
     renderTaskStaffChecklist(staffListResult, task.staffIds || []);
     setupTaskMap();
+    _pushModalNav('task-modal-overlay');
   }).catch(function (err) {
     Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
   });
@@ -1320,6 +1360,7 @@ function openProfileModal() {
   document.getElementById('profile-edit-section').style.display = 'none';
   document.getElementById('profile-password-section').style.display = 'none';
   document.getElementById('profile-edit-toggle-btn').textContent = 'แก้ไขข้อมูล';
+  _pushModalNav('profile-modal-overlay');
 
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getMyProfile', { token: token }).then(function (result) {
@@ -1497,6 +1538,7 @@ function submitChangePassword() {
 function openHolidayModal() {
   document.getElementById('holiday-modal-overlay').style.display = 'flex';
   renderHolidayList();
+  _pushModalNav('holiday-modal-overlay');
 }
 function closeHolidayModal() {
   document.getElementById('holiday-modal-overlay').style.display = 'none';
@@ -1802,6 +1844,7 @@ function onDashboardPeriodChange() {
 function openDashboardModal() {
   document.getElementById('dashboard-modal-overlay').style.display = 'flex';
   loadDashboardData();
+  _pushModalNav('dashboard-modal-overlay');
 }
 
 function closeDashboardModal() {
@@ -2126,6 +2169,7 @@ function openTaskDetailModal(event) {
   }
 
   document.getElementById('task-detail-modal-overlay').style.display = 'flex';
+  _pushModalNav('task-detail-modal-overlay');
 }
 
 // ===== Staff: ขอเปลี่ยนวัน =====
@@ -2137,6 +2181,7 @@ function openRescheduleModal(taskId) {
   document.getElementById('reschedule-end-date').value = '';
   document.getElementById('reschedule-reason').value = '';
   document.getElementById('reschedule-modal-overlay').style.display = 'flex';
+  _pushModalNav('reschedule-modal-overlay');
 }
 function closeRescheduleModal() {
   document.getElementById('reschedule-modal-overlay').style.display = 'none';
@@ -2359,6 +2404,7 @@ function markAllNotificationsRead(btn) {
 function openMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'flex';
   renderNotificationsList();
+  _pushModalNav('my-requests-modal-overlay');
 }
 function closeMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'none';
