@@ -108,11 +108,12 @@
       <div class="sidebar-card">
         <h3>🏷️ ประเภทงาน</h3>
         <div id="type-legend">
-          <span class="legend-item"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#FFB48A"></span>นอกสถานที่</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#C9A6FF"></span>กิจกรรม</span>
-          <span class="legend-item"><span class="legend-dot" style="background:#E5E7EB"></span>ลา</span>
+          <span class="legend-item" data-type="meeting" onclick="setTaskTypeFilter('meeting')"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม<span class="legend-count"></span></span>
+          <span class="legend-item" data-type="onsite" onclick="setTaskTypeFilter('onsite')"><span class="legend-dot" style="background:#FFB48A"></span>นอกสถานที่<span class="legend-count"></span></span>
+          <span class="legend-item" data-type="event" onclick="setTaskTypeFilter('event')"><span class="legend-dot" style="background:#C9A6FF"></span>กิจกรรม<span class="legend-count"></span></span>
+          <span class="legend-item" data-type="leave" onclick="setTaskTypeFilter('leave')"><span class="legend-dot" style="background:#E5E7EB"></span>ลา<span class="legend-count"></span></span>
         </div>
+        <span id="type-filter-reset" onclick="setTaskTypeFilter(null)">✕ ล้างตัวกรอง — แสดงทั้งหมด</span>
       </div>
 
       <div class="sidebar-card">
@@ -125,7 +126,15 @@
       <div class="sidebar-card" id="todo-sidebar-section">
         <h3>✅ To-Do List</h3>
         <p class="sub">งานที่ยังไม่ได้ระบุวันที่ — พอกำหนดวันจริงแล้วจะย้ายไปโชว์บนปฏิทินอัตโนมัติ</p>
-        <div id="todo-list-sidebar"></div>
+        <div id="todo-summary-card" onclick="openTodoBoardModal()">
+          <div class="todo-summary-icon">✅</div>
+          <div class="todo-summary-text">
+            <b id="todo-summary-count">กำลังโหลด...</b>
+            <span>กดเพื่อดูทั้งหมดแบบบอร์ด</span>
+            <div class="todo-summary-stack" id="todo-summary-avatars"></div>
+          </div>
+          <div class="todo-summary-arrow">›</div>
+        </div>
       </div>
     </aside>
   </div>
@@ -550,6 +559,19 @@
         <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
       </div>
       <div id="my-requests-list" class="tb-body"></div>
+    </div>
+  </div>
+
+  <div id="todo-board-modal-overlay">
+    <div id="todo-board-box">
+      <div class="tb-head">
+        <h2>✅ To-Do List — งานรอกำหนดวัน</h2>
+        <button class="modal-close-btn" onclick="closeTodoBoardModal()">✕</button>
+      </div>
+      <div class="tb-info-banner">จัดกลุ่มตามประเภทงาน — พอกำหนดวันจริงแล้วจะย้ายไปโชว์บนปฏิทินอัตโนมัติ</div>
+      <div class="tb-body" id="todo-board-tbbody">
+        <div id="todo-board-columns"></div>
+      </div>
     </div>
   </div>
 

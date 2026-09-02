@@ -36,6 +36,7 @@ var _MODAL_CLOSE_FN = {
   "reschedule-modal-overlay": function () { closeRescheduleModal(); },
   "my-requests-modal-overlay": function () { closeMyRequestsModal(); },
   "task-detail-modal-overlay": function () { closeTaskDetailModal(); },
+  "todo-board-modal-overlay": function () { closeTodoBoardModal(); },
 };
 
 function _pushModalNav(overlayId) {
@@ -151,8 +152,14 @@ async function firestoreGetUndatedTasks() {
       }).filter(function (s) { return s; });
       tasks.push({
         taskId: doc.id, taskName: row.taskName, detail: row.detail, taskType: row.taskType, staff: staff,
-        createdBy: row.createdBy || '', staffIds: row.staffIds || []
+        createdBy: row.createdBy || '', staffIds: row.staffIds || [],
+        createdAt: firestoreDateToIso(row.createdAt)
       });
+    });
+    // งานที่เพิ่มล่าสุดอยู่บนสุด (เรียงตาม createdAt ใหม่ -> เก่า) — งานเก่าที่ไม่มี createdAt (ข้อมูลเก่าก่อนมีฟิลด์นี้)
+    // จะตกไปอยู่ท้ายสุดแทนที่จะพังลำดับ
+    tasks.sort(function (a, b) {
+      return (b.createdAt || '') < (a.createdAt || '') ? -1 : (b.createdAt || '') > (a.createdAt || '') ? 1 : 0;
     });
     return { success: true, tasks: tasks };
   } catch (err) {
@@ -276,6 +283,44 @@ function setLocalCache(key, data) {
 var TASK_TYPE_COLORS = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF', leave: '#E5E7EB' };
 function getTaskTypeColor(t) { return TASK_TYPE_COLORS[t] || '#cccccc'; }
 function getTaskTypeTextColor(t) { return getContrastTextColor(getTaskTypeColor(t)); }
+
+// ===== Phase: การ์ดประเภทงาน (ไซด์บาร์ขวา) กดเพื่อกรองปฏิทิน — กดซ้ำ/กด "ล้างตัวกรอง" เพื่อยกเลิก =====
+var activeTaskTypeFilter = null;
+function setTaskTypeFilter(type) {
+  activeTaskTypeFilter = (activeTaskTypeFilter === type) ? null : type;
+
+  document.querySelectorAll('#type-legend .legend-item').forEach(function (el) {
+    var isThis = el.getAttribute('data-type') === activeTaskTypeFilter;
+    el.classList.toggle('active', !!activeTaskTypeFilter && isThis);
+    el.classList.toggle('dimmed', !!activeTaskTypeFilter && !isThis);
+  });
+  document.getElementById('type-filter-reset').classList.toggle('show', !!activeTaskTypeFilter);
+
+  // สั่งให้ FullCalendar ประเมิน eventClassNames ใหม่กับ event ที่กำลังโชว์อยู่ (ไม่โหลดข้อมูลใหม่จากเซิร์ฟเวอร์)
+  if (calendarInstance) calendarInstance.render();
+}
+
+// นับจำนวนงานแต่ละประเภทเฉพาะ "ช่วงที่ปฏิทินกำลังแสดงอยู่" (เดือน/สัปดาห์/วัน/ปี ตามมุมมองปัจจุบัน) แล้วเติมท้าย
+// ชื่อประเภทงานในไซด์บาร์ — ใช้ event.start เทียบกับ view.currentStart/currentEnd แบบเดียวกับที่ renderMonthHolidayList
+// ใช้เทียบวันหยุด เพื่อให้ความหมาย "ในเดือนนั้น" ตรงกันทั้งแอป
+function updateLegendCounts() {
+  if (!calendarInstance) return;
+  var view = calendarInstance.view;
+  var start = view.currentStart, end = view.currentEnd;
+  var counts = { meeting: 0, onsite: 0, event: 0, leave: 0 };
+  calendarInstance.getEvents().forEach(function (ev) {
+    if (ev.extendedProps.isHoliday) return;
+    var t = ev.extendedProps.taskType;
+    if (!counts.hasOwnProperty(t)) return;
+    if (!ev.start || ev.start < start || ev.start >= end) return;
+    counts[t]++;
+  });
+  document.querySelectorAll('#type-legend .legend-item').forEach(function (el) {
+    var t = el.getAttribute('data-type');
+    var countEl = el.querySelector('.legend-count');
+    if (countEl) countEl.textContent = counts[t] || 0;
+  });
+}
 
 // ===== จับคู่ staffId -> ข้อมูลคน (เดิมฝั่ง server join ให้ ตอนนี้ทำเองฝั่ง client จาก staffMapCache) =====
 var staffMapCache = {};
@@ -1239,47 +1284,123 @@ var TASK_TYPE_LABELS = {
   leave: 'ลา (Leave)'
 };
 
-// ===== To-Do List - โชว์ให้ทุกคนเห็น แก้ไข/ลบได้เฉพาะ Admin - แสดงใน sidebar ขวา ใต้ "วันหยุดเดือนนี้" =====
-function loadTodoList() {
-  var container = document.getElementById('todo-list-sidebar');
-  var isAdmin = localStorage.getItem(ROLE_KEY) === 'admin';
-  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
-  container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">กำลังโหลด...</p>';
+// ===== To-Do List (Phase: แบบ Trello) =====
+// การ์ดในไซด์บาร์ขวาเหลือแค่สรุปจำนวน+avatar กดแล้วเปิด Modal บอร์ดเต็ม จัดคอลัมน์ตามประเภทงาน
+// ข้อมูลจริงยังเป็นชุดเดียวกัน (งานที่ isUndated) แค่เปลี่ยนวิธีแสดงผล — โครงสร้างเดิม (.todo-item/ti-*)
+// ยังใช้อยู่ข้างในการ์ดแต่ละใบของบอร์ด เพื่อคงปุ่มแก้ไข/ลบ (Admin) และแจ้งขอเปลี่ยนวัน/ลบ (เจ้าของงาน) แบบเดิมทั้งหมด
+var _todoTasksCache = [];
+var TASK_TYPE_COLUMN_ORDER = ['meeting', 'onsite', 'event', 'leave'];
+var TODO_AVATAR_PALETTE = ['#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#10b981', '#ef4444', '#0ea5a5'];
 
+function loadTodoList() {
   callApi('getUndatedTasks', {}).then(function (result) {
     if (!result.success) {
-      container.innerHTML = '<p style="font-size:12px;color:#b91c1c">' + result.message + '</p>';
+      document.getElementById('todo-summary-count').textContent = 'โหลดไม่สำเร็จ';
       return;
     }
-    if (result.tasks.length === 0) {
-      container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ยังไม่มีงานในลิสต์</p>';
-      return;
+    _todoTasksCache = result.tasks;
+    renderTodoSummaryCard(result.tasks);
+    // ถ้า Modal บอร์ดเปิดอยู่พอดี (เช่นมีคนเพิ่ม/ลบงานจากที่อื่นแบบ real-time) ให้รีเฟรชเนื้อในด้วย
+    if (document.getElementById('todo-board-modal-overlay').style.display === 'flex') {
+      renderKanbanBoard(result.tasks);
     }
-    container.innerHTML = '';
-    result.tasks.forEach(function (t) {
-      var staffNames = t.staff.map(function (s) { return s.name; }).join(', ');
-      // Staff: แจ้งขอเปลี่ยนวัน/ขอลบงานที่ตัวเองสร้าง หรือมีชื่อเป็นผู้ปฏิบัติงานได้ (เหมือนที่ทำได้บนปฏิทิน)
-      var isOwner = t.createdBy === myAccountId || (t.staffIds || []).indexOf(myAccountId) !== -1;
-      var item = document.createElement('div');
-      item.className = 'todo-item';
-      item.innerHTML =
-        '<div class="ti-top">' +
-          '<span style="width:8px;height:8px;border-radius:50%;background:' + (TASK_TYPE_COLORS[t.taskType] || '#ccc') + ';display:inline-block;flex-shrink:0"></span>' +
-          '<span class="ti-name">' + t.taskName + '</span>' +
-        '</div>' +
-        (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
-        (isAdmin ?
-          '<div class="ti-actions">' +
-            '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
-            '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
-          '</div>' :
-          (isOwner ?
-            '<div class="ti-actions">' +
-              '<button class="btn-outline" onclick="openRescheduleModal(\'' + t.taskId + '\')">แจ้งกำหนดวัน</button>' +
-              '<button class="btn-reject" onclick="requestDeleteTaskConfirm(\'' + t.taskId + '\')">แจ้งขอลบ</button>' +
-            '</div>' : ''));
-      container.appendChild(item);
+  });
+}
+
+function renderTodoSummaryCard(tasks) {
+  var countEl = document.getElementById('todo-summary-count');
+  countEl.textContent = tasks.length === 0 ? 'ยังไม่มีงานในลิสต์' : tasks.length + ' งานรอกำหนดวัน';
+
+  // รวมรายชื่อผู้ปฏิบัติงานที่ไม่ซ้ำจากทุกงาน โชว์เป็น avatar ซ้อนกันสูงสุด 4 คน
+  var seen = {};
+  var names = [];
+  tasks.forEach(function (t) {
+    (t.staff || []).forEach(function (s) {
+      if (!seen[s.name]) { seen[s.name] = true; names.push(s); }
     });
+  });
+  var avatarsEl = document.getElementById('todo-summary-avatars');
+  avatarsEl.innerHTML = '';
+  names.slice(0, 4).forEach(function (s, i) {
+    var av = document.createElement('div');
+    av.className = 'avatar-mini';
+    av.style.background = s.color || TODO_AVATAR_PALETTE[i % TODO_AVATAR_PALETTE.length];
+    av.textContent = (s.name || '?').charAt(0);
+    avatarsEl.appendChild(av);
+  });
+  if (names.length > 4) {
+    var more = document.createElement('div');
+    more.className = 'avatar-mini';
+    more.style.background = '#9aa1a8';
+    more.textContent = '+' + (names.length - 4);
+    avatarsEl.appendChild(more);
+  }
+}
+
+function openTodoBoardModal() {
+  renderKanbanBoard(_todoTasksCache);
+  document.getElementById('todo-board-modal-overlay').style.display = 'flex';
+  _pushModalNav('todo-board-modal-overlay');
+}
+function closeTodoBoardModal() {
+  document.getElementById('todo-board-modal-overlay').style.display = 'none';
+}
+
+function renderKanbanBoard(tasks) {
+  var board = document.getElementById('todo-board-columns');
+  var isAdmin = localStorage.getItem(ROLE_KEY) === 'admin';
+  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
+
+  if (tasks.length === 0) {
+    board.innerHTML = '<div class="kanban-empty-all">ยังไม่มีงานในลิสต์</div>';
+    return;
+  }
+
+  board.className = 'kanban-board';
+  board.innerHTML = '';
+  TASK_TYPE_COLUMN_ORDER.forEach(function (typeKey) {
+    var colTasks = tasks.filter(function (t) { return t.taskType === typeKey; });
+    var col = document.createElement('div');
+    col.className = 'kanban-col';
+
+    var head = document.createElement('div');
+    head.className = 'kanban-col-head';
+    head.innerHTML =
+      '<span class="dot" style="background:' + (TASK_TYPE_COLORS[typeKey] || '#ccc') + '"></span>' +
+      (TASK_TYPE_LABELS[typeKey] || typeKey).replace(/\s*\(.*\)/, '') +
+      '<span class="n">' + colTasks.length + '</span>';
+    col.appendChild(head);
+
+    var cardsWrap = document.createElement('div');
+    cardsWrap.className = 'kanban-cards';
+
+    if (colTasks.length === 0) {
+      cardsWrap.innerHTML = '<div class="kanban-empty-col">ไม่มีงาน</div>';
+    } else {
+      colTasks.forEach(function (t) {
+        var staffNames = t.staff.map(function (s) { return s.name; }).join(', ');
+        var isOwner = t.createdBy === myAccountId || (t.staffIds || []).indexOf(myAccountId) !== -1;
+        var card = document.createElement('div');
+        card.className = 'todo-item kanban-card';
+        card.style.setProperty('--kc-color', TASK_TYPE_COLORS[typeKey] || '#ccc');
+        card.innerHTML =
+          '<div class="ti-top"><span class="ti-name">' + t.taskName + '</span></div>' +
+          (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
+          (isAdmin ?
+            '<div class="ti-actions">' +
+              '<button class="btn-outline" onclick="editTodoTask(\'' + t.taskId + '\')">แก้ไข/กำหนดวัน</button>' +
+              '<button class="btn-reject" onclick="deleteTodoTask(this, \'' + t.taskId + '\')">ลบ</button>' +
+            '</div>' :
+            (isOwner ?
+              '<div class="ti-actions">' +
+                '<button class="btn-outline" onclick="openRescheduleModal(\'' + t.taskId + '\')">แจ้งกำหนดวัน</button>' +
+                '<button class="btn-reject" onclick="requestDeleteTaskConfirm(\'' + t.taskId + '\')">แจ้งขอลบ</button>' +
+              '</div>' : ''));
+        cardsWrap.appendChild(card);
+      });
+    }
+    col.appendChild(cardsWrap);
+    board.appendChild(col);
   });
 }
 
@@ -2499,20 +2620,37 @@ function renderCalendar(result) {
     initialView: initialViewToUse,
     headerToolbar: mobile
       ? { left: 'prev,next', center: 'title', right: 'today' }
-      : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+      // Phase: เพิ่มมุมมอง "รายปี" (multiMonthYear) ต่อจากเดือน/สัปดาห์/วันเดิม — เฉพาะจอเดสก์ท็อป/แท็บเล็ต
+      // เท่านั้น จอมือถือแคบเกินจะอ่าน 12 เดือนพร้อมกันจึงไม่เพิ่มปุ่มนี้ในโหมดมือถือ
+      : { left: 'prev,next today', center: 'title', right: 'multiMonthYear,dayGridMonth,timeGridWeek,timeGridDay' },
     locale: 'th',
     height: 'auto',
     eventDisplay: 'block',
     allDayText: 'ทั้งวัน',
-    buttonText: { today: 'วันนี้' },
+    buttonText: { today: 'วันนี้', year: 'year' },
     events: result.events,
+    // Phase: การ์ดประเภทงาน (ไซด์บาร์ขวา) กดกรองปฏิทินได้ — ใส่ class ให้งานที่ไม่ตรงกับตัวกรองที่เลือกอยู่
+    // แล้วซ่อนด้วย CSS (.fc-type-filtered) ดู setTaskTypeFilter() ที่เรียก calendarInstance.render() เพื่อให้
+    // callback นี้ถูกประเมินใหม่ทุกครั้งที่เปลี่ยนตัวกรอง (ไม่กระทบ event ของจริงที่โหลดมา แค่ซ่อน/โชว์ด้วย CSS)
+    eventClassNames: function (arg) {
+      if (arg.event.extendedProps.isHoliday) return [];
+      if (!activeTaskTypeFilter) return [];
+      return arg.event.extendedProps.taskType === activeTaskTypeFilter ? [] : ['fc-type-filtered'];
+    },
     datesSet: function (arg) {
+      // มุมมองรายปี (multiMonthYear) ช่วงวันที่ครอบคลุมทั้งปี ไม่ใช่แค่เดือนเดียว — ถ้าเอาไปอัปเดตแผง
+      // "📅 วันหยุดเดือนนี้" ตรงๆ จะกลายเป็นโชว์วันหยุดทั้งปีทั้งที่หัวข้อบอกว่า "เดือนนี้" ทำให้เข้าใจผิด
+      // จึงข้ามไปเลยตอนอยู่มุมมองรายปี ปล่อยให้แผงคงค่าจากเดือนล่าสุดที่เคยดูไว้แทน
+      if (arg.view.type === 'multiMonthYear') return;
       renderMonthHolidayList(arg.view.currentStart, arg.view.currentEnd);
     },
     eventsSet: function () {
       // ยิงทุกครั้งที่ FullCalendar render เนื้อหาชุดใหม่เสร็จ (เปลี่ยนเดือน/เพิ่ม-แก้-ลบงาน/โหลดครั้งแรก)
       // ใช้จุดนี้เรียง list view ใหม่ให้วันล่าสุดอยู่บนสุด แทนที่จะเรียงเก่า->ใหม่ตามค่าเริ่มต้นของไลบรารี
       reverseListViewDayOrder();
+      // จุดเดียวกันนี้ครอบคลุมทั้งเปลี่ยนเดือนและข้อมูลอัปเดต จึงใช้อัปเดตตัวเลขท้ายชื่อประเภทงาน
+      // ในไซด์บาร์ขวาด้วย ให้ตรงกับช่วงเดือน/มุมมองที่กำลังดูอยู่เสมอ
+      updateLegendCounts();
     },
     dayCellDidMount: function (arg) {
       var d = arg.date;
@@ -2525,6 +2663,8 @@ function renderCalendar(result) {
 
       var frame = arg.el.querySelector('.fc-daygrid-day-frame') || arg.el;
       frame.classList.add('fc-holiday-cell');
+      // มุมมองรายปีเซลล์เล็กมาก ใส่แค่ไฮไลต์สีพอ ไม่ใส่ป้ายชื่อวันหยุดตัวหนังสือ (ล้นเซลล์แน่นอน)
+      if (arg.view.type === 'multiMonthYear') return;
       var label = document.createElement('div');
       label.className = 'holiday-cell-label';
       label.textContent = matched.map(function (h) { return h.name; }).join(', ');
@@ -2532,6 +2672,9 @@ function renderCalendar(result) {
     },
     eventContent: function (arg) {
       if (arg.event.extendedProps.isHoliday) return true;
+      // มุมมองรายปี เซลล์เล็กมาก ปล่อยให้ FullCalendar ใช้การ์ดเหตุการณ์แบบมาตรฐาน (จุดสี+ชื่อย่อ) แทน
+      // เลย์เอาต์แถวไอคอน/เวลาที่ปรับเองด้านล่างนี้ ซึ่งออกแบบมาสำหรับเซลล์เดือน/สัปดาห์/วันที่ใหญ่กว่า
+      if (arg.view.type === 'multiMonthYear') return true;
       var staff = arg.event.extendedProps.staff || [];
       var shown = staff.slice(0, 4);
       var dotsHtml = shown.map(function (s) {
