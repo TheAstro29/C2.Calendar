@@ -573,7 +573,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
-  document.getElementById('task-undated-row').style.display = (isAdmin || isStaff) ? 'flex' : 'none';
+  document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
   requestNotificationPermission();
   setupNotificationsRealtimeListener();
   loadTodoList();
