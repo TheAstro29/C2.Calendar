@@ -1063,8 +1063,8 @@ function renderTaskStaffChecklist(result, selectedIds) {
   container.innerHTML = '';
   result.staff
     .filter(function (s) { return s.active; })
-    // ซ่อน Admin จากตัวเลือกมอบหมายงาน ยกเว้นถูกมอบหมายไว้อยู่แล้ว (กันแก้ไขแล้วหลุดออกไปโดยไม่ตั้งใจ)
-    .filter(function (s) { return s.role !== 'admin' || selectedIds.indexOf(s.staffId) !== -1; })
+    // เดิมซ่อน Admin ออกจากตัวเลือกมอบหมายงาน - ผู้ใช้แจ้งว่าต้องเลือก Admin เป็นผู้ปฏิบัติงานได้ด้วย จึงเอาการ
+    // ซ่อนออก ให้ Admin ที่ยัง active โชว์ในรายชื่อเหมือนพนักงานคนอื่นๆ ปกติ
     .forEach(function (s) {
       var isSelf = myRole === 'staff' && s.staffId === myAccountId;
       var checked = isSelf || selectedIds.indexOf(s.staffId) !== -1;
