@@ -443,20 +443,9 @@
     </div>
   </div>
 
-  <!-- หน้าพิมพ์รายงาน - ซ่อนไว้ปกติ โผล่มาเฉพาะตอนสั่งพิมพ์ (ดู CSS @media print) -->
-  <div id="print-report">
-    <div id="print-report-header">
-      <img src="icons/icon-192.png" alt="" width="50" height="50">
-      <div>
-        <h1>C2TECH</h1>
-        <p>รายงานสรุปงาน — <span id="print-report-period"></span></p>
-      </div>
-    </div>
-    <div id="print-report-summary"></div>
-    <table id="print-report-table"></table>
-    <h2 id="print-report-workload-title">ภาระงานของแต่ละคน</h2>
-    <table id="print-report-workload"></table>
-  </div>
+  <!-- เดิมมีหน้าพิมพ์รายงานแบบตารางซ่อนไว้ตรงนี้ (ใช้กับ window.print() ในเฟรมเดิม) - เลิกใช้แล้ว เพราะ
+       เปลี่ยนไปสร้างรายงานสรุปผู้บริหาร (โดนัท+กราฟ) เป็น HTML เต็มหน้าแล้วเปิดในแท็บใหม่แทน (ดู execReportHtml
+       ใน app.js) ทั้งเพื่อให้ export/พิมพ์ทำงานได้แม้เปิดผ่าน iframe ของ Google Sites และได้ดีไซน์ใหม่ที่ขอ -->
 
   <div id="profile-modal-overlay">
     <div id="profile-card-box">
@@ -609,7 +598,7 @@
           <div class="ptb-view-head">
             <div class="sub">ลากการ์ดข้ามคอลัมน์เพื่อเปลี่ยนสถานะ</div>
             <select class="ptb-sort-select" id="ptb-sort-select-mystaff" onchange="setPtbSortMode(this.value)">
-              <option value="">ค่าเริ่มต้น (วันเก่า→ใหม่ + สำคัญมาก→น้อย)</option>
+              <option value="">ค่าเริ่มต้น</option>
               <option value="date_asc">วันครบกำหนด: เก่า → ใหม่</option>
               <option value="priority_desc">ความสำคัญ: สูง → ต่ำ</option>
             </select>
@@ -637,7 +626,7 @@
           <div class="ptb-view-head" style="margin-top:8px">
             <h3 id="ptb-person-title" style="margin:0">บอร์ดของ ...</h3>
             <select class="ptb-sort-select" id="ptb-sort-select-person" onchange="setPtbSortMode(this.value)">
-              <option value="">ค่าเริ่มต้น (วันเก่า→ใหม่ + สำคัญมาก→น้อย)</option>
+              <option value="">ค่าเริ่มต้น</option>
               <option value="date_asc">วันครบกำหนด: เก่า → ใหม่</option>
               <option value="priority_desc">ความสำคัญ: สูง → ต่ำ</option>
             </select>

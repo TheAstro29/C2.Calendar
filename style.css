@@ -81,24 +81,9 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 .dash-workload-table th, .dash-workload-table td { padding: 8px 10px; border-bottom: 1px solid #eef0f2; text-align: left; font-size: 13px; }
 .dash-workload-table th { background: #f4f5f7; }
 
-/* หน้าพิมพ์รายงาน - ซ่อนไว้ปกติในหน้าเว็บ โผล่มาเฉพาะตอนสั่งพิมพ์เท่านั้น */
-#print-report { display: none; }
-#print-report-header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #059669; padding-bottom: 12px; margin-bottom: 16px; }
-#print-report-header h1 { margin: 0; color: #059669; font-size: 22px; }
-#print-report-header p { margin: 2px 0 0; color: #333; }
-#print-report-table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-#print-report-table th, #print-report-table td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
-#print-report-workload-title { color: #059669; font-size: 16px; margin: 24px 0 8px; }
-#print-report-workload { width: 100%; border-collapse: collapse; }
-#print-report-workload th, #print-report-workload td { border: 1px solid #ccc; padding: 6px 8px; font-size: 12px; text-align: left; }
-#print-report-workload th { background: #f4f5f7; }
-#print-report-table th { background: #f4f5f7; }
-
-@media print {
-  body * { visibility: hidden; }
-  #print-report, #print-report * { visibility: visible; }
-  #print-report { display: block; position: absolute; top: 0; left: 0; width: 100%; }
-}
+/* เดิมมี CSS ของหน้าพิมพ์รายงานแบบตาราง (#print-report...) กับ @media print สำหรับ window.print() ในเฟรมเดิมอยู่
+   ตรงนี้ - เลิกใช้แล้ว เปลี่ยนไปสร้างรายงานสรุปผู้บริหารเป็น HTML เต็มหน้า (มี <style> ของตัวเองฝังอยู่แล้ว)
+   แล้วเปิดในแท็บใหม่แทน ดู execReportHtml ใน app.js */
 .fc-toolbar { gap: 4px; flex-wrap: nowrap !important; }
 .fc-toolbar-chunk:nth-child(1), .fc-toolbar-chunk:nth-child(3) { flex-shrink: 0; }
 .fc-toolbar-chunk:nth-child(2) { flex: 1 1 auto; min-width: 0; overflow: hidden; text-align: center; }
@@ -1157,6 +1142,9 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #personal-task-box {
   background: #fff; border-radius: 18px; width: 100%; max-width: 560px; margin-bottom: 4vh;
   box-shadow: 0 20px 44px -22px rgba(6,95,70,.35); animation: modalScaleIn 0.2s ease;
+  position: relative; /* แก้บั๊ก: ตัวนี้ขาด position:relative ทำให้ .modal-close-btn (position:absolute)
+    ไปยึดตำแหน่งกับ #personal-task-modal-overlay (เต็มจอ) แทนที่จะยึดกับกรอบ modal นี้ ปุ่ม X เลยลอยไปมุม
+    บนขวาของทั้งหน้าจอแทนที่จะอยู่ในกรอบการ์ด */
 }
 .ptm-head { display: flex; align-items: flex-start; gap: 10px; padding: 18px 20px 12px; }
 .ptm-head input.ptm-title {

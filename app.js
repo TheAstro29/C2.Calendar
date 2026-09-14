@@ -1909,6 +1909,189 @@ function fabAction(action) {
 // ===== สลับมุมมองปฏิทิน Grid เดือน <-> List (สำหรับมือถือ/Tablet) จำค่าที่เลือกไว้ใน localStorage =====
 var CALENDAR_VIEW_PREF_KEY = 'c2tech_calendar_view_pref';
 
+// ===== Export ไฟล์ Excel / พิมพ์รายงาน ผ่านแท็บใหม่ แทนการบังคับดาวน์โหลด/เปิด print dialog ในเฟรมเดิม =====
+// เหตุผล: C2 Calendar ถูกฝังอยู่ใน Google Sites ผ่าน iframe ซึ่ง Google ครอบ sandbox ไว้ (เจ้าของเว็บไซต์
+// ปรับแต่งเองไม่ได้) sandbox นี้มักบล็อกการบังคับดาวน์โหลดไฟล์/เปิด print dialog ที่สั่งจาก JS ภายในเฟรมเดิม
+// แบบเงียบๆ (กดปุ่มแล้วไม่มีอะไรเกิดขึ้นเลย) วิธีแก้คือเปิดแท็บใหม่ (top-level browsing context ที่ไม่ถูก
+// sandbox ของ Google Sites ครอบ) แล้วสั่งดาวน์โหลด/พิมพ์จากในแท็บใหม่นั้นแทน
+//
+// ข้อควรระวัง: window.open() ต้องถูกเรียกแบบ synchronous ต่อเนื่องจาก user gesture (click) เท่านั้น ถ้าเรียก
+// หลัง await/Promise (เช่นหลัง callApi รอ API ตอบกลับ) เบราว์เซอร์จะมองว่าไม่ได้มาจาก click โดยตรงแล้ว
+// แล้วบล็อก popup ทันที - ฟังก์ชันที่มีการเรียก API ก่อน (doTaskExport) จึงต้องเปิดแท็บเปล่าไว้ล่วงหน้า
+// ตั้งแต่ต้นฟังก์ชัน (ก่อน callApi) แล้วค่อยส่ง window ที่เปิดไว้แล้วนั้นมาเติมเนื้อหาทีหลังผ่าน preOpenedTab
+function exportWorkbookViaNewTab(wb, filename, preOpenedTab) {
+  var newTab = preOpenedTab || window.open('', '_blank');
+  var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  var blob = new Blob([wbout], { type: 'application/octet-stream' });
+  var url = URL.createObjectURL(blob);
+  if (!newTab) {
+    // popup ถูกบล็อก (เช่นตั้งค่าเบราว์เซอร์ไว้เข้มงวด) - fallback กลับไปดาวน์โหลดในเฟรมเดิมแบบเดิม
+    // ยังดีกว่าไม่ทำอะไรเลย แม้อาจไม่รอดจาก sandbox ของ Google Sites ก็ตาม
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    return;
+  }
+  var a2 = newTab.document.createElement('a');
+  a2.href = url;
+  a2.download = filename;
+  newTab.document.body.appendChild(a2);
+  a2.click();
+  setTimeout(function () { URL.revokeObjectURL(url); try { newTab.close(); } catch (e) {} }, 1500);
+}
+
+// ===== รายงานสรุปผู้บริหาร (Exec Report) - A4 หนึ่งหน้า: โดนัทสัดส่วน + ภาระงานรายคน + คอลัมน์ขวา =====
+// ดีไซน์นี้เลือกมาจาก preview 4 แบบที่ทำไว้ให้ผู้ใช้เทียบ (เวอร์ชันผสม: โดนัทฟอนต์ใหญ่ + ภาระงานฝั่งซ้าย +
+// คำเตือน/รายการฝั่งขวา) แล้วเอามาใส่ข้อมูลจริงแทนข้อมูลจำลองตรงนี้
+
+// สร้าง SVG โดนัทจาก segments [{label,count,color}] แบบไดนามิก (คำนวณ arc math เองไม่พึ่ง library)
+function execReportBuildDonut(segments, total, r, sw, size) {
+  var circumference = 2 * Math.PI * r;
+  var cum = 0;
+  var c = size / 2;
+  var circlesHtml = segments.map(function (seg) {
+    var len = total > 0 ? (seg.count / total) * circumference : 0;
+    var dasharray = len.toFixed(2) + ' ' + (circumference - len).toFixed(2);
+    var dashoffset = (-cum).toFixed(2);
+    cum += len;
+    return '<circle cx="' + c + '" cy="' + c + '" r="' + r + '" fill="none" stroke="' + seg.color + '" stroke-width="' + sw +
+      '" stroke-dasharray="' + dasharray + '" stroke-dashoffset="' + dashoffset + '"></circle>';
+  }).join('');
+  return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '"><g transform="rotate(-90 ' + c + ' ' + c + ')">' + circlesHtml + '</g></svg>';
+}
+
+function execReportLegendRow(seg, total) {
+  var pct = total > 0 ? Math.round(seg.count / total * 100) : 0;
+  return '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+    '<div style="display:flex;align-items:center;gap:11px;"><span style="width:13px;height:13px;border-radius:50%;background:' + seg.color + ';display:inline-block;"></span>' +
+    '<span style="font-size:17px;font-weight:500;">' + escapeHtmlPtb(seg.label) + '</span></div>' +
+    '<div style="display:flex;align-items:center;gap:12px;"><span style="font-size:17px;font-weight:700;color:#201E1D;">' + seg.count + ' งาน</span>' +
+    '<span style="font-size:15px;color:#63816F;width:38px;text-align:right;">' + pct + '%</span></div></div>';
+}
+
+function execReportWorkloadRow(item, maxCount) {
+  var widthPct = maxCount > 0 ? Math.round(item.count / maxCount * 100) : 0;
+  return '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">' +
+    '<div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:50%;background:' + item.color + ';flex-shrink:0;"></span>' +
+    '<span style="font-size:13px;">' + escapeHtmlPtb(item.name) + '</span></div>' +
+    '<span style="font-size:13px;font-weight:700;">' + item.count + '</span></div>' +
+    '<div style="height:7px;background:#F1F3F2;border-radius:4px;"><div style="width:' + widthPct + '%;height:100%;background:' + item.color + ';border-radius:4px;"></div></div></div>';
+}
+
+function execReportListRow(label, badge, badgeColor) {
+  return '<div style="display:flex;align-items:center;justify-content:space-between;">' +
+    '<span style="font-size:12.5px;color:#201E1D;">' + escapeHtmlPtb(label) + '</span>' +
+    '<span style="font-size:11.5px;font-weight:700;color:' + badgeColor + ';flex-shrink:0;margin-left:10px;">' + escapeHtmlPtb(badge) + '</span></div>';
+}
+
+// cfg = { periodLabel, dateRangeLabel, totalLabel, donutSegments:[{label,count,color}], donutSectionTitle,
+//   donutCenterPct, donutCenterSub, workload:[{name,count,color}], rightWarning:{headerText,items:[{label,badge}]}|null,
+//   rightListTitle, rightListItems:[{label,badge,badgeColor}], generatedAtLabel }
+function execReportHtml(cfg) {
+  var total = cfg.donutSegments.reduce(function (s, x) { return s + x.count; }, 0);
+  var donutSvg = execReportBuildDonut(cfg.donutSegments, total, 84, 28, 200);
+  var legendHtml = cfg.donutSegments.map(function (seg) { return execReportLegendRow(seg, total); }).join('');
+  var maxWorkload = cfg.workload.reduce(function (m, x) { return Math.max(m, x.count); }, 0) || 1;
+  var workloadHtml = cfg.workload.map(function (item) { return execReportWorkloadRow(item, maxWorkload); }).join('');
+
+  var warningHtml = '';
+  if (cfg.rightWarning && cfg.rightWarning.items.length) {
+    warningHtml = '<div style="background:#FDF2F2;border:1.5px solid #F3C7C7;border-radius:12px;padding:18px 20px;">' +
+      '<div style="display:flex;align-items:center;gap:9px;margin-bottom:10px;">' +
+      '<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#DC2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M12 3.5l9.5 16.5H2.5L12 3.5z"></path><line x1="12" y1="9.5" x2="12" y2="14"></line><circle cx="12" cy="17" r="0.9" fill="#DC2626" stroke="none"></circle></svg>' +
+      '<span style="font-size:13.5px;font-weight:700;color:#B91C1C;">' + escapeHtmlPtb(cfg.rightWarning.headerText) + '</span></div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;">' +
+      cfg.rightWarning.items.map(function (it) { return execReportListRow(it.label, it.badge, '#DC2626'); }).join('') +
+      '</div></div>';
+  }
+
+  var listHtml = '';
+  if (cfg.rightListItems && cfg.rightListItems.length) {
+    listHtml = '<div style="margin-top:' + (warningHtml ? '20px' : '0') + ';">' +
+      '<div style="font-size:11px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">' + escapeHtmlPtb(cfg.rightListTitle) + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:11px;">' +
+      cfg.rightListItems.map(function (it, idx) {
+        var sep = idx > 0 ? '<div style="height:1px;background:#F1F3F2;"></div>' : '';
+        return sep + execReportListRow(it.label, it.badge, it.badgeColor || '#63816F');
+      }).join('') +
+      '</div></div>';
+  }
+
+  var rightColHtml = (warningHtml + listHtml) || '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีรายการ</div>';
+  var iconUrl = new URL('icons/icon-192.png', window.location.href).href; // แก้บั๊ก: เดิมเดา origin+'/icons/...' ผิด ถ้าแอป host ไม่ได้อยู่ที่ domain root โลโก้เลยหาย
+
+  return '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtmlPtb(cfg.periodLabel) + '</title>' +
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&display=swap">' +
+    '<style>' +
+      '@page { size: A4; margin: 0; }' +
+      'body{margin:0;background:#F4F5F4;font-family:"Chakra Petch","Noto Sans Thai","Sarabun",sans-serif;color:#201E1D;}' +
+      '*{box-sizing:border-box;}' +
+      '.page{width:210mm;min-height:297mm;background:#fff;padding:16mm 15mm;margin:0 auto;position:relative;}' +
+      '@media print{ body{background:#fff;} .page{margin:0;} }' +
+    '</style></head><body>' +
+    '<div class="page">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><img src="' + iconUrl + '" alt="" style="height:32px;width:32px;border-radius:7px;">' +
+        '<span style="font-size:15px;font-weight:700;color:#3F654D;">C2TECH</span></div>' +
+        '<div style="text-align:right;font-size:11px;color:#63816F;letter-spacing:0.04em;">รายงานสรุปงาน</div>' +
+      '</div>' +
+      '<div style="margin-top:22px;display:flex;align-items:baseline;justify-content:space-between;">' +
+        '<div><div style="font-size:28px;font-weight:700;line-height:1.15;">' + escapeHtmlPtb(cfg.periodLabel) + '</div>' +
+        '<div style="margin-top:6px;font-size:13px;color:#63816F;">' + escapeHtmlPtb(cfg.dateRangeLabel) + '</div></div>' +
+        '<div style="text-align:right;"><div style="font-size:32px;font-weight:700;color:#3F654D;line-height:1;">' + total + '</div>' +
+        '<div style="font-size:11.5px;color:#63816F;margin-top:2px;">' + escapeHtmlPtb(cfg.totalLabel || 'งานทั้งหมด') + '</div></div>' +
+      '</div>' +
+      '<div style="height:1px;background:#D2DCD8;margin-top:20px;"></div>' +
+      '<div style="display:flex;gap:40px;align-items:center;margin-top:28px;">' +
+        '<div style="position:relative;width:200px;height:200px;flex-shrink:0;">' + donutSvg +
+          '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">' +
+            '<div style="font-size:42px;font-weight:700;color:#3F654D;line-height:1;">' + (cfg.donutCenterPct || 0) + '%</div>' +
+            '<div style="font-size:12px;color:#63816F;margin-top:5px;">' + escapeHtmlPtb(cfg.donutCenterSub || '') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="flex:1;display:flex;flex-direction:column;gap:17px;">' +
+          '<div style="font-size:12px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;">' + escapeHtmlPtb(cfg.donutSectionTitle || 'สถานะงาน') + '</div>' +
+          legendHtml +
+        '</div>' +
+      '</div>' +
+      '<div style="height:1px;background:#D2DCD8;margin-top:30px;"></div>' +
+      '<div style="display:flex;gap:26px;margin-top:24px;">' +
+        '<div style="width:310px;flex-shrink:0;">' +
+          '<div style="font-size:11px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:15px;">ภาระงานรายคน</div>' +
+          '<div style="display:flex;flex-direction:column;gap:14px;">' + (workloadHtml || '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีข้อมูล</div>') + '</div>' +
+        '</div>' +
+        '<div style="flex:1;">' + rightColHtml + '</div>' +
+      '</div>' +
+      '<div style="position:absolute;left:15mm;right:15mm;bottom:12mm;display:flex;justify-content:space-between;font-size:10.5px;color:#9AA1A8;border-top:1px solid #EEF0EE;padding-top:10px;">' +
+        '<span>C2TECH — C2 Calendar</span><span>สร้างรายงานเมื่อ ' + escapeHtmlPtb(cfg.generatedAtLabel) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '</body></html>';
+}
+
+function openExecReportInNewTab(html, preOpenedTab) {
+  var w = preOpenedTab || window.open('', '_blank');
+  if (!w) {
+    Swal.fire({ icon: 'warning', title: 'เบราว์เซอร์บล็อกการเปิดแท็บใหม่', text: 'กรุณาอนุญาต pop-up สำหรับเว็บไซต์นี้แล้วลองอีกครั้ง' });
+    return;
+  }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  var triggered = false;
+  function doPrint() { if (triggered) return; triggered = true; try { w.focus(); w.print(); } catch (e) {} }
+  w.onload = doPrint;
+  setTimeout(doPrint, 500); // เผื่อ onload ไม่ทำงาน/fire ไปแล้วก่อนตั้ง handler (มักเกิดกับเอกสารที่ document.write เอง) - ให้เวลาฟอนต์ Google Fonts โหลดด้วย
+}
+
+function fmtGeneratedAtLabel() {
+  var d = new Date();
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+}
+
 // ===== Export งานในเดือนที่กำลังดูอยู่เป็นไฟล์ Excel (ใช้ข้อมูลที่โหลดไว้แล้ว ไม่ต้องยิง API ใหม่) =====
 function exportMonthToExcel() {
   if (!calendarInstance || !lastTaskDocs.length) {
@@ -1954,7 +2137,7 @@ function exportMonthToExcel() {
   ws['!cols'] = [{ wch: 12 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 25 }, { wch: 20 }, { wch: 16 }, { wch: 30 }];
   var wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'งาน');
-  XLSX.writeFile(wb, 'C2Calendar_' + monthLabel.replace(/\s/g, '_') + '.xlsx');
+  exportWorkbookViaNewTab(wb, 'C2Calendar_' + monthLabel.replace(/\s/g, '_') + '.xlsx');
   Toast.fire({ icon: 'success', title: 'Export สำเร็จ (' + rows.length + ' งาน)' });
 }
 
@@ -2160,48 +2343,58 @@ function loadDashboardData() {
   tableHtml += '</table>';
   document.getElementById('dashboard-workload-table').innerHTML = tableHtml;
 
-  // เก็บไว้ใช้ตอนพิมพ์รายงาน
-  window._dashboardPrintData = { ranges: ranges, curTasks: curTasks, workload: workload, sorted: sorted };
+  // เก็บไว้ใช้ตอนพิมพ์รายงาน (curByType เพิ่มมาให้รายงานสรุป exec ใช้ทำโดนัทสัดส่วนประเภทงาน)
+  window._dashboardPrintData = { ranges: ranges, curTasks: curTasks, workload: workload, sorted: sorted, curByType: curByType };
 }
 
 // ===== พิมพ์รายงาน (เปิด print dialog ของเบราว์เซอร์ ให้ Save เป็น PDF ได้เอง) =====
-// เฉพาะรายงานพิมพ์ - ใช้ภาษาอังกฤษล้วนให้กระชับ (ในแอปใช้ไทย+อังกฤษตามเดิม ไม่เกี่ยวกัน)
-var TASK_TYPE_LABELS_EN = { meeting: 'Meeting', onsite: 'On-site', event: 'Event', leave: 'Leave' };
 
 function printDashboardReport() {
   var d = window._dashboardPrintData;
   if (!d) return;
 
-  document.getElementById('print-report-period').textContent = d.ranges.label;
+  // โดนัทสัดส่วนประเภทงาน (ปฏิทินหลักไม่มีสถานะ เสร็จแล้ว/กำลังทำ/ต้องทำ แบบ Personal Task Board มีแต่ประเภทงาน
+  // meeting/onsite/event/leave จึงใช้ตัวนี้แทนเป็นแกนโดนัทของรายงาน Dashboard)
+  var typeKeys = ['meeting', 'onsite', 'event', 'leave'];
+  var donutSegments = typeKeys.map(function (t) {
+    return { label: (TASK_TYPE_LABELS[t] || t).replace(/\s*\(.*\)/, ''), count: (d.curByType && d.curByType[t]) || 0, color: getTaskTypeColor(t) };
+  }).filter(function (seg) { return seg.count > 0; }); // ไม่โชว์ประเภทที่ไม่มีงานเลยกันโดนัทรก
+  if (donutSegments.length === 0) donutSegments = [{ label: 'ไม่มีงาน', count: 0, color: '#E5E7EB' }];
+  var donutTotal = donutSegments.reduce(function (s, x) { return s + x.count; }, 0);
+  var topSeg = donutSegments.reduce(function (a, b) { return b.count > a.count ? b : a; }, donutSegments[0]);
 
-  var summaryHtml = '<p><b>จำนวนงานทั้งหมด:</b> ' + d.curTasks.length + ' งาน</p>';
-  document.getElementById('print-report-summary').innerHTML = summaryHtml;
+  var workload = d.sorted.map(function (id) {
+    var s = staffMapCache[id];
+    return { name: s ? (s.firstName + ' ' + s.lastName) : id, count: d.workload[id], color: s ? s.colorHex : '#9AA1A8' };
+  }).slice(0, 8);
 
-  var rows = '<tr><th>วันที่</th><th>ชื่องาน</th><th>ประเภท</th><th>ผู้ปฏิบัติงาน</th><th>สถานที่</th></tr>';
-  d.curTasks.sort(function (a, b) { return a.start - b.start; }).forEach(function (t) {
-    var staffNames = (t.data.staffIds || []).map(function (id) {
-      var s = staffMapCache[id];
-      return s ? s.firstName + ' ' + s.lastName : '';
-    }).filter(function (n) { return n; }).join(', ');
-    rows += '<tr><td>' + t.start.toLocaleDateString('th-TH') + '</td><td>' + t.data.taskName + '</td>' +
-      '<td>' + (TASK_TYPE_LABELS_EN[t.data.taskType] || t.data.taskType) + '</td>' +
-      '<td>' + staffNames + '</td><td>' + (t.data.locationName || '-') + '</td></tr>';
-  });
-  document.getElementById('print-report-table').innerHTML = rows;
-
-  // ตารางภาระงานของแต่ละคน (สไตล์เดียวกับใน Dashboard)
-  var workloadRows = '<tr><th>ชื่อ</th><th>จำนวนงาน</th></tr>';
-  if (d.sorted.length === 0) {
-    workloadRows += '<tr><td colspan="2">ไม่มีข้อมูล</td></tr>';
-  } else {
-    d.sorted.forEach(function (id) {
-      var s = staffMapCache[id];
-      workloadRows += '<tr><td>' + s.firstName + ' ' + s.lastName + '</td><td>' + d.workload[id] + '</td></tr>';
+  // งานที่ใกล้ถึงเร็วๆ นี้ในช่วงที่เลือก - ปฏิทินหลักเป็นกำหนดการ ไม่ใช่ deadline จึงไม่มีแนวคิด "เกินกำหนด"
+  // แบบ Task Board โชว์เป็น "กำหนดการที่จะถึง" แทนกล่องเตือนสีแดง
+  var now = new Date();
+  var upcoming = d.curTasks.slice().filter(function (t) { return t.start >= now; })
+    .sort(function (a, b) { return a.start - b.start; }).slice(0, 6)
+    .map(function (t) {
+      return { label: t.data.taskName, badge: t.start.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }), badgeColor: '#63816F' };
     });
-  }
-  document.getElementById('print-report-workload').innerHTML = workloadRows;
 
-  window.print();
+  var html = execReportHtml({
+    periodLabel: 'Dashboard — ' + d.ranges.label,
+    dateRangeLabel: d.ranges.label,
+    totalLabel: 'งานทั้งหมด',
+    donutSegments: donutSegments,
+    donutSectionTitle: 'สัดส่วนประเภทงาน',
+    donutCenterPct: donutTotal > 0 ? Math.round(topSeg.count / donutTotal * 100) : 0,
+    donutCenterSub: topSeg.label,
+    workload: workload,
+    rightWarning: null,
+    rightListTitle: 'กำหนดการที่จะถึง',
+    rightListItems: upcoming,
+    generatedAtLabel: fmtGeneratedAtLabel()
+  });
+
+  // สร้างและพิมพ์จากแท็บใหม่แทน window.print() ในเฟรมเดิม (ดูเหตุผลที่ exportWorkbookViaNewTab ด้านบน) -
+  // ฟังก์ชันนี้ไม่มีการรอ API ก่อน จึงยังเปิดแท็บใหม่ได้ตรงๆ แบบ synchronous จาก click ปุ่ม
+  openExecReportInNewTab(html);
 }
 
 function openMoreMenu() {
@@ -3523,8 +3716,20 @@ function doTaskExport() {
   var fmt = document.querySelector('.ptx-fmt-btn.active').getAttribute('data-f');
   var token = localStorage.getItem(TOKEN_KEY);
 
+  // เปิดแท็บใหม่ไว้ล่วงหน้าตั้งแต่ตรงนี้เลย (ยัง synchronous ต่อเนื่องจาก click ปุ่ม "สร้างไฟล์" อยู่) ก่อนจะ
+  // ไปรอ callApi แบบ async - ถ้ารอไปเปิดแท็บใหม่ทีหลังใน .then() เบราว์เซอร์จะมองว่าไม่ได้มาจาก user gesture
+  // โดยตรงแล้ว แล้วบล็อก popup ทันที ค่อยส่งแท็บที่เปิดไว้แล้วนี้ไปเติมเนื้อหาทีหลังเมื่อข้อมูลพร้อม
+  var preOpenedTab = window.open('', '_blank');
+  if (preOpenedTab) {
+    preOpenedTab.document.write('<!doctype html><meta charset="utf-8"><body style="font-family:sans-serif;padding:24px;color:#6b7280">กำลังสร้างรายงาน...</body>');
+  }
+
   callApi('exportTaskReport', { token: token, range: range }).then(function (result) {
-    if (!result.success) { Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: result.message }); return; }
+    if (!result.success) {
+      if (preOpenedTab) preOpenedTab.close();
+      Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: result.message });
+      return;
+    }
     closeTaskExportModal();
 
     if (fmt === 'xlsx') {
@@ -3541,22 +3746,65 @@ function doTaskExport() {
       ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 25 }, { wch: 14 }, { wch: 14 }];
       var wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Task Report');
-      XLSX.writeFile(wb, 'C2Calendar_TaskReport_' + range + '.xlsx');
+      exportWorkbookViaNewTab(wb, 'C2Calendar_TaskReport_' + range + '.xlsx', preOpenedTab);
     } else {
-      document.getElementById('print-report-period').textContent = 'Task Board — ' + (range === 'week' ? 'สัปดาห์นี้' : (range === 'month' ? 'เดือนนี้' : 'ไตรมาสนี้'));
-      document.getElementById('print-report-summary').innerHTML = '<p><b>จำนวน Task:</b> ' + result.rows.length + ' รายการ</p>';
-      var tableRows = '<tr><th>ชื่องาน</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>วันครบกำหนด</th></tr>';
+      var periodLabel = 'Task Board — ' + (range === 'week' ? 'สัปดาห์นี้' : (range === 'month' ? 'เดือนนี้' : 'ไตรมาสนี้'));
+
+      var doneCount = result.rows.filter(function (r) { return r.status === 'done'; }).length;
+      var doingCount = result.rows.filter(function (r) { return r.status === 'doing'; }).length;
+      var todoCount = result.rows.filter(function (r) { return r.status === 'todo'; }).length;
+      var donutSegments = [
+        { label: 'เสร็จแล้ว', count: doneCount, color: '#3F654D' },
+        { label: 'กำลังทำ', count: doingCount, color: '#D97706' },
+        { label: 'ต้องทำ', count: todoCount, color: '#9AA6A0' }
+      ];
+      var donutTotal = doneCount + doingCount + todoCount;
+
+      // ภาระงานรายคน: นับจำนวน Task ที่แต่ละคนรับผิดชอบ (นับซ้ำได้ถ้า Task มีผู้รับผิดชอบหลายคน)
+      var workloadCount = {};
       result.rows.forEach(function (r) {
-        var statusLabel = r.status === 'done' ? 'เสร็จแล้ว' : (r.status === 'doing' ? 'กำลังทำ' : 'ต้องทำ');
-        var who = r.assigneeIds.map(function (id) { return ptbStaffName(id); }).join(', ');
-        tableRows += '<tr><td>' + escapeHtmlPtb(r.title) + '</td><td>' + statusLabel + '</td><td>' + who + '</td>' +
-          '<td>' + (r.dueDate ? new Date(r.dueDate).toLocaleDateString('th-TH') : '-') + '</td></tr>';
+        (r.assigneeIds || []).forEach(function (id) { workloadCount[id] = (workloadCount[id] || 0) + 1; });
       });
-      document.getElementById('print-report-table').innerHTML = tableRows;
-      document.getElementById('print-report-workload').innerHTML = '';
-      window.print();
+      var workload = Object.keys(workloadCount)
+        .sort(function (a, b) { return workloadCount[b] - workloadCount[a]; })
+        .slice(0, 8)
+        .map(function (id) { return { name: ptbStaffName(id), count: workloadCount[id], color: ptbStaffColor(id) }; });
+
+      // งานเกินกำหนด/ใกล้ครบกำหนด (ไม่นับ Task ที่เสร็จแล้ว - ตามนิยามเดียวกับฝั่ง backend getCompanyTaskSummary)
+      var todayOnly = new Date(); todayOnly.setHours(0, 0, 0, 0);
+      var dueRows = result.rows.filter(function (r) { return r.status !== 'done' && r.dueDate; }).map(function (r) {
+        var due = new Date(r.dueDate); due.setHours(0, 0, 0, 0);
+        var diffDays = Math.round((due - todayOnly) / 86400000);
+        return { title: r.title, diffDays: diffDays };
+      });
+      var overdueItems = dueRows.filter(function (r) { return r.diffDays < 0; })
+        .sort(function (a, b) { return a.diffDays - b.diffDays; }).slice(0, 4)
+        .map(function (r) { return { label: r.title, badge: 'เกิน ' + Math.abs(r.diffDays) + ' วัน' }; });
+      var upcomingItems = dueRows.filter(function (r) { return r.diffDays >= 0; })
+        .sort(function (a, b) { return a.diffDays - b.diffDays; }).slice(0, 4)
+        .map(function (r) {
+          var badge = r.diffDays === 0 ? 'วันนี้' : (r.diffDays === 1 ? 'พรุ่งนี้' : 'อีก ' + r.diffDays + ' วัน');
+          return { label: r.title, badge: badge, badgeColor: r.diffDays <= 1 ? '#B45309' : '#63816F' };
+        });
+
+      var html = execReportHtml({
+        periodLabel: periodLabel,
+        dateRangeLabel: range === 'week' ? 'สัปดาห์นี้' : (range === 'month' ? 'เดือนนี้' : 'ไตรมาสนี้'),
+        totalLabel: 'งานทั้งหมด',
+        donutSegments: donutSegments,
+        donutSectionTitle: 'สถานะงาน',
+        donutCenterPct: donutTotal > 0 ? Math.round(doneCount / donutTotal * 100) : 0,
+        donutCenterSub: 'เสร็จแล้ว',
+        workload: workload,
+        rightWarning: overdueItems.length ? { headerText: overdueItems.length + ' งานเกินกำหนดแล้ว ต้องติดตามด่วน', items: overdueItems } : null,
+        rightListTitle: 'ใกล้ครบกำหนด',
+        rightListItems: upcomingItems,
+        generatedAtLabel: fmtGeneratedAtLabel()
+      });
+      openExecReportInNewTab(html, preOpenedTab);
     }
   }).catch(function (err) {
+    if (preOpenedTab) preOpenedTab.close();
     Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: err.message });
   });
 }
