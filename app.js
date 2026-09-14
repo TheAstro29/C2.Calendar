@@ -332,8 +332,19 @@ var staffMapCache = {};
 var lastRenderedEvents = [];
 
 function firestoreDateToJs(val) {
+  // แก้บั๊ก "Invalid Date": Firestore Timestamp ที่วิ่งผ่าน Cloud Function callable protocol โดยไม่ได้แปลง
+  // เป็น ISO string ก่อนส่งออก (ทำถูกแล้วในฟังก์ชันปัจจุบันส่วนใหญ่ แต่กันเผื่อจุดอื่นในอนาคตพลาด) จะกลาย
+  // เป็น plain object {_seconds, _nanoseconds} ที่ไม่มี .toDate() แล้ว new Date(val) เจอ object แบบนี้จะ
+  // แปลงผ่าน toString() กลายเป็น "[object Object]" แล้วได้ Invalid Date กลับมาแทน จับ shape นี้ไว้ก่อนเลย
   if (!val) return null;
-  return val.toDate ? val.toDate() : new Date(val);
+  if (val.toDate) return val.toDate(); // Firestore Timestamp instance จริง (client SDK อ่านตรง)
+  if (typeof val === 'object' && (val._seconds !== undefined || val.seconds !== undefined)) {
+    var secs = val._seconds !== undefined ? val._seconds : val.seconds;
+    return new Date(secs * 1000);
+  }
+  var d = new Date(val);
+  return isNaN(d.getTime()) ? null : d; // parse ไม่ออกจริงๆ คืน null ดีกว่าคืน Invalid Date object
+  // (ปลายทางที่ใช้ค่านี้ เช่น fmtPtbDate ต่างเช็ค falsy อยู่แล้ว จะได้โชว์ "-" แทนข้อความ "Invalid Date")
 }
 
 // ===== แปลงเอกสารงานจาก Firestore เป็น event รูปแบบ FullCalendar (แทนที่ buildCalendarEvents เดิมของ Data.gs) =====
@@ -2840,7 +2851,7 @@ function isPtbOverdue(t) {
 }
 
 function fmtPtbDate(d) {
-  if (!d) return '-';
+  if (!d || isNaN(d.getTime())) return '-'; // กันเผื่อ d เป็น Date object ที่ invalid หลุดมาจากที่อื่น
   return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
 }
 
@@ -2858,9 +2869,10 @@ function ptbStaffName(staffId) {
 }
 
 function openTaskBoardModal() {
-  var role = localStorage.getItem(ROLE_KEY);
-  var isAdminOrCeo = role === 'admin' || role === 'ceo';
-  document.getElementById('ptb-tabs').style.display = isAdminOrCeo ? 'flex' : 'none';
+  // เปิดให้ทุก role ที่ login แล้วเห็นแท็บ "ภาพรวมทั้งบริษัท" เหมือนกันหมด (เดิมซ่อนไว้เฉพาะ Admin/CEO)
+  // ผู้ใช้ยืนยันแล้วว่าต้องการให้ทุกคน "ดู" ภาพรวม/บอร์ดรายคนได้ เพื่อช่วยกัน manage งาน แต่การแก้ไข/ลบ/
+  // เปลี่ยนสถานะงานของคนอื่นยังจำกัดสิทธิ์เหมือนเดิม (คุมที่ canManagePersonalTask ฝั่ง Cloud Function)
+  document.getElementById('ptb-tabs').style.display = 'flex';
   switchTaskBoardView('mystaff');
   document.getElementById('task-board-modal-overlay').style.display = 'flex';
   _pushModalNav('task-board-modal-overlay');
@@ -2882,6 +2894,12 @@ function switchTaskBoardView(view) {
     document.getElementById('ptb-modal-title').textContent = '📋 Task Board — ภาพรวมทั้งบริษัท';
     var adminTabBtn = document.querySelector('.ptb-tab[data-view="admin"]');
     if (adminTabBtn) adminTabBtn.classList.add('active');
+    // ปุ่ม Export รายงานยังจำกัดเฉพาะ Admin/CEO เหมือนเดิม (ต่างจากตัวภาพรวมที่เปิดให้ทุกคนดูได้แล้ว)
+    // ซ่อนไว้สำหรับ staff ทั่วไป กันกดแล้วเจอ error จาก Cloud Function โดยไม่จำเป็น
+    var role = localStorage.getItem(ROLE_KEY);
+    var isAdminOrCeo = role === 'admin' || role === 'ceo';
+    var exportBtn = document.getElementById('ptb-export-btn');
+    if (exportBtn) exportBtn.style.display = isAdminOrCeo ? 'inline-block' : 'none';
     renderPtbAdminOverview();
   } else if (view === 'person') {
     document.getElementById('ptb-view-person').classList.add('active');
@@ -2903,16 +2921,49 @@ var PTB_COLS = [
   { key: 'done', label: 'เสร็จแล้ว', color: '#059669' }
 ];
 
+// ===== เรียงลำดับการ์ดในบอร์ด: ค่าเริ่มต้น (ไม่เรียง) / วันครบกำหนดเก่า→ใหม่ / ความสำคัญสูง→ต่ำ =====
+// ใช้ร่วมกันทั้งบอร์ด "งานของฉัน" และ "บอร์ดรายคน" (คุมด้วย select เดียวกันในแต่ละหน้า ซิงก์ค่ากันผ่าน
+// applyPtbSortModeToSelects() กันเปิดคนละมุมมองแล้วค่า dropdown ไม่ตรงกับที่เลือกไว้จริง)
+var _ptbSortMode = '';
+var PTB_PRIORITY_RANK = { high: 3, medium: 2, low: 1 };
+function setPtbSortMode(mode) {
+  _ptbSortMode = mode;
+  applyPtbSortModeToSelects();
+  refreshCurrentPtbView();
+}
+function applyPtbSortModeToSelects() {
+  ['ptb-sort-select-mystaff', 'ptb-sort-select-person'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.value = _ptbSortMode;
+  });
+}
+function sortPtbTaskList(list) {
+  if (_ptbSortMode === 'date_asc') {
+    return list.slice().sort(function (a, b) {
+      var da = a.dueDate ? a.dueDate.getTime() : Infinity; // ไม่มีวันครบกำหนด ไปอยู่ท้ายสุด
+      var db = b.dueDate ? b.dueDate.getTime() : Infinity;
+      return da - db;
+    });
+  }
+  if (_ptbSortMode === 'priority_desc') {
+    return list.slice().sort(function (a, b) {
+      return (PTB_PRIORITY_RANK[b.priority] || 2) - (PTB_PRIORITY_RANK[a.priority] || 2);
+    });
+  }
+  return list; // ค่าเริ่มต้น: ตามลำดับเดิมจาก cache (ไม่เรียง)
+}
+
 function renderPtbBoard(containerId, personId) {
   var el = document.getElementById(containerId);
   el.innerHTML = '';
+  applyPtbSortModeToSelects();
   var myTasks = _personalTasksCache.filter(function (t) { return t.assigneeIds.indexOf(personId) !== -1; });
 
   PTB_COLS.forEach(function (col) {
     var colEl = document.createElement('div');
     colEl.className = 'ptb-col';
     colEl.setAttribute('data-status', col.key);
-    var list = myTasks.filter(function (t) { return t.status === col.key; });
+    var list = sortPtbTaskList(myTasks.filter(function (t) { return t.status === col.key; }));
     colEl.innerHTML =
       '<div class="ptb-col-head"><span class="sw" style="background:' + col.color + '"></span>' + col.label +
       '<span class="cnt">' + list.length + '</span></div><div class="ptb-cards"></div>';
@@ -3098,8 +3149,18 @@ function ptmTagChipHtml(val) {
     ' <button onclick="document.getElementById(\'ptm-tag-selected\').innerHTML=\'\'">✕</button></span>';
 }
 function ptmAttChipHtml(a) {
-  return '<div class="ptm-att-chip"><div class="ptm-att-thumb"></div><div class="ptm-att-meta"><b>' +
-    escapeHtmlPtb(a.name) + '</b><small>' + Math.round((a.size || 0) / 1024) + ' KB</small></div></div>';
+  // แก้บั๊ก: เดิมไม่ได้ใช้ a.url เลย ไฟล์แนบเลยกดดู/เปิดไม่ได้แม้จะอัปโหลดสำเร็จแล้วก็ตาม (URL มีเก็บ
+  // ไว้ในฐานข้อมูลอยู่แล้วตั้งแต่แรกจาก registerTaskAttachment แค่ฝั่งแสดงผลไม่เคยดึงมาใช้)
+  var isImg = (a.type || '').indexOf('image/') === 0;
+  var thumbStyle = (isImg && a.url) ? ' style="background-image:url(\'' + escapeHtmlPtb(a.url) + '\')"' : '';
+  var thumbClass = 'ptm-att-thumb' + (isImg ? ' is-img' : '');
+  var inner = '<div class="' + thumbClass + '"' + thumbStyle + '></div><div class="ptm-att-meta"><b>' +
+    escapeHtmlPtb(a.name) + '</b><small>' + Math.round((a.size || 0) / 1024) + ' KB</small></div>';
+  if (a.url) {
+    // เปิดแท็บใหม่ - รูปภาพเบราว์เซอร์แสดงได้ตรงๆ ส่วนไฟล์เอกสารอื่นจะดาวน์โหลด/เปิดตามที่เบราว์เซอร์รองรับ
+    return '<a class="ptm-att-chip" href="' + escapeHtmlPtb(a.url) + '" target="_blank" rel="noopener noreferrer">' + inner + '</a>';
+  }
+  return '<div class="ptm-att-chip">' + inner + '</div>';
 }
 
 function ptmAddAssigneeChip(id) {
@@ -3274,15 +3335,18 @@ document.getElementById('ptm-file-input').addEventListener('change', function (e
   function uploadBlobAndRegister(blob, contentType, displayName) {
     var fileName = Date.now() + '_' + displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
     var storageRef = fbStorage.ref('taskAttachments/' + taskId + '/' + fileName);
+    var uploadedUrl = ''; // เก็บ URL ที่อัปโหลดได้ไว้ใช้ตอนเติมการ์ดแนบไฟล์ทันที (กันต้องปิด-เปิด modal ใหม่ถึงจะกดดูได้)
     storageRef.put(blob, { contentType: contentType }).then(function () {
       return storageRef.getDownloadURL();
     }).then(function (url) {
+      uploadedUrl = url;
       return callApi('registerTaskAttachment', {
         token: token, taskId: taskId, url: url, thumbUrl: '', name: displayName, size: blob.size, type: contentType
       });
     }).then(function (result) {
       if (result.success) {
-        document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend', ptmAttChipHtml({ name: displayName, size: blob.size }));
+        document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend',
+          ptmAttChipHtml({ name: displayName, size: blob.size, url: uploadedUrl, type: contentType }));
         Toast.fire({ icon: 'success', title: 'แนบไฟล์แล้ว' });
       } else {
         Swal.fire({ icon: 'error', title: 'แนบไฟล์ไม่สำเร็จ', text: result.message });

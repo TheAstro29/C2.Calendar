@@ -595,9 +595,12 @@
         <h2 id="ptb-modal-title">📋 Task ของฉัน</h2>
         <button class="modal-close-btn" onclick="closeTaskBoardModal()">✕</button>
       </div>
-      <div id="ptb-tabs" style="display:none">
+      <!-- ทุก role ที่ login แล้วเห็นแท็บนี้เหมือนกันหมด (เปิดให้ "ดู" ภาพรวม/บอร์ดรายคนได้ทุกคน เพื่อช่วยกัน
+           manage งาน) - สิทธิ์ "แก้ไข/ลบ/เปลี่ยนสถานะ" งานของคนอื่นยังจำกัดเฉพาะเจ้าของงาน/Admin เหมือนเดิม
+           ไม่เปลี่ยน (คุมที่ฝั่ง Cloud Function อยู่แล้ว ดู canManagePersonalTask ใน functions/index.js) -->
+      <div id="ptb-tabs" style="display:flex">
         <button class="ptb-tab active" data-view="mystaff" onclick="switchTaskBoardView('mystaff')">งานของฉัน</button>
-        <button class="ptb-tab" data-view="admin" onclick="switchTaskBoardView('admin')">ภาพรวม Admin/CEO</button>
+        <button class="ptb-tab" data-view="admin" onclick="switchTaskBoardView('admin')">ภาพรวมทั้งบริษัท</button>
       </div>
 
       <div class="tb-body" id="ptb-tbbody">
@@ -605,6 +608,11 @@
         <div id="ptb-view-mystaff" class="ptb-view active">
           <div class="ptb-view-head">
             <div class="sub">ลากการ์ดข้ามคอลัมน์เพื่อเปลี่ยนสถานะ</div>
+            <select class="ptb-sort-select" id="ptb-sort-select-mystaff" onchange="setPtbSortMode(this.value)">
+              <option value="">เรียงตามค่าเริ่มต้น</option>
+              <option value="date_asc">วันครบกำหนด: เก่า → ใหม่</option>
+              <option value="priority_desc">ความสำคัญ: สูง → ต่ำ</option>
+            </select>
             <button class="btn-primary-sm" onclick="openPersonalTaskModal(null)">+ เพิ่ม Task</button>
           </div>
           <div class="ptb-board" id="ptb-board-mystaff"></div>
@@ -612,8 +620,10 @@
 
         <div id="ptb-view-admin" class="ptb-view">
           <div class="ptb-view-head">
-            <div class="sub">Admin / CEO — มองเห็นภาพรวมเท่ากันทั้งคู่</div>
-            <button class="btn-outline" onclick="openTaskExportModal()">⭳ Export รายงาน</button>
+            <div class="sub">ทุกคนดูภาพรวมนี้ได้เหมือนกัน — แต่ Export รายงานยังเฉพาะ Admin/CEO</div>
+            <!-- ซ่อน/โชว์ด้วย JS ใน switchTaskBoardView() ตาม role (id="ptb-export-btn") เพราะปุ่มนี้ยังจำกัด
+                 เฉพาะ Admin/CEO เหมือนเดิม ต่างจากตัวภาพรวมที่เปิดให้ทุกคนดูได้แล้ว -->
+            <button class="btn-outline" id="ptb-export-btn" onclick="openTaskExportModal()">⭳ Export รายงาน</button>
           </div>
           <div class="ptb-stat-row" id="ptb-stat-row"></div>
           <div class="ptb-grid2">
@@ -623,9 +633,14 @@
         </div>
 
         <div id="ptb-view-person" class="ptb-view">
-          <button class="ptb-back-btn" onclick="switchTaskBoardView('admin')">‹ กลับภาพรวม Admin/CEO</button>
+          <button class="ptb-back-btn" onclick="switchTaskBoardView('admin')">‹ กลับภาพรวมทั้งบริษัท</button>
           <div class="ptb-view-head" style="margin-top:8px">
             <h3 id="ptb-person-title" style="margin:0">บอร์ดของ ...</h3>
+            <select class="ptb-sort-select" id="ptb-sort-select-person" onchange="setPtbSortMode(this.value)">
+              <option value="">เรียงตามค่าเริ่มต้น</option>
+              <option value="date_asc">วันครบกำหนด: เก่า → ใหม่</option>
+              <option value="priority_desc">ความสำคัญ: สูง → ต่ำ</option>
+            </select>
             <button class="btn-primary-sm" id="ptb-person-add-btn">+ เพิ่ม Task</button>
           </div>
           <div class="ptb-board" id="ptb-board-person"></div>

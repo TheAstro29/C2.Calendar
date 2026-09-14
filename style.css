@@ -1081,9 +1081,16 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 /* บอร์ด Kanban ของ Personal Task (แยกจาก .kanban-* เดิมที่ใช้กับ To-Do List ตามประเภทงาน) */
 .ptb-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
 .ptb-col { background: #f4f5f7; border-radius: 14px; padding: 10px; min-height: 120px; }
-.ptb-col-head { display: flex; align-items: center; gap: 7px; padding: 4px 6px 9px; font-size: 12px; font-weight: 800; color: #1f2430; }
-.ptb-col-head .sw { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.ptb-col-head .cnt { margin-left: auto; background: #fff; border: 1px solid #dfe1e6; border-radius: 999px; font-size: 10px; color: #6b7280; padding: 1px 7px; font-weight: 700; }
+/* หัวคอลัมน์ "สิ่งที่ต้องทำ/กำลังทำ/เสร็จแล้ว" - ขยายใหญ่ขึ้นให้เห็นชัดเจนขึ้นบน PC (เดิม 12px เล็กไป)
+   ส่วนมือถือปรับแค่นิดหน่อยตาม @media (max-width:860px) ด้านล่าง (ไม่ต้องใหญ่เท่า PC เพราะจอแคบ) */
+.ptb-col-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 12px; font-size: 16px; font-weight: 800; color: #1f2430; }
+.ptb-col-head .sw { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.ptb-col-head .cnt { margin-left: auto; background: #fff; border: 1px solid #dfe1e6; border-radius: 999px; font-size: 12px; color: #6b7280; padding: 2px 9px; font-weight: 700; }
+/* dropdown เรียงลำดับการ์ด (วันครบกำหนด/ความสำคัญ) ในหัวบอร์ด "งานของฉัน" และ "บอร์ดรายคน" */
+.ptb-sort-select {
+  font-size: 12px; padding: 6px 9px; border-radius: 8px; border: 1px solid #dfe1e6;
+  background: #fff; color: #374151; cursor: pointer;
+}
 .ptb-col.dragover { outline: 2px dashed #10b981; outline-offset: -4px; background: #eafbf3; }
 .ptb-cards { display: flex; flex-direction: column; gap: 8px; min-height: 36px; }
 .ptb-card {
@@ -1237,6 +1244,9 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 @media (max-width: 860px) {
   .ptb-board { grid-template-columns: 1fr; }
   .ptb-grid2 { grid-template-columns: 1fr; }
+  /* มือถือ: ขยับขึ้นแค่นิดหน่อยจาก 12px เดิม (ไม่ใหญ่เท่า PC ที่ 16px เพราะจอแคบกว่ามาก) */
+  .ptb-col-head { font-size: 13.5px; padding: 5px 6px 10px; }
+  .ptb-col-head .sw { width: 9px; height: 9px; }
 }
 @media (max-width: 640px) {
   #task-board-box { width: calc(100vw - 16px); max-height: 92vh; }
