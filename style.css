@@ -1224,6 +1224,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-att-meta b { display: block; font-size: 11px; }
 .ptm-att-meta small { color: #047857; font-weight: 700; }
 .ptm-att-meta .rm { border: none; background: none; color: #9aa1a8; cursor: pointer; font-size: 12px; margin-left: 4px; }
+/* การ์ดไฟล์ที่ "รอบันทึก Task" ตอนเพิ่ม Task ใหม่ + แนบไฟล์ ในขั้นตอนเดียว (ยังไม่ได้อัปโหลดขึ้น Storage จริง) */
+.ptm-att-chip.ptm-att-pending { border-style: dashed; background: #fffbeb; border-color: #f5d98a; }
+.ptm-att-chip.ptm-att-pending .ptm-att-meta small { color: #b45309; }
+.ptm-att-chip.ptm-att-pending .ptm-att-thumb { background: linear-gradient(135deg,#f5d98a,#d97706); }
+.ptm-att-pending-rm { border: none; background: none; color: #9aa1a8; cursor: pointer; font-size: 12px; margin-left: 2px; padding: 2px 4px; }
+.ptm-att-pending-rm:hover { color: #ef4444; }
 .ptm-foot { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px 18px; }
 .ptm-foot .danger-link { background: none; border: none; color: #ef4444; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .ptm-foot .btns { display: flex; gap: 9px; }

@@ -2793,6 +2793,11 @@ var _ptbCurrentPersonId = null;
 var _ptmEditingTaskId = null;
 var _unsubPersonalTasks = null;
 var _unsubTaskTags = null;
+// ไฟล์ที่ผู้ใช้เลือกแนบไว้ตอนกำลัง "เพิ่ม Task ใหม่" (ยังไม่มี taskId จริง เลยอัปโหลดขึ้น Storage ไม่ได้ทันที
+// เพราะ Storage Rules เช็ค assigneeIds ของ Task ที่มีอยู่จริงในฐานข้อมูล) - พักไว้ในนี้ก่อน แล้วอัปโหลดจริง
+// ทันทีหลังบันทึก Task สำเร็จใน savePersonalTaskModal() ผู้ใช้เลยทำ "เพิ่ม Task + แนบไฟล์" ในขั้นตอนเดียวได้
+// โดยไม่ต้องปิด-เปิด modal ใหม่มาแนบทีหลัง (ลบออกจาก array ด้วย ptmRemovePendingFile ได้ก่อนบันทึกจริง)
+var _ptmPendingFiles = [];
 
 function setupPersonalTasksListener() {
   if (_unsubPersonalTasks) return; // กันสมัครซ้ำถ้าเรียกซ้อน
@@ -2950,7 +2955,14 @@ function sortPtbTaskList(list) {
       return (PTB_PRIORITY_RANK[b.priority] || 2) - (PTB_PRIORITY_RANK[a.priority] || 2);
     });
   }
-  return list; // ค่าเริ่มต้น: ตามลำดับเดิมจาก cache (ไม่เรียง)
+  // ค่าเริ่มต้น (ผู้ใช้ยืนยันแล้ว): เรียงวันครบกำหนดเก่า→ใหม่ก่อนเป็นหลัก แล้วถ้าวันตรงกัน (หรือไม่มี
+  // วันครบกำหนดทั้งคู่) ใช้ความสำคัญสูง→ต่ำตัดสินลำดับรอง ให้เห็นงานด่วน+สำคัญขึ้นก่อนเสมอโดยไม่ต้องเลือกเอง
+  return list.slice().sort(function (a, b) {
+    var da = a.dueDate ? a.dueDate.getTime() : Infinity;
+    var db = b.dueDate ? b.dueDate.getTime() : Infinity;
+    if (da !== db) return da - db;
+    return (PTB_PRIORITY_RANK[b.priority] || 2) - (PTB_PRIORITY_RANK[a.priority] || 2);
+  });
 }
 
 function renderPtbBoard(containerId, personId) {
@@ -3095,6 +3107,7 @@ function viewPtbPersonBoard(staffId) {
 // ===== Modal เพิ่ม/แก้ไข Task =====
 function openPersonalTaskModal(taskId, defaultAssigneeId) {
   _ptmEditingTaskId = taskId || null;
+  _ptmPendingFiles = []; // เคลียร์ไฟล์ที่ค้างจาก modal ครั้งก่อน (กันไฟล์เก่าหลุดติดมากับ Task ใหม่ที่ไม่เกี่ยวกัน)
   var t = taskId ? _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0] : null;
 
   document.getElementById('ptm-title').value = t ? t.title : '';
@@ -3161,6 +3174,21 @@ function ptmAttChipHtml(a) {
     return '<a class="ptm-att-chip" href="' + escapeHtmlPtb(a.url) + '" target="_blank" rel="noopener noreferrer">' + inner + '</a>';
   }
   return '<div class="ptm-att-chip">' + inner + '</div>';
+}
+// การ์ดไฟล์ที่ "รอบันทึก" - ใช้ตอนเพิ่ม Task ใหม่ที่ยังไม่มี taskId จริง (แนบไฟล์พร้อมกับสร้าง Task ในขั้นตอน
+// เดียว) ยังอัปโหลดขึ้น Storage จริงไม่ได้ จึงโชว์เป็นการ์ดสถานะ "รอ" พร้อมปุ่มลบออกก่อนได้ถ้าเปลี่ยนใจ
+function ptmPendingAttChipHtml(file, idx) {
+  var isImg = (file.type || '').indexOf('image/') === 0;
+  var thumbClass = 'ptm-att-thumb' + (isImg ? ' is-img' : '');
+  return '<div class="ptm-att-chip ptm-att-pending" data-pending-idx="' + idx + '">' +
+    '<div class="' + thumbClass + '"></div><div class="ptm-att-meta"><b>' + escapeHtmlPtb(file.name) +
+    '</b><small>' + Math.round((file.size || 0) / 1024) + ' KB · รอบันทึก Task</small></div>' +
+    '<button type="button" class="ptm-att-pending-rm" onclick="ptmRemovePendingFile(' + idx + ')" title="ลบไฟล์นี้ออก">✕</button></div>';
+}
+function ptmRemovePendingFile(idx) {
+  _ptmPendingFiles[idx] = null; // เว้นตำแหน่งว่างไว้แทนการ splice กัน index ของไฟล์อื่นที่แนบไปแล้วเพี้ยน
+  var el = document.querySelector('.ptm-att-pending[data-pending-idx="' + idx + '"]');
+  if (el) el.remove();
 }
 
 function ptmAddAssigneeChip(id) {
@@ -3319,65 +3347,80 @@ ptmCheckInput.addEventListener('keydown', function (e) {
 });
 
 // ===== ไฟล์แนบ: รูปภาพบีบอัดผ่าน canvas ก่อนเสมอ (แนวทางเดียวกับรูปโปรไฟล์) ไฟล์อื่นอัปโหลดตรง =====
+// ปรับให้ "เพิ่ม Task ใหม่ + แนบไฟล์" ทำได้ในขั้นตอนเดียว: ถ้ากำลังแก้ไข Task ที่มีอยู่แล้ว (_ptmEditingTaskId)
+// อัปโหลดขึ้น Storage ทันที เหมือนเดิม แต่ถ้ากำลังสร้าง Task ใหม่ (ยังไม่มี taskId จริง เลยอัปโหลดขึ้น Storage
+// ไม่ได้ทันที เพราะ Storage Rules เช็ค assigneeIds ของ Task ที่มีอยู่จริงในฐานข้อมูล) จะพักไฟล์ไว้ใน
+// _ptmPendingFiles ก่อน แล้วอัปโหลดจริงทันทีหลังบันทึก Task สำเร็จใน savePersonalTaskModal()
+function ptmUploadOneFile(taskId, token, file) {
+  return new Promise(function (resolve, reject) {
+    function uploadBlob(blob, contentType, displayName) {
+      var fileName = Date.now() + '_' + displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      var storageRef = fbStorage.ref('taskAttachments/' + taskId + '/' + fileName);
+      var uploadedUrl = ''; // เก็บ URL ที่อัปโหลดได้ไว้ใช้ตอนเติมการ์ดแนบไฟล์ทันที (กันต้องปิด-เปิด modal ใหม่ถึงจะกดดูได้)
+      storageRef.put(blob, { contentType: contentType }).then(function () {
+        return storageRef.getDownloadURL();
+      }).then(function (url) {
+        uploadedUrl = url;
+        return callApi('registerTaskAttachment', {
+          token: token, taskId: taskId, url: url, thumbUrl: '', name: displayName, size: blob.size, type: contentType
+        });
+      }).then(function (result) {
+        if (result.success) {
+          resolve({ name: displayName, size: blob.size, url: uploadedUrl, type: contentType });
+        } else {
+          reject(new Error(result.message || 'แนบไฟล์ไม่สำเร็จ'));
+        }
+      }).catch(reject);
+    }
+
+    if (file.type.startsWith('image/')) {
+      var img = new Image();
+      var objectUrl = URL.createObjectURL(file);
+      img.onload = function () {
+        var MAX_SIZE = 1600;
+        var w = img.width, h = img.height;
+        if (w > h && w > MAX_SIZE) { h = Math.round(h * (MAX_SIZE / w)); w = MAX_SIZE; }
+        else if (h > MAX_SIZE) { w = Math.round(w * (MAX_SIZE / h)); h = MAX_SIZE; }
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(objectUrl);
+        canvas.toBlob(function (blob) { uploadBlob(blob, 'image/jpeg', file.name); }, 'image/jpeg', 0.75);
+      };
+      img.onerror = function () { URL.revokeObjectURL(objectUrl); reject(new Error('เปิดไฟล์รูปไม่ได้')); };
+      img.src = objectUrl;
+    } else {
+      if (file.size > 5 * 1024 * 1024) {
+        reject(new Error('ไฟล์เอกสารต้องไม่เกิน 5MB'));
+        return;
+      }
+      uploadBlob(file, file.type || 'application/octet-stream', file.name);
+    }
+  });
+}
+
 document.getElementById('ptm-drop-zone').addEventListener('click', function () {
-  if (!_ptmEditingTaskId) {
-    Swal.fire({ icon: 'info', title: 'กรุณาบันทึก Task นี้ก่อน', text: 'แนบไฟล์ได้หลังจากสร้าง Task แล้วเท่านั้น' });
-    return;
-  }
   document.getElementById('ptm-file-input').click();
 });
 document.getElementById('ptm-file-input').addEventListener('change', function (e) {
   var file = e.target.files[0];
   if (!file) return;
-  var taskId = _ptmEditingTaskId;
-  var token = localStorage.getItem(TOKEN_KEY);
 
-  function uploadBlobAndRegister(blob, contentType, displayName) {
-    var fileName = Date.now() + '_' + displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
-    var storageRef = fbStorage.ref('taskAttachments/' + taskId + '/' + fileName);
-    var uploadedUrl = ''; // เก็บ URL ที่อัปโหลดได้ไว้ใช้ตอนเติมการ์ดแนบไฟล์ทันที (กันต้องปิด-เปิด modal ใหม่ถึงจะกดดูได้)
-    storageRef.put(blob, { contentType: contentType }).then(function () {
-      return storageRef.getDownloadURL();
-    }).then(function (url) {
-      uploadedUrl = url;
-      return callApi('registerTaskAttachment', {
-        token: token, taskId: taskId, url: url, thumbUrl: '', name: displayName, size: blob.size, type: contentType
-      });
-    }).then(function (result) {
-      if (result.success) {
-        document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend',
-          ptmAttChipHtml({ name: displayName, size: blob.size, url: uploadedUrl, type: contentType }));
-        Toast.fire({ icon: 'success', title: 'แนบไฟล์แล้ว' });
-      } else {
-        Swal.fire({ icon: 'error', title: 'แนบไฟล์ไม่สำเร็จ', text: result.message });
-      }
+  if (_ptmEditingTaskId) {
+    // Task มีอยู่แล้ว - อัปโหลดขึ้น Storage ได้ทันทีเหมือนเดิม
+    var token = localStorage.getItem(TOKEN_KEY);
+    ptmUploadOneFile(_ptmEditingTaskId, token, file).then(function (att) {
+      document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend', ptmAttChipHtml(att));
+      Toast.fire({ icon: 'success', title: 'แนบไฟล์แล้ว' });
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'แนบไฟล์ไม่สำเร็จ', text: err.message });
     });
-  }
-
-  if (file.type.startsWith('image/')) {
-    var img = new Image();
-    var objectUrl = URL.createObjectURL(file);
-    img.onload = function () {
-      var MAX_SIZE = 1600;
-      var w = img.width, h = img.height;
-      if (w > h && w > MAX_SIZE) { h = Math.round(h * (MAX_SIZE / w)); w = MAX_SIZE; }
-      else if (h > MAX_SIZE) { w = Math.round(w * (MAX_SIZE / h)); h = MAX_SIZE; }
-      var canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(objectUrl);
-      canvas.toBlob(function (blob) { uploadBlobAndRegister(blob, 'image/jpeg', file.name); }, 'image/jpeg', 0.75);
-    };
-    img.onerror = function () { URL.revokeObjectURL(objectUrl); Swal.fire({ icon: 'error', title: 'เปิดไฟล์รูปไม่ได้' }); };
-    img.src = objectUrl;
   } else {
-    if (file.size > 5 * 1024 * 1024) {
-      Swal.fire({ icon: 'warning', title: 'ไฟล์ใหญ่เกินไป', text: 'ไฟล์เอกสารต้องไม่เกิน 5MB' });
-      return;
-    }
-    uploadBlobAndRegister(file, file.type || 'application/octet-stream', file.name);
+    // กำลังเพิ่ม Task ใหม่ - ยังไม่มี taskId จริง พักไฟล์ไว้ก่อน แสดงเป็นการ์ด "รอบันทึก Task"
+    // แล้วจะอัปโหลดจริงทันทีหลังกดบันทึก Task สำเร็จ (ผู้ใช้เลยทำ add + แนบไฟล์ ในขั้นตอนเดียวได้)
+    var idx = _ptmPendingFiles.length;
+    _ptmPendingFiles.push(file);
+    document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend', ptmPendingAttChipHtml(file, idx));
   }
   e.target.value = '';
 });
@@ -3416,6 +3459,31 @@ function savePersonalTaskModal() {
 
   callApi(action, payload).then(function (result) {
     if (!result.success) { Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: result.message }); return; }
+
+    // ถ้าเป็น Task ใหม่และมีไฟล์ที่พักไว้ตอนเพิ่ม Task (แนบพร้อมกับ add ในขั้นตอนเดียว) ให้อัปโหลดขึ้น Storage
+    // จริงทันทีตอนนี้ เพราะเพิ่งมี taskId จริงแล้ว (ก่อนหน้านี้อัปโหลดไม่ได้เพราะ Storage Rules เช็ค
+    // assigneeIds ของ Task ที่มีอยู่จริงในฐานข้อมูล)
+    var pendingFiles = _ptmPendingFiles.filter(function (f) { return f; });
+    if (!_ptmEditingTaskId && pendingFiles.length && result.taskId) {
+      var newTaskId = result.taskId;
+      var failCount = 0;
+      var chain = Promise.resolve();
+      pendingFiles.forEach(function (file) {
+        chain = chain.then(function () {
+          return ptmUploadOneFile(newTaskId, token, file).catch(function () { failCount++; });
+        });
+      });
+      chain.then(function () {
+        _ptmPendingFiles = [];
+        Toast.fire({
+          icon: failCount ? 'warning' : 'success',
+          title: failCount ? ('เพิ่ม Task ใหม่แล้ว (แนบไฟล์ไม่สำเร็จ ' + failCount + ' ไฟล์ กรุณาแนบใหม่)') : 'เพิ่ม Task ใหม่แล้ว พร้อมไฟล์แนบ'
+        });
+        closePersonalTaskModal();
+      });
+      return;
+    }
+
     Toast.fire({ icon: 'success', title: _ptmEditingTaskId ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่ม Task ใหม่แล้ว' });
     closePersonalTaskModal();
   }).catch(function (err) {
