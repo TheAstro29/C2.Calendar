@@ -136,6 +136,19 @@
           <div class="todo-summary-arrow">›</div>
         </div>
       </div>
+
+      <div class="sidebar-card" id="taskboard-sidebar-section" style="display:none">
+        <h3>📋 Task ของฉัน</h3>
+        <p class="sub">บอร์ดงานส่วนตัว — มอบหมายและติดตามงานร่วมกับเพื่อนร่วมทีมได้</p>
+        <div id="ptb-summary-card" onclick="openTaskBoardModal()">
+          <div class="todo-summary-icon">📋</div>
+          <div class="todo-summary-text">
+            <b id="ptb-summary-count">กำลังโหลด...</b>
+            <span>กดเพื่อเปิดบอร์ด</span>
+          </div>
+          <div class="todo-summary-arrow">›</div>
+        </div>
+      </div>
     </aside>
   </div>
 
@@ -571,6 +584,161 @@
       <div class="tb-info-banner">จัดกลุ่มตามประเภทงาน — พอกำหนดวันจริงแล้วจะย้ายไปโชว์บนปฏิทินอัตโนมัติ</div>
       <div class="tb-body" id="todo-board-tbbody">
         <div id="todo-board-columns"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= Personal Task Board ================= -->
+  <div id="task-board-modal-overlay">
+    <div id="task-board-box">
+      <div class="tb-head">
+        <h2 id="ptb-modal-title">📋 Task ของฉัน</h2>
+        <button class="modal-close-btn" onclick="closeTaskBoardModal()">✕</button>
+      </div>
+      <div id="ptb-tabs" style="display:none">
+        <button class="ptb-tab active" data-view="mystaff" onclick="switchTaskBoardView('mystaff')">งานของฉัน</button>
+        <button class="ptb-tab" data-view="admin" onclick="switchTaskBoardView('admin')">ภาพรวม Admin/CEO</button>
+      </div>
+
+      <div class="tb-body" id="ptb-tbbody">
+
+        <div id="ptb-view-mystaff" class="ptb-view active">
+          <div class="ptb-view-head">
+            <div class="sub">ลากการ์ดข้ามคอลัมน์เพื่อเปลี่ยนสถานะ</div>
+            <button class="btn-primary-sm" onclick="openPersonalTaskModal(null)">+ เพิ่ม Task</button>
+          </div>
+          <div class="ptb-board" id="ptb-board-mystaff"></div>
+        </div>
+
+        <div id="ptb-view-admin" class="ptb-view">
+          <div class="ptb-view-head">
+            <div class="sub">Admin / CEO — มองเห็นภาพรวมเท่ากันทั้งคู่</div>
+            <button class="btn-outline" onclick="openTaskExportModal()">⭳ Export รายงาน</button>
+          </div>
+          <div class="ptb-stat-row" id="ptb-stat-row"></div>
+          <div class="ptb-grid2">
+            <div class="ptb-panel"><h3>งานใกล้ / เกินกำหนด</h3><div id="ptb-deadline-list"></div></div>
+            <div class="ptb-panel"><h3>ภาระงานรายบุคคล</h3><div id="ptb-workload-list"></div></div>
+          </div>
+        </div>
+
+        <div id="ptb-view-person" class="ptb-view">
+          <button class="ptb-back-btn" onclick="switchTaskBoardView('admin')">‹ กลับภาพรวม Admin/CEO</button>
+          <div class="ptb-view-head" style="margin-top:8px">
+            <h3 id="ptb-person-title" style="margin:0">บอร์ดของ ...</h3>
+            <button class="btn-primary-sm" id="ptb-person-add-btn">+ เพิ่ม Task</button>
+          </div>
+          <div class="ptb-board" id="ptb-board-person"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Modal เพิ่ม/แก้ไข Task ===== -->
+  <div id="personal-task-modal-overlay">
+    <div id="personal-task-box">
+      <div class="ptm-head">
+        <input class="ptm-title" id="ptm-title" placeholder="ชื่องาน...">
+        <button class="modal-close-btn" onclick="closePersonalTaskModal()">✕</button>
+      </div>
+      <div class="ptm-body">
+
+        <div>
+          <div class="ptm-sect-label">รายละเอียดงาน</div>
+          <textarea class="ptm-desc" id="ptm-desc" placeholder="อธิบายเพิ่มเติม (ถ้ามี)..."></textarea>
+          <div style="height:8px"></div>
+          <div class="ptm-assignee-row" id="ptm-assignee-row">
+            <div class="ptm-picker-pop">
+              <button class="ptm-add-chip-btn" id="ptm-add-assignee-btn">+ ผู้รับผิดชอบ</button>
+              <div class="ptm-picker-list" id="ptm-assignee-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ptm-toggle-row">
+            <div class="ptm-sect-label">กำหนดวัน</div>
+            <label class="ptm-switch"><input type="checkbox" id="ptm-link-toggle"><span class="ptm-slider"></span></label>
+          </div>
+          <div class="ptm-switch-lbl" id="ptm-toggle-label" style="margin-bottom:7px;"></div>
+          <div class="ptm-combo-wrap ptm-event-combo" id="ptm-event-combo">
+            <input class="ptm-field" placeholder="ค้นหา Event... เช่น ประชุมทีมขาย" id="ptm-event-input" autocomplete="off">
+            <div class="ptm-combo-list" id="ptm-event-list"></div>
+          </div>
+          <input class="ptm-field ptm-date-field" type="date" id="ptm-manual-date">
+
+          <div style="height:12px"></div>
+          <div class="ptm-two-col">
+            <div>
+              <div class="ptm-sect-label">ความสำคัญ</div>
+              <div class="ptm-prio-row">
+                <button class="ptm-prio-btn" data-p="low">ต่ำ</button>
+                <button class="ptm-prio-btn" data-p="med">กลาง</button>
+                <button class="ptm-prio-btn" data-p="high">สูง</button>
+              </div>
+            </div>
+            <div>
+              <div class="ptm-sect-label">แท็ก</div>
+              <div class="ptm-combo-wrap">
+                <input class="ptm-field" placeholder="ค้นหา / พิมพ์แท็กใหม่" id="ptm-tag-input" autocomplete="off">
+                <div class="ptm-combo-list" id="ptm-tag-list"></div>
+              </div>
+              <div style="margin-top:7px;" id="ptm-tag-selected"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="ptm-sect-label">Checklist</div>
+          <div class="ptm-checklist-add">
+            <input class="ptm-field" placeholder="พิมพ์แล้วกด + เพื่อเพิ่มรายการ" id="ptm-check-input">
+            <button id="ptm-check-add-btn">+</button>
+          </div>
+          <div class="ptm-check-items" id="ptm-check-items"></div>
+        </div>
+
+        <div>
+          <div class="ptm-sect-label">ไฟล์แนบ</div>
+          <div class="ptm-drop-zone" id="ptm-drop-zone">📎 คลิกเพื่อแนบไฟล์ (รูปภาพจะถูกบีบอัดอัตโนมัติ)</div>
+          <input type="file" id="ptm-file-input" style="display:none" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx">
+          <div class="ptm-att-list" id="ptm-att-list"></div>
+        </div>
+      </div>
+
+      <div class="ptm-foot">
+        <button class="danger-link" id="ptm-delete-btn" onclick="deleteCurrentPersonalTask()" style="display:none;">ลบ Task นี้</button>
+        <div class="btns">
+          <button class="btn-outline" onclick="closePersonalTaskModal()">ยกเลิก</button>
+          <button class="btn-primary-sm" onclick="savePersonalTaskModal()">บันทึก Task</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Modal Export รายงาน ===== -->
+  <div id="task-export-modal-overlay">
+    <div id="task-export-box">
+      <div class="ptm-head"><div style="font-size:14px; font-weight:800;">Export รายงาน Task</div><button class="modal-close-btn" onclick="closeTaskExportModal()">✕</button></div>
+      <div class="ptm-body">
+        <div>
+          <div class="ptm-sect-label">ช่วงเวลา</div>
+          <div class="ptx-preset-row">
+            <button class="ptx-preset-btn active" data-r="week">สัปดาห์นี้</button>
+            <button class="ptx-preset-btn" data-r="month">เดือนนี้</button>
+            <button class="ptx-preset-btn" data-r="quarter">ไตรมาสนี้</button>
+          </div>
+        </div>
+        <div>
+          <div class="ptm-sect-label">รูปแบบไฟล์</div>
+          <div class="ptx-fmt-row">
+            <button class="ptx-fmt-btn active" data-f="pdf">📄 PDF</button>
+            <button class="ptx-fmt-btn" data-f="xlsx">📊 Excel (CSV)</button>
+          </div>
+        </div>
+      </div>
+      <div class="ptm-foot" style="justify-content:flex-end;">
+        <div class="btns"><button class="btn-outline" onclick="closeTaskExportModal()">ยกเลิก</button><button class="btn-primary-sm" onclick="doTaskExport()">สร้างไฟล์</button></div>
       </div>
     </div>
   </div>

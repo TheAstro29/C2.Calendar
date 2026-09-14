@@ -37,6 +37,9 @@ var _MODAL_CLOSE_FN = {
   "my-requests-modal-overlay": function () { closeMyRequestsModal(); },
   "task-detail-modal-overlay": function () { closeTaskDetailModal(); },
   "todo-board-modal-overlay": function () { closeTodoBoardModal(); },
+  "task-board-modal-overlay": function () { closeTaskBoardModal(); },
+  "personal-task-modal-overlay": function () { closePersonalTaskModal(); },
+  "task-export-modal-overlay": function () { closeTaskExportModal(); },
 };
 
 function _pushModalNav(overlayId) {
@@ -75,7 +78,9 @@ var CLOUD_FUNCTION_ACTIONS = [
   'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive', 'deleteStaff',
   'addHoliday', 'deleteHoliday',
   'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
-  'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead'
+  'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead',
+  'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
+  'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -619,8 +624,10 @@ function enterAdminMode(fullName, role) {
   document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
   document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
+  document.getElementById('taskboard-sidebar-section').style.display = 'block'; // ทุก role ที่ login แล้วมี Task Board ของตัวเองได้
   requestNotificationPermission();
   setupNotificationsRealtimeListener();
+  setupPersonalTasksListener();
   loadTodoList();
 }
 
@@ -631,6 +638,8 @@ function exitAdminMode() {
   document.getElementById('notif-bell-btn').style.display = 'none';
   document.getElementById('export-excel-btn').style.display = 'none';
   document.getElementById('dashboard-btn').style.display = 'none';
+  document.getElementById('taskboard-sidebar-section').style.display = 'none';
+  teardownPersonalTasksListener();
   lastNotifications = [];
   isFirstNotifSnapshot = true;
   loadTodoList();
@@ -2706,7 +2715,9 @@ function renderCalendar(result) {
 
       var topRow = document.createElement('div');
       topRow.style.display = 'flex';
-      topRow.style.alignItems = 'center';
+      // มุมมอง List: จุดสี/เวลาอยู่ชิดขอบบนของบรรทัดแรกเท่านั้น (ไม่ center ทั้งแนวตั้ง) เพราะชื่องาน
+      // อาจขึ้นหลายบรรทัดแล้ว (แก้บั๊กชื่องานยาวดันจอมือถือล้น - เปลี่ยนจากตัดจบ "..." เป็นขึ้นบรรทัดใหม่แทน)
+      topRow.style.alignItems = isListView ? 'flex-start' : 'center';
       topRow.style.gap = '3px';
       topRow.style.overflow = 'hidden';
       topRow.style.width = '100%';
@@ -2714,12 +2725,19 @@ function renderCalendar(result) {
       topRow.innerHTML = timeHtml + dotsHtml;
 
       var titleSpan = document.createElement('span');
-      titleSpan.style.overflow = 'hidden';
-      titleSpan.style.textOverflow = 'ellipsis';
-      titleSpan.style.whiteSpace = 'nowrap';
       titleSpan.style.minWidth = '0';
       titleSpan.style.flex = '1';
-      if (isListView) titleSpan.style.fontWeight = '600';
+      if (isListView) {
+        // List view: ให้ขึ้นบรรทัดใหม่แทนการตัดจบด้วย "..." (ผู้ใช้เลือกแบบนี้ - เห็นชื่องานเต็มเสมอ)
+        titleSpan.style.whiteSpace = 'normal';
+        titleSpan.style.wordBreak = 'break-word';
+        titleSpan.style.fontWeight = '600';
+      } else {
+        // มุมมอง Grid (เดือน/สัปดาห์/วัน) เซลล์เตี้ย ยังต้องตัดจบบรรทัดเดียวเหมือนเดิม
+        titleSpan.style.overflow = 'hidden';
+        titleSpan.style.textOverflow = 'ellipsis';
+        titleSpan.style.whiteSpace = 'nowrap';
+      }
       titleSpan.textContent = arg.event.title;
       topRow.appendChild(titleSpan);
       wrapper.appendChild(topRow);
@@ -2749,4 +2767,664 @@ function renderCalendar(result) {
   calendarInstance.render();
   updateViewToggleLabel(initialViewToUse);
   hidePageLoading();
+}
+
+// ================================================================================
+// ===== Personal Task Board (ptb/ptm) — ระบบจัดการ Task รายบุคคล ================
+// ================================================================================
+// แยกจาก collection "tasks" เดิม (= Event ปฏิทิน) และแยกจาก To-Do List (kanban ตาม
+// ประเภทงานของ Event ที่ยังไม่ระบุวันที่) โดยสิ้นเชิง — นี่คือบอร์ด Kanban ส่วนบุคคลใหม่
+// ต้อง login ก่อนถึงจะใช้ได้ (personalTasks ไม่ public เหมือน tasks/holidays)
+
+var _personalTasksCache = [];
+var _taskTagsCache = [];
+var _ptbCurrentPersonId = null;
+var _ptmEditingTaskId = null;
+var _unsubPersonalTasks = null;
+var _unsubTaskTags = null;
+
+function setupPersonalTasksListener() {
+  if (_unsubPersonalTasks) return; // กันสมัครซ้ำถ้าเรียกซ้อน
+
+  _unsubPersonalTasks = fbDb.collection('personalTasks').onSnapshot(function (snapshot) {
+    _personalTasksCache = snapshot.docs.map(function (doc) {
+      var d = doc.data();
+      return {
+        taskId: doc.id,
+        title: d.title,
+        description: d.description || '',
+        status: d.status,
+        priority: d.priority,
+        tag: d.tag || '',
+        dueDate: d.dueDate ? firestoreDateToJs(d.dueDate) : null,
+        linkedEventId: d.linkedEventId || null,
+        assigneeIds: d.assigneeIds || [],
+        checklist: d.checklist || [],
+        attachments: d.attachments || [],
+        createdBy: d.createdBy
+      };
+    });
+    updatePtbSummaryCard();
+    if (document.getElementById('task-board-modal-overlay').style.display === 'flex') {
+      refreshCurrentPtbView();
+    }
+  }, function (err) {
+    console.error('personalTasks listener error', err);
+  });
+
+  _unsubTaskTags = fbDb.collection('taskTags').onSnapshot(function (snapshot) {
+    _taskTagsCache = snapshot.docs.map(function (doc) { return doc.id; });
+  }, function (err) {
+    console.error('taskTags listener error', err);
+  });
+}
+
+function teardownPersonalTasksListener() {
+  if (_unsubPersonalTasks) { _unsubPersonalTasks(); _unsubPersonalTasks = null; }
+  if (_unsubTaskTags) { _unsubTaskTags(); _unsubTaskTags = null; }
+  _personalTasksCache = [];
+  _taskTagsCache = [];
+}
+
+function updatePtbSummaryCard() {
+  var myId = localStorage.getItem(ACCOUNT_ID_KEY);
+  var mine = _personalTasksCache.filter(function (t) {
+    return t.assigneeIds.indexOf(myId) !== -1 && t.status !== 'done';
+  });
+  var el = document.getElementById('ptb-summary-count');
+  if (el) el.textContent = mine.length === 0 ? 'ไม่มีงานค้าง' : mine.length + ' งานที่ต้องทำ';
+}
+
+function isPtbOverdue(t) {
+  return t.status !== 'done' && t.dueDate && t.dueDate.getTime() < Date.now();
+}
+
+function fmtPtbDate(d) {
+  if (!d) return '-';
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+}
+
+function ptbStaffInitial(staffId) {
+  var s = staffMapCache[staffId];
+  return s ? (s.firstName || '?').charAt(0) : '?';
+}
+function ptbStaffColor(staffId) {
+  var s = staffMapCache[staffId];
+  return s ? (s.colorHex || '#888780') : '#888780';
+}
+function ptbStaffName(staffId) {
+  var s = staffMapCache[staffId];
+  return s ? (s.firstName + (s.lastName ? ' ' + s.lastName : '')) : 'ไม่ทราบชื่อ';
+}
+
+function openTaskBoardModal() {
+  var role = localStorage.getItem(ROLE_KEY);
+  var isAdminOrCeo = role === 'admin' || role === 'ceo';
+  document.getElementById('ptb-tabs').style.display = isAdminOrCeo ? 'flex' : 'none';
+  switchTaskBoardView('mystaff');
+  document.getElementById('task-board-modal-overlay').style.display = 'flex';
+  _pushModalNav('task-board-modal-overlay');
+}
+function closeTaskBoardModal() {
+  document.getElementById('task-board-modal-overlay').style.display = 'none';
+}
+
+function switchTaskBoardView(view) {
+  document.querySelectorAll('.ptb-view').forEach(function (v) { v.classList.remove('active'); });
+  document.querySelectorAll('.ptb-tab').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-view') === view); });
+
+  if (view === 'mystaff') {
+    document.getElementById('ptb-view-mystaff').classList.add('active');
+    document.getElementById('ptb-modal-title').textContent = '📋 Task ของฉัน';
+    renderPtbBoard('ptb-board-mystaff', localStorage.getItem(ACCOUNT_ID_KEY));
+  } else if (view === 'admin') {
+    document.getElementById('ptb-view-admin').classList.add('active');
+    document.getElementById('ptb-modal-title').textContent = '📋 Task Board — ภาพรวมทั้งบริษัท';
+    var adminTabBtn = document.querySelector('.ptb-tab[data-view="admin"]');
+    if (adminTabBtn) adminTabBtn.classList.add('active');
+    renderPtbAdminOverview();
+  } else if (view === 'person') {
+    document.getElementById('ptb-view-person').classList.add('active');
+    document.getElementById('ptb-modal-title').textContent = '📋 Task Board';
+  }
+}
+
+function refreshCurrentPtbView() {
+  var active = document.querySelector('.ptb-view.active');
+  if (!active) return;
+  if (active.id === 'ptb-view-mystaff') renderPtbBoard('ptb-board-mystaff', localStorage.getItem(ACCOUNT_ID_KEY));
+  else if (active.id === 'ptb-view-admin') renderPtbAdminOverview();
+  else if (active.id === 'ptb-view-person' && _ptbCurrentPersonId) renderPtbBoard('ptb-board-person', _ptbCurrentPersonId);
+}
+
+var PTB_COLS = [
+  { key: 'todo', label: 'สิ่งที่ต้องทำ', color: '#dfe3e6' },
+  { key: 'doing', label: 'กำลังทำ', color: '#fbbf24' },
+  { key: 'done', label: 'เสร็จแล้ว', color: '#059669' }
+];
+
+function renderPtbBoard(containerId, personId) {
+  var el = document.getElementById(containerId);
+  el.innerHTML = '';
+  var myTasks = _personalTasksCache.filter(function (t) { return t.assigneeIds.indexOf(personId) !== -1; });
+
+  PTB_COLS.forEach(function (col) {
+    var colEl = document.createElement('div');
+    colEl.className = 'ptb-col';
+    colEl.setAttribute('data-status', col.key);
+    var list = myTasks.filter(function (t) { return t.status === col.key; });
+    colEl.innerHTML =
+      '<div class="ptb-col-head"><span class="sw" style="background:' + col.color + '"></span>' + col.label +
+      '<span class="cnt">' + list.length + '</span></div><div class="ptb-cards"></div>';
+    el.appendChild(colEl);
+
+    var cardsEl = colEl.querySelector('.ptb-cards');
+    if (list.length === 0) {
+      cardsEl.innerHTML = '<div class="ptb-empty-hint">ลากการ์ดมาวางที่นี่</div>';
+    } else {
+      list.forEach(function (t) { cardsEl.appendChild(buildPtbCard(t)); });
+    }
+
+    colEl.addEventListener('dragover', function (e) { e.preventDefault(); colEl.classList.add('dragover'); });
+    colEl.addEventListener('dragleave', function () { colEl.classList.remove('dragover'); });
+    colEl.addEventListener('drop', function (e) {
+      e.preventDefault();
+      colEl.classList.remove('dragover');
+      var taskId = e.dataTransfer.getData('text/plain');
+      var task = _personalTasksCache.filter(function (t) { return t.taskId === taskId; })[0];
+      if (!task || task.status === col.key) return;
+      var token = localStorage.getItem(TOKEN_KEY);
+      callApi('updatePersonalTaskStatus', { token: token, taskId: taskId, status: col.key }).then(function (result) {
+        if (!result.success) Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
+        // ไม่ต้อง re-render เอง — onSnapshot จะยิงกลับมาให้ re-render อัตโนมัติ
+      }).catch(function (err) {
+        Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: err.message });
+      });
+    });
+  });
+}
+
+function buildPtbCard(t) {
+  var card = document.createElement('div');
+  card.className = 'ptb-card';
+  card.setAttribute('draggable', 'true');
+  card.addEventListener('dragstart', function (e) {
+    e.dataTransfer.setData('text/plain', t.taskId);
+    card.classList.add('dragging');
+  });
+  card.addEventListener('dragend', function () { card.classList.remove('dragging'); });
+  card.addEventListener('click', function () { openPersonalTaskModal(t.taskId); });
+
+  var avatars = t.assigneeIds.map(function (id) {
+    return '<span class="dot" style="background:' + ptbStaffColor(id) + '">' + ptbStaffInitial(id) + '</span>';
+  }).join('');
+
+  var doneCount = t.checklist.filter(function (c) { return c.done; }).length;
+  var pct = t.checklist.length ? Math.round(doneCount / t.checklist.length * 100) : 0;
+  var overdue = isPtbOverdue(t);
+  var prioLabel = t.priority === 'low' ? 'ต่ำ' : (t.priority === 'high' ? 'สูง' : 'กลาง');
+
+  card.innerHTML =
+    '<div class="ptb-top-row"><div class="ptb-ttl">' + escapeHtmlPtb(t.title) + '</div>' +
+    '<span class="ptb-prio-pip ' + t.priority + '">' + prioLabel + '</span></div>' +
+    '<div class="ptb-meta-row">' +
+      (t.tag ? '<span class="ptb-tag-pip">' + escapeHtmlPtb(t.tag) + '</span>' : '') +
+      '<span class="ptb-due ' + (overdue ? 'overdue' : '') + '">' + (overdue ? '⚠ ' : '📅 ') + fmtPtbDate(t.dueDate) + '</span>' +
+      '<span class="ptb-avatars">' + avatars + '</span>' +
+    '</div>' +
+    (t.checklist.length ? '<div class="ptb-checkbar"><i style="width:' + pct + '%"></i></div>' : '');
+  return card;
+}
+
+function escapeHtmlPtb(s) {
+  return (s || '').replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// ===== มุมมอง Admin/CEO — ภาพรวมทั้งบริษัท =====
+function renderPtbAdminOverview() {
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('getCompanyTaskSummary', { token: token }).then(function (result) {
+    if (!result.success) {
+      Swal.fire({ icon: 'error', title: 'โหลดภาพรวมไม่สำเร็จ', text: result.message });
+      return;
+    }
+
+    document.getElementById('ptb-stat-row').innerHTML =
+      '<div class="ptb-stat-tile"><div class="lbl">Task ทั้งหมด</div><div class="val">' + result.totalTasks + '</div></div>' +
+      '<div class="ptb-stat-tile"><div class="lbl">เกินกำหนด</div><div class="val danger">' + result.overdueCount + '</div></div>' +
+      '<div class="ptb-stat-tile"><div class="lbl">เสร็จแล้ว</div><div class="val brand">' + result.doneCount + '</div></div>';
+
+    var deadlineHtml = result.upcoming.map(function (t) {
+      var who = t.assigneeIds.map(function (id) { return ptbStaffName(id); }).join(', ');
+      var d = t.dueDate ? firestoreDateToJs(t.dueDate) : null;
+      return '<div class="ptb-deadline-row" onclick="openPersonalTaskModal(\'' + t.taskId + '\')">' +
+        '<span class="d-dot" style="background:' + (t.overdue ? '#ef4444' : '#fbbf24') + '"></span>' +
+        '<span class="d-title">' + escapeHtmlPtb(t.title) + '</span>' +
+        '<span class="d-who">' + who + '</span>' +
+        '<span class="d-date ' + (t.overdue ? 'od' : '') + '">' + (t.overdue ? 'เกินกำหนด · ' : '') + fmtPtbDate(d) + '</span>' +
+      '</div>';
+    }).join('');
+    document.getElementById('ptb-deadline-list').innerHTML = deadlineHtml || '<div class="ptb-empty-hint">ไม่มีงานใกล้ครบกำหนด</div>';
+
+    var workloadHtml = result.workload.map(function (s) {
+      var totalN = s.total || 1;
+      return '<div class="ptb-wl-row" onclick="viewPtbPersonBoard(\'' + s.staffId + '\')">' +
+        '<div class="ptb-wl-avatar" style="background:' + (s.colorHex || '#888780') + '">' + (s.firstName || '?').charAt(0) +
+          (s.hasOverdue ? '<span class="od-dot"></span>' : '') + '</div>' +
+        '<div class="ptb-wl-body">' +
+          '<div class="ptb-wl-name-row"><span class="ptb-wl-name">' + s.firstName + ' ' + (s.lastName || '') + '</span><span class="ptb-wl-total">' + s.total + ' งาน</span></div>' +
+          '<div class="ptb-wl-bar">' +
+            (s.todo ? '<span style="width:' + (s.todo / totalN * 100) + '%; background:#dfe3e6"></span>' : '') +
+            (s.doing ? '<span style="width:' + (s.doing / totalN * 100) + '%; background:#fbbf24"></span>' : '') +
+            (s.done ? '<span style="width:' + (s.done / totalN * 100) + '%; background:#059669"></span>' : '') +
+          '</div>' +
+        '</div>' +
+        '<span class="ptb-wl-go">ดูบอร์ด ›</span>' +
+      '</div>';
+    }).join('');
+    document.getElementById('ptb-workload-list').innerHTML = workloadHtml || '<div class="ptb-empty-hint">ยังไม่มีผู้ปฏิบัติงาน</div>';
+
+    window._ptbLastSummary = result; // เก็บไว้ใช้ตอน export
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'โหลดภาพรวมไม่สำเร็จ', text: err.message });
+  });
+}
+
+function viewPtbPersonBoard(staffId) {
+  _ptbCurrentPersonId = staffId;
+  document.getElementById('ptb-person-title').textContent = 'บอร์ดของ ' + ptbStaffName(staffId);
+  document.getElementById('ptb-person-add-btn').onclick = function () { openPersonalTaskModal(null, staffId); };
+  document.querySelectorAll('.ptb-view').forEach(function (v) { v.classList.remove('active'); });
+  document.getElementById('ptb-view-person').classList.add('active');
+  renderPtbBoard('ptb-board-person', staffId);
+}
+
+// ===== Modal เพิ่ม/แก้ไข Task =====
+function openPersonalTaskModal(taskId, defaultAssigneeId) {
+  _ptmEditingTaskId = taskId || null;
+  var t = taskId ? _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0] : null;
+
+  document.getElementById('ptm-title').value = t ? t.title : '';
+  document.getElementById('ptm-desc').value = t ? t.description : '';
+  document.getElementById('ptm-delete-btn').style.display = t ? 'block' : 'none';
+
+  var row = document.getElementById('ptm-assignee-row');
+  row.querySelectorAll('.ptm-avatar-chip').forEach(function (c) { c.remove(); });
+  var myId = localStorage.getItem(ACCOUNT_ID_KEY);
+  var initialAssignees = t ? t.assigneeIds.slice() : (defaultAssigneeId ? [defaultAssigneeId] : [myId]);
+  initialAssignees.forEach(function (id) { ptmAddAssigneeChip(id); });
+  ptmRenderAssigneePicker();
+
+  document.getElementById('ptm-link-toggle').checked = t ? !!t.linkedEventId : false;
+  document.getElementById('ptm-event-input').value = '';
+  document.getElementById('ptm-event-input').setAttribute('data-event-id', t && t.linkedEventId ? t.linkedEventId : '');
+  if (t && t.linkedEventId) {
+    ptmLoadLinkableEvents(); // โหลดแคชก่อนเสมอ กันกรณีเปิด modal แก้ไขเป็นครั้งแรกโดยยังไม่เคยกดสวิตช์ผูก Event มาก่อน
+    var ev = _ptmLinkableEventsCache.filter(function (e) { return e.taskId === t.linkedEventId; })[0];
+    document.getElementById('ptm-event-input').value = ev ? ev.taskName : '(Event ที่เคยผูกไว้)';
+  }
+  document.getElementById('ptm-manual-date').value = t && t.dueDate ? ptbDateToInputValue(t.dueDate) : ptbDateToInputValue(new Date());
+  ptmSyncToggle();
+
+  document.querySelectorAll('.ptm-prio-btn').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-p') === (t ? t.priority : 'med'));
+  });
+
+  document.getElementById('ptm-tag-input').value = '';
+  document.getElementById('ptm-tag-selected').innerHTML = t && t.tag ? ptmTagChipHtml(t.tag) : '';
+
+  var ci = document.getElementById('ptm-check-items');
+  ci.innerHTML = '';
+  (t ? t.checklist : []).forEach(function (item) { ptmAddCheckItemRow(item.text, item.done); });
+
+  document.getElementById('ptm-att-list').innerHTML = (t ? t.attachments : []).map(function (a) { return ptmAttChipHtml(a); }).join('');
+
+  document.getElementById('personal-task-modal-overlay').style.display = 'flex';
+  _pushModalNav('personal-task-modal-overlay');
+}
+function closePersonalTaskModal() {
+  document.getElementById('personal-task-modal-overlay').style.display = 'none';
+}
+
+function ptbDateToInputValue(d) {
+  var yyyy = d.getFullYear(), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
+
+function ptmTagChipHtml(val) {
+  return '<span class="ptm-tag-chip" data-val="' + escapeHtmlPtb(val) + '">' + escapeHtmlPtb(val) +
+    ' <button onclick="document.getElementById(\'ptm-tag-selected\').innerHTML=\'\'">✕</button></span>';
+}
+function ptmAttChipHtml(a) {
+  return '<div class="ptm-att-chip"><div class="ptm-att-thumb"></div><div class="ptm-att-meta"><b>' +
+    escapeHtmlPtb(a.name) + '</b><small>' + Math.round((a.size || 0) / 1024) + ' KB</small></div></div>';
+}
+
+function ptmAddAssigneeChip(id) {
+  var row = document.getElementById('ptm-assignee-row');
+  var chip = document.createElement('div');
+  chip.className = 'ptm-avatar-chip';
+  chip.setAttribute('data-id', id);
+  chip.innerHTML = '<span class="dt" style="background:' + ptbStaffColor(id) + '">' + ptbStaffInitial(id) + '</span>' +
+    ptbStaffName(id) + '<button class="rm">✕</button>';
+  chip.querySelector('.rm').addEventListener('click', function () { chip.remove(); ptmRenderAssigneePicker(); });
+  row.insertBefore(chip, row.querySelector('.ptm-picker-pop'));
+}
+function ptmRenderAssigneePicker() {
+  var chosen = Array.prototype.map.call(document.querySelectorAll('#ptm-assignee-row .ptm-avatar-chip'), function (c) { return c.getAttribute('data-id'); });
+  var list = document.getElementById('ptm-assignee-list');
+  var opts = Object.keys(staffMapCache).filter(function (id) { return chosen.indexOf(id) === -1; });
+  if (opts.length === 0) {
+    list.innerHTML = '<div style="padding:6px 8px; font-size:11px; color:#9aa1a8">เลือกครบทุกคนแล้ว</div>';
+    return;
+  }
+  list.innerHTML = opts.map(function (id) {
+    return '<div class="ptm-picker-opt" onclick="ptmPickAssignee(\'' + id + '\')"><span class="dt" style="background:' +
+      ptbStaffColor(id) + '">' + ptbStaffInitial(id) + '</span>' + ptbStaffName(id) + '</div>';
+  }).join('');
+}
+function ptmPickAssignee(id) {
+  ptmAddAssigneeChip(id);
+  ptmRenderAssigneePicker();
+  document.getElementById('ptm-assignee-list').classList.remove('open');
+}
+document.getElementById('ptm-add-assignee-btn').addEventListener('click', function (e) {
+  e.stopPropagation();
+  document.getElementById('ptm-assignee-list').classList.toggle('open');
+});
+document.addEventListener('click', function (e) {
+  if (!e.target.closest('.ptm-picker-pop')) {
+    var list = document.getElementById('ptm-assignee-list');
+    if (list) list.classList.remove('open');
+  }
+});
+
+var ptmLinkToggle = document.getElementById('ptm-link-toggle');
+var ptmEventCombo = document.getElementById('ptm-event-combo');
+var ptmManualDate = document.getElementById('ptm-manual-date');
+var ptmToggleLabel = document.getElementById('ptm-toggle-label');
+function ptmSyncToggle() {
+  if (ptmLinkToggle.checked) {
+    ptmEventCombo.classList.add('show');
+    ptmManualDate.classList.remove('show');
+    ptmToggleLabel.textContent = '🔗 ผูกกับ Event ในปฏิทิน';
+    ptmLoadLinkableEvents();
+  } else {
+    ptmEventCombo.classList.remove('show');
+    ptmManualDate.classList.add('show');
+    ptmToggleLabel.textContent = '📅 กำหนดวันเอง (ไม่ผูก Event)';
+  }
+}
+ptmLinkToggle.addEventListener('change', ptmSyncToggle);
+
+document.querySelectorAll('.ptm-prio-btn').forEach(function (b) {
+  b.addEventListener('click', function () {
+    document.querySelectorAll('.ptm-prio-btn').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+  });
+});
+
+// ===== ค้นหา Event ในปฏิทินเพื่อผูกกับ Task (ใช้ lastTaskDocs ที่แคชไว้แล้วจากปฏิทินหลัก) =====
+var _ptmLinkableEventsCache = [];
+function ptmLoadLinkableEvents() {
+  _ptmLinkableEventsCache = (lastTaskDocs || []).filter(function (docSnap) {
+    var d = docSnap.data();
+    return !d.isUndated && d.status !== 'ยกเลิกงาน';
+  }).map(function (docSnap) {
+    var d = docSnap.data();
+    return { taskId: docSnap.id, taskName: d.taskName, startDateTime: d.startDateTime };
+  });
+}
+var ptmEventInput = document.getElementById('ptm-event-input');
+var ptmEventList = document.getElementById('ptm-event-list');
+function ptmRenderEventList() {
+  var q = ptmEventInput.value.trim().toLowerCase();
+  var opts = _ptmLinkableEventsCache.filter(function (e) { return !q || e.taskName.toLowerCase().indexOf(q) !== -1; }).slice(0, 30);
+  ptmEventList.innerHTML = opts.map(function (e) {
+    var d = firestoreDateToJs(e.startDateTime);
+    return '<div class="ptm-combo-opt" data-id="' + e.taskId + '" data-name="' + escapeHtmlPtb(e.taskName) + '">' +
+      escapeHtmlPtb(e.taskName) + ' <span style="color:#9aa1a8">' + (d ? fmtPtbDate(d) : '') + '</span></div>';
+  }).join('') || '<div style="padding:6px 9px; font-size:11.5px; color:#9aa1a8">ไม่พบ Event</div>';
+  ptmEventList.querySelectorAll('.ptm-combo-opt[data-id]').forEach(function (o) {
+    o.addEventListener('click', function () {
+      ptmEventInput.value = o.getAttribute('data-name');
+      ptmEventInput.setAttribute('data-event-id', o.getAttribute('data-id'));
+      ptmEventList.classList.remove('open');
+    });
+  });
+}
+ptmEventInput.addEventListener('focus', function () { ptmRenderEventList(); ptmEventList.classList.add('open'); });
+ptmEventInput.addEventListener('input', ptmRenderEventList);
+document.addEventListener('click', function (e) { if (!e.target.closest('#ptm-event-combo')) ptmEventList.classList.remove('open'); });
+
+// ===== แท็ก (combobox: เลือกจากที่มี หรือพิมพ์ใหม่แล้วเพิ่มได้เลย) =====
+var ptmTagInput = document.getElementById('ptm-tag-input');
+var ptmTagList = document.getElementById('ptm-tag-list');
+function ptmRenderTagList() {
+  var q = ptmTagInput.value.trim();
+  var opts = _taskTagsCache.filter(function (tg) { return !q || tg.toLowerCase().indexOf(q.toLowerCase()) !== -1; });
+  var html = opts.map(function (tg) { return '<div class="ptm-combo-opt" data-val="' + escapeHtmlPtb(tg) + '">' + escapeHtmlPtb(tg) + '</div>'; }).join('');
+  var exists = _taskTagsCache.some(function (tg) { return tg.toLowerCase() === q.toLowerCase(); });
+  if (q && !exists) {
+    html += '<div class="ptm-combo-opt add-new" data-newval="' + escapeHtmlPtb(q) + '">+ เพิ่มแท็กใหม่ "' + escapeHtmlPtb(q) + '"</div>';
+  }
+  ptmTagList.innerHTML = html;
+  ptmTagList.querySelectorAll('.ptm-combo-opt[data-val]').forEach(function (o) {
+    o.addEventListener('click', function () { ptmSelectTag(o.getAttribute('data-val')); });
+  });
+  var addBtn = ptmTagList.querySelector('.add-new');
+  if (addBtn) {
+    addBtn.addEventListener('click', function () {
+      var newVal = addBtn.getAttribute('data-newval');
+      var token = localStorage.getItem(TOKEN_KEY);
+      callApi('addTaskTag', { token: token, name: newVal }).then(function (result) {
+        if (result.success) ptmSelectTag(result.name);
+        else Swal.fire({ icon: 'error', title: 'เพิ่มแท็กไม่สำเร็จ', text: result.message });
+      });
+    });
+  }
+}
+function ptmSelectTag(val) {
+  document.getElementById('ptm-tag-selected').innerHTML = ptmTagChipHtml(val);
+  ptmTagInput.value = '';
+  ptmTagList.classList.remove('open');
+}
+ptmTagInput.addEventListener('focus', function () { ptmRenderTagList(); ptmTagList.classList.add('open'); });
+ptmTagInput.addEventListener('input', ptmRenderTagList);
+document.addEventListener('click', function (e) { if (!e.target.closest('#ptm-tag-input') && !e.target.closest('#ptm-tag-list')) ptmTagList.classList.remove('open'); });
+
+// ===== Checklist =====
+var ptmCheckInput = document.getElementById('ptm-check-input');
+function ptmAddCheckItemRow(text, done) {
+  var row = document.createElement('div');
+  row.className = 'ptm-check-item' + (done ? ' done' : '');
+  row.innerHTML = '<input type="checkbox" ' + (done ? 'checked' : '') + '><span>' + escapeHtmlPtb(text) + '</span><button class="rm">✕</button>';
+  row.querySelector('input').addEventListener('change', function (e) { row.classList.toggle('done', e.target.checked); });
+  row.querySelector('.rm').addEventListener('click', function () { row.remove(); });
+  document.getElementById('ptm-check-items').appendChild(row);
+}
+document.getElementById('ptm-check-add-btn').addEventListener('click', function () {
+  var v = ptmCheckInput.value.trim();
+  if (v) { ptmAddCheckItemRow(v, false); ptmCheckInput.value = ''; }
+});
+ptmCheckInput.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    var v = ptmCheckInput.value.trim();
+    if (v) { ptmAddCheckItemRow(v, false); ptmCheckInput.value = ''; }
+  }
+});
+
+// ===== ไฟล์แนบ: รูปภาพบีบอัดผ่าน canvas ก่อนเสมอ (แนวทางเดียวกับรูปโปรไฟล์) ไฟล์อื่นอัปโหลดตรง =====
+document.getElementById('ptm-drop-zone').addEventListener('click', function () {
+  if (!_ptmEditingTaskId) {
+    Swal.fire({ icon: 'info', title: 'กรุณาบันทึก Task นี้ก่อน', text: 'แนบไฟล์ได้หลังจากสร้าง Task แล้วเท่านั้น' });
+    return;
+  }
+  document.getElementById('ptm-file-input').click();
+});
+document.getElementById('ptm-file-input').addEventListener('change', function (e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var taskId = _ptmEditingTaskId;
+  var token = localStorage.getItem(TOKEN_KEY);
+
+  function uploadBlobAndRegister(blob, contentType, displayName) {
+    var fileName = Date.now() + '_' + displayName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    var storageRef = fbStorage.ref('taskAttachments/' + taskId + '/' + fileName);
+    storageRef.put(blob, { contentType: contentType }).then(function () {
+      return storageRef.getDownloadURL();
+    }).then(function (url) {
+      return callApi('registerTaskAttachment', {
+        token: token, taskId: taskId, url: url, thumbUrl: '', name: displayName, size: blob.size, type: contentType
+      });
+    }).then(function (result) {
+      if (result.success) {
+        document.getElementById('ptm-att-list').insertAdjacentHTML('beforeend', ptmAttChipHtml({ name: displayName, size: blob.size }));
+        Toast.fire({ icon: 'success', title: 'แนบไฟล์แล้ว' });
+      } else {
+        Swal.fire({ icon: 'error', title: 'แนบไฟล์ไม่สำเร็จ', text: result.message });
+      }
+    }).catch(function (err) {
+      Swal.fire({ icon: 'error', title: 'แนบไฟล์ไม่สำเร็จ', text: err.message });
+    });
+  }
+
+  if (file.type.startsWith('image/')) {
+    var img = new Image();
+    var objectUrl = URL.createObjectURL(file);
+    img.onload = function () {
+      var MAX_SIZE = 1600;
+      var w = img.width, h = img.height;
+      if (w > h && w > MAX_SIZE) { h = Math.round(h * (MAX_SIZE / w)); w = MAX_SIZE; }
+      else if (h > MAX_SIZE) { w = Math.round(w * (MAX_SIZE / h)); h = MAX_SIZE; }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(objectUrl);
+      canvas.toBlob(function (blob) { uploadBlobAndRegister(blob, 'image/jpeg', file.name); }, 'image/jpeg', 0.75);
+    };
+    img.onerror = function () { URL.revokeObjectURL(objectUrl); Swal.fire({ icon: 'error', title: 'เปิดไฟล์รูปไม่ได้' }); };
+    img.src = objectUrl;
+  } else {
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire({ icon: 'warning', title: 'ไฟล์ใหญ่เกินไป', text: 'ไฟล์เอกสารต้องไม่เกิน 5MB' });
+      return;
+    }
+    uploadBlobAndRegister(file, file.type || 'application/octet-stream', file.name);
+  }
+  e.target.value = '';
+});
+
+// ===== บันทึก / ลบ Task =====
+function savePersonalTaskModal() {
+  var title = document.getElementById('ptm-title').value.trim();
+  if (!title) { Swal.fire({ icon: 'warning', title: 'กรุณาใส่ชื่องาน' }); return; }
+
+  var assigneeIds = Array.prototype.map.call(document.querySelectorAll('#ptm-assignee-row .ptm-avatar-chip'), function (c) { return c.getAttribute('data-id'); });
+  var prioBtn = document.querySelector('.ptm-prio-btn.active');
+  var priority = prioBtn ? prioBtn.getAttribute('data-p') : 'med';
+  var tagChip = document.querySelector('#ptm-tag-selected .ptm-tag-chip');
+  var tag = tagChip ? tagChip.getAttribute('data-val') : '';
+  var linked = ptmLinkToggle.checked;
+  var linkedEventId = linked ? (ptmEventInput.getAttribute('data-event-id') || '') : '';
+  var dueDate = linked ? null : ptmManualDate.value;
+  var checklist = Array.prototype.map.call(document.querySelectorAll('#ptm-check-items .ptm-check-item'), function (r) {
+    return { text: r.querySelector('span').textContent, done: r.classList.contains('done') };
+  });
+
+  if (linked && !linkedEventId) {
+    Swal.fire({ icon: 'warning', title: 'กรุณาเลือก Event ที่จะผูก', text: 'หรือปิดสวิตช์เพื่อกำหนดวันเอง' });
+    return;
+  }
+
+  var token = localStorage.getItem(TOKEN_KEY);
+  var payload = {
+    token: token, title: title, description: document.getElementById('ptm-desc').value,
+    assigneeIds: assigneeIds, priority: priority, tag: tag,
+    linkedEventId: linked ? linkedEventId : null, dueDate: dueDate, checklist: checklist
+  };
+
+  var action = _ptmEditingTaskId ? 'updatePersonalTask' : 'createPersonalTask';
+  if (_ptmEditingTaskId) payload.taskId = _ptmEditingTaskId;
+
+  callApi(action, payload).then(function (result) {
+    if (!result.success) { Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: result.message }); return; }
+    Toast.fire({ icon: 'success', title: _ptmEditingTaskId ? 'บันทึกการแก้ไขแล้ว' : 'เพิ่ม Task ใหม่แล้ว' });
+    closePersonalTaskModal();
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: err.message });
+  });
+}
+
+function deleteCurrentPersonalTask() {
+  if (!_ptmEditingTaskId) return;
+  var taskId = _ptmEditingTaskId;
+  Swal.fire({
+    icon: 'warning', title: 'ยืนยันลบ Task นี้?', showCancelButton: true,
+    confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก'
+  }).then(function (res) {
+    if (!res.isConfirmed) return;
+    var token = localStorage.getItem(TOKEN_KEY);
+    callApi('deletePersonalTask', { token: token, taskId: taskId }).then(function (result) {
+      if (!result.success) { Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: result.message }); return; }
+      Toast.fire({ icon: 'success', title: 'ลบ Task แล้ว' });
+      closePersonalTaskModal();
+    });
+  });
+}
+
+// ===== Export รายงาน =====
+document.querySelectorAll('.ptx-preset-btn').forEach(function (b) {
+  b.addEventListener('click', function () { document.querySelectorAll('.ptx-preset-btn').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); });
+});
+document.querySelectorAll('.ptx-fmt-btn').forEach(function (b) {
+  b.addEventListener('click', function () { document.querySelectorAll('.ptx-fmt-btn').forEach(function (x) { x.classList.remove('active'); }); b.classList.add('active'); });
+});
+function openTaskExportModal() { document.getElementById('task-export-modal-overlay').style.display = 'flex'; _pushModalNav('task-export-modal-overlay'); }
+function closeTaskExportModal() { document.getElementById('task-export-modal-overlay').style.display = 'none'; }
+
+function doTaskExport() {
+  var range = document.querySelector('.ptx-preset-btn.active').getAttribute('data-r');
+  var fmt = document.querySelector('.ptx-fmt-btn.active').getAttribute('data-f');
+  var token = localStorage.getItem(TOKEN_KEY);
+
+  callApi('exportTaskReport', { token: token, range: range }).then(function (result) {
+    if (!result.success) { Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: result.message }); return; }
+    closeTaskExportModal();
+
+    if (fmt === 'xlsx') {
+      var rows = result.rows.map(function (r) {
+        return {
+          'ชื่องาน': r.title, 'สถานะ': r.status === 'done' ? 'เสร็จแล้ว' : (r.status === 'doing' ? 'กำลังทำ' : 'ต้องทำ'),
+          'ความสำคัญ': r.priority, 'แท็ก': r.tag,
+          'ผู้รับผิดชอบ': r.assigneeIds.map(function (id) { return ptbStaffName(id); }).join(', '),
+          'วันครบกำหนด': r.dueDate ? new Date(r.dueDate).toLocaleDateString('th-TH') : '',
+          'สร้างเมื่อ': new Date(r.createdAt).toLocaleDateString('th-TH')
+        };
+      });
+      var ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 25 }, { wch: 14 }, { wch: 14 }];
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Task Report');
+      XLSX.writeFile(wb, 'C2Calendar_TaskReport_' + range + '.xlsx');
+    } else {
+      document.getElementById('print-report-period').textContent = 'Task Board — ' + (range === 'week' ? 'สัปดาห์นี้' : (range === 'month' ? 'เดือนนี้' : 'ไตรมาสนี้'));
+      document.getElementById('print-report-summary').innerHTML = '<p><b>จำนวน Task:</b> ' + result.rows.length + ' รายการ</p>';
+      var tableRows = '<tr><th>ชื่องาน</th><th>สถานะ</th><th>ผู้รับผิดชอบ</th><th>วันครบกำหนด</th></tr>';
+      result.rows.forEach(function (r) {
+        var statusLabel = r.status === 'done' ? 'เสร็จแล้ว' : (r.status === 'doing' ? 'กำลังทำ' : 'ต้องทำ');
+        var who = r.assigneeIds.map(function (id) { return ptbStaffName(id); }).join(', ');
+        tableRows += '<tr><td>' + escapeHtmlPtb(r.title) + '</td><td>' + statusLabel + '</td><td>' + who + '</td>' +
+          '<td>' + (r.dueDate ? new Date(r.dueDate).toLocaleDateString('th-TH') : '-') + '</td></tr>';
+      });
+      document.getElementById('print-report-table').innerHTML = tableRows;
+      document.getElementById('print-report-workload').innerHTML = '';
+      window.print();
+    }
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: err.message });
+  });
 }

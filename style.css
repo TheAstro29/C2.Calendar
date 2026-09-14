@@ -15,6 +15,19 @@ body { margin: 0; background: #f4f5f7; color: #1f2430; overflow-x: clip; max-wid
 .fc-list-day-cushion > * {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* FIX (บั๊กชื่องานยาวดันจอมือถือล้น): แถว .fc-list-event เป็น display:flex ทำให้หลุดจาก algorithm
+   คำนวณความกว้างคอลัมน์ปกติของ <table> — พอ table เป็น "auto" layout มันจะยอมขยายกว้างเกิน 100%
+   ตาม min-content ของข้อความยาวๆ ข้างใน แล้วเพราะ overflow-x:clip บน html/body (บรรทัด 6-7) ด้านบน
+   มันเลยแค่ตัดขาดเงียบๆ โดยไม่มี ellipsis/scrollbar ให้เห็นเลย (คือบั๊กที่เจอ)
+   เคยลองแก้ด้วย table-layout:fixed และ display:block (บังคับ table/tbody/.fc-list-day) มาก่อน แต่ทั้งคู่
+   เป็นการ "กดปราบ" ปัญหาที่ปลายเหตุ (table column-width) ไม่ใช่ต้นเหตุจริง เจอผลข้างเคียงคนละแบบทั้งคู่
+   (คอลัมน์แคบผิดปกติ / ทั้งปฏิทินหดแคบทั้งจอ) ต้นเหตุจริงที่เจอคือ #app-body มี align-items:flex-start
+   ซึ่งพอสลับเป็น flex-direction:column บนมือถือ (@media max-width:980px ด้านล่าง) จะทำให้ #calendar-wrap
+   กลายเป็น "shrink-to-fit" ความกว้าง แทนที่จะยืดเต็ม 100% ของแถว - ตอนแรกบังเอิญไม่ล้นเพราะ nowrap
+   ของชื่องานยาวๆ ดันให้ shrink-to-fit คำนวณออกมากว้างพอดี (เกินจอ) พอเปลี่ยนชื่องานเป็น wrap แล้ว
+   ความกว้างที่คำนวณได้เลยเหลือน้อยลงจนเห็นปัญหานี้ชัดขึ้น แก้ที่ #app-body (บรรทัด align-items: stretch
+   ในมีเดียเควรีด้านล่าง) แทน แล้วเลิกพึ่ง table-layout/display:block hack ทั้งหมด กลับไปใช้ table ปกติ
+   ธรรมดาที่สุด (เชื่อถือได้ข้ามเบราว์เซอร์มากกว่า) */
 .fc-list-table { width: 100% !important; border-spacing: 0 !important; border-collapse: collapse !important; margin: 0 !important; }
 .fc-list-event {
   display: flex !important;
@@ -362,7 +375,13 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .month-holiday-item .mh-name { color: #4a4a4a; overflow: hidden; text-overflow: ellipsis; }
 
 @media (max-width: 980px) {
-  #app-body { flex-direction: column; padding: 0 12px; }
+  /* align-items: stretch (แทนค่า flex-start ของ #app-body ปกติ) - ต้นเหตุจริงของบั๊กปฏิทิน list view
+     แคบไม่เต็มจอบนมือถือ: #app-body ใช้ align-items:flex-start (เพื่อไม่ให้การ์ด sidebar ยืดเต็มความสูง
+     ตอนอยู่ในเลย์เอาต์แนวนอนบน PC) แต่พอสลับเป็น flex-direction:column บนมือถือ ค่านี้กลายเป็นคุมแกน
+     ความ "กว้าง" แทน ทำให้ #calendar-wrap (ลูก flex ที่ไม่มี width กำหนดตายตัว) หด shrink-to-fit
+     ตามเนื้อหาข้างในแทนที่จะยืดเต็มแถว 100% - ประกาศ stretch ทับเฉพาะช่วงจอมือถือ/แท็บเล็ตนี้เท่านั้น
+     (ไม่กระทบเลย์เอาต์ PC เพราะ media query อยู่นอก @media นี้) ให้ #calendar-wrap ยืดเต็มความกว้างเสมอ */
+  #app-body { flex-direction: column; padding: 0 12px; align-items: stretch; }
   .side-panel { width: 100%; }
   .side-panel.collapsed { width: 100%; height: 0; padding: 0; opacity: 0; }
 }
@@ -1007,4 +1026,221 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 @media (min-width: 769px) and (max-width: 1024px) {
   .side-panel { width: 60%; max-width: 340px; }
   #calendar-wrap { flex: 1; min-width: 0; }
+}
+
+/* ================================================================
+   ===== Personal Task Board (ptb-) — Task รายบุคคล =============
+   ================================================================
+   ใช้โทน/คลาสเดิมของแอป (.tb-head, .tb-body, .modal-close-btn, สีแบรนด์ #059669)
+   ต่อยอดจากการ์ดสรุปแบบเดียวกับ #todo-summary-card เพื่อให้ดู consistent กัน */
+
+#taskboard-sidebar-section .sub { font-size: 11px; color: #9aa1a8; margin: 0 0 10px; }
+#ptb-summary-card {
+  display: flex; align-items: center; gap: 12px; cursor: pointer; border-radius: 12px;
+  padding: 4px; margin: 2px -4px -4px; transition: background .15s;
+}
+#ptb-summary-card:hover { background: #f4f5f7; }
+#ptb-summary-card .todo-summary-icon { background: #eefaf3; color: #047857; }
+
+#task-board-modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  align-items: center; justify-content: center; z-index: 2050;
+}
+#task-board-box {
+  background: #fff; border-radius: 14px; padding: 0; width: 96%; max-width: 1140px;
+  max-height: 90vh; overflow-y: hidden; position: relative; display: flex; flex-direction: column;
+  animation: modalScaleIn 0.22s ease;
+}
+#task-board-modal-overlay.showflex { animation: modalFadeIn 0.18s ease; }
+
+#ptb-tabs { display: flex; gap: 4px; padding: 10px 22px 0; background: #fff; }
+.ptb-tab {
+  border: none; background: none; color: #6b7280; font-size: 13px; font-weight: 700;
+  padding: 9px 16px; border-radius: 9px 9px 0 0; cursor: pointer;
+}
+.ptb-tab.active { background: #f4f5f7; color: #047857; }
+
+#ptb-tbbody { padding: 16px 22px 20px; overflow-y: auto; flex: 1; }
+.ptb-view { display: none; }
+.ptb-view.active { display: block; }
+.ptb-view-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.ptb-view-head .sub { font-size: 12.5px; color: #6b7280; }
+.ptb-back-btn { border: none; background: none; color: #047857; font-weight: 700; font-size: 13px; cursor: pointer; padding: 4px 0; }
+
+.btn-primary-sm {
+  border: none; border-radius: 9px; padding: 8px 16px; font-size: 13px; font-weight: 700;
+  cursor: pointer; background: #059669; color: #fff;
+}
+.btn-primary-sm:hover { background: #047857; }
+.btn-outline {
+  border: 1px solid #dfe1e6; border-radius: 9px; padding: 8px 16px; font-size: 13px; font-weight: 700;
+  cursor: pointer; background: #fff; color: #1f2430;
+}
+.btn-outline:hover { background: #f4f5f7; }
+
+/* บอร์ด Kanban ของ Personal Task (แยกจาก .kanban-* เดิมที่ใช้กับ To-Do List ตามประเภทงาน) */
+.ptb-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.ptb-col { background: #f4f5f7; border-radius: 14px; padding: 10px; min-height: 120px; }
+.ptb-col-head { display: flex; align-items: center; gap: 7px; padding: 4px 6px 9px; font-size: 12px; font-weight: 800; color: #1f2430; }
+.ptb-col-head .sw { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.ptb-col-head .cnt { margin-left: auto; background: #fff; border: 1px solid #dfe1e6; border-radius: 999px; font-size: 10px; color: #6b7280; padding: 1px 7px; font-weight: 700; }
+.ptb-col.dragover { outline: 2px dashed #10b981; outline-offset: -4px; background: #eafbf3; }
+.ptb-cards { display: flex; flex-direction: column; gap: 8px; min-height: 36px; }
+.ptb-card {
+  background: #fff; border: 1px solid #dfe1e6; border-radius: 11px; padding: 10px 11px; cursor: grab;
+  box-shadow: 0 1px 2px rgba(6,95,70,.05);
+}
+.ptb-card.dragging { opacity: .4; }
+.ptb-card .ptb-top-row { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 5px; }
+.ptb-card .ptb-ttl { font-size: 12px; font-weight: 700; flex: 1; color: #1f2430; }
+.ptb-prio-pip { font-size: 9px; font-weight: 800; padding: 2px 7px; border-radius: 999px; flex-shrink: 0; }
+.ptb-prio-pip.low { background: #eef1f0; color: #6b7280; }
+.ptb-prio-pip.med { background: #fef3c7; color: #b45309; }
+.ptb-prio-pip.high { background: #fee2e2; color: #b91c1c; }
+.ptb-meta-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #6b7280; flex-wrap: wrap; }
+.ptb-tag-pip { background: #d1fae5; color: #047857; font-weight: 700; padding: 2px 7px; border-radius: 999px; }
+.ptb-due { display: flex; align-items: center; gap: 3px; }
+.ptb-due.overdue { color: #ef4444; font-weight: 700; }
+.ptb-avatars { display: flex; margin-left: auto; }
+.ptb-avatars .dot { width: 17px; height: 17px; border-radius: 50%; color: #fff; font-size: 8px; font-weight: 800; display: flex; align-items: center; justify-content: center; margin-left: -6px; border: 1.5px solid #fff; }
+.ptb-avatars .dot:first-child { margin-left: 0; }
+.ptb-checkbar { margin-top: 7px; height: 4px; border-radius: 3px; background: #f4f5f7; overflow: hidden; }
+.ptb-checkbar i { display: block; height: 100%; background: #059669; }
+.ptb-empty-hint { font-size: 11px; color: #9aa1a8; text-align: center; padding: 18px 4px; }
+
+/* Admin overview */
+.ptb-stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.ptb-stat-tile { background: #fff; border: 1px solid #dfe1e6; border-radius: 14px; padding: 14px 16px; }
+.ptb-stat-tile .lbl { font-size: 10.5px; color: #6b7280; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.ptb-stat-tile .val { font-size: 23px; font-weight: 800; margin-top: 5px; }
+.ptb-stat-tile .val.danger { color: #ef4444; }
+.ptb-stat-tile .val.brand { color: #047857; }
+
+.ptb-grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; }
+.ptb-panel { background: #fff; border: 1px solid #dfe1e6; border-radius: 14px; padding: 14px 16px; }
+.ptb-panel h3 { font-size: 12.5px; margin: 0 0 10px; }
+
+.ptb-deadline-row { display: flex; align-items: center; gap: 9px; padding: 7px 4px; border-top: 1px solid #f4f5f7; cursor: pointer; border-radius: 8px; }
+.ptb-deadline-row:first-child { border-top: none; }
+.ptb-deadline-row:hover { background: #f4f5f7; }
+.ptb-deadline-row .d-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.ptb-deadline-row .d-title { font-size: 11.5px; font-weight: 700; flex: 1; color: #1f2430; }
+.ptb-deadline-row .d-who { font-size: 10px; color: #6b7280; }
+.ptb-deadline-row .d-date { font-size: 10px; font-weight: 700; }
+.ptb-deadline-row .d-date.od { color: #ef4444; }
+
+.ptb-wl-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #f4f5f7; cursor: pointer; border-radius: 8px; }
+.ptb-wl-row:first-child { border-top: none; }
+.ptb-wl-row:hover { background: #f4f5f7; }
+.ptb-wl-avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 800; position: relative; }
+.ptb-wl-avatar .od-dot { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; border: 2px solid #fff; }
+.ptb-wl-body { flex: 1; min-width: 0; }
+.ptb-wl-name-row { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 4px; }
+.ptb-wl-name { font-weight: 700; color: #1f2430; }
+.ptb-wl-total { color: #6b7280; }
+.ptb-wl-bar { height: 6px; border-radius: 5px; background: #f4f5f7; overflow: hidden; display: flex; gap: 1.5px; }
+.ptb-wl-bar span { height: 100%; }
+.ptb-wl-go { font-size: 10.5px; color: #047857; font-weight: 700; flex-shrink: 0; }
+
+/* Modal เพิ่ม/แก้ไข Task */
+#personal-task-modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2100;
+  align-items: flex-start; justify-content: center; padding: 4vh 16px; overflow-y: auto;
+}
+#personal-task-box {
+  background: #fff; border-radius: 18px; width: 100%; max-width: 560px; margin-bottom: 4vh;
+  box-shadow: 0 20px 44px -22px rgba(6,95,70,.35); animation: modalScaleIn 0.2s ease;
+}
+.ptm-head { display: flex; align-items: flex-start; gap: 10px; padding: 18px 20px 12px; }
+.ptm-head input.ptm-title {
+  flex: 1; border: none; outline: none; font-size: 16px; font-weight: 800; color: #1f2430;
+  font-family: inherit; padding: 4px 0; border-bottom: 2px solid transparent; background: transparent;
+}
+.ptm-head input.ptm-title:focus { border-bottom-color: #059669; }
+.ptm-body { padding: 0 20px 4px; display: flex; flex-direction: column; gap: 16px; max-height: 62vh; overflow-y: auto; }
+.ptm-sect-label { font-size: 10px; font-weight: 800; color: #9aa1a8; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.ptm-desc { width: 100%; border: 1px solid #dfe1e6; border-radius: 10px; padding: 8px 11px; font-size: 12.5px; font-family: inherit; resize: vertical; min-height: 42px; color: #1f2430; background: #f4f5f7; }
+.ptm-desc:focus { outline: none; border-color: #10b981; background: #fff; }
+.ptm-assignee-row { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+.ptm-avatar-chip { display: flex; align-items: center; gap: 6px; background: #f4f5f7; border: 1px solid #dfe1e6; border-radius: 999px; padding: 3px 9px 3px 3px; font-size: 11px; font-weight: 600; }
+.ptm-avatar-chip .dt { width: 19px; height: 19px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.ptm-avatar-chip .rm { border: none; background: none; color: #9aa1a8; cursor: pointer; font-size: 11px; }
+.ptm-avatar-chip .rm:hover { color: #b91c1c; }
+.ptm-add-chip-btn { border: 1.5px dashed #dfe1e6; background: none; color: #6b7280; border-radius: 999px; padding: 4px 11px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.ptm-add-chip-btn:hover { border-color: #10b981; color: #047857; }
+.ptm-picker-pop { position: relative; display: inline-block; }
+.ptm-picker-list { position: absolute; top: calc(100% + 6px); left: 0; background: #fff; border: 1px solid #dfe1e6; border-radius: 12px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.22); padding: 6px; width: 165px; z-index: 5; display: none; max-height: 220px; overflow-y: auto; }
+.ptm-picker-list.open { display: block; }
+.ptm-picker-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 11.5px; cursor: pointer; }
+.ptm-picker-opt:hover { background: #f4f5f7; }
+.ptm-picker-opt .dt { width: 17px; height: 17px; border-radius: 50%; color: #fff; font-size: 8px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+.ptm-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ptm-toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ptm-switch { position: relative; width: 36px; height: 21px; flex-shrink: 0; display: inline-block; }
+.ptm-switch input { opacity: 0; width: 0; height: 0; }
+.ptm-slider { position: absolute; inset: 0; background: #dfe1e6; border-radius: 999px; cursor: pointer; transition: .2s; }
+.ptm-slider:before { content: ""; position: absolute; width: 15px; height: 15px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.ptm-switch input:checked + .ptm-slider { background: #059669; }
+.ptm-switch input:checked + .ptm-slider:before { transform: translateX(15px); }
+.ptm-switch-lbl { font-size: 10.5px; color: #6b7280; font-weight: 600; }
+.ptm-event-combo, .ptm-date-field { display: none; }
+.ptm-event-combo.show, .ptm-date-field.show { display: block; }
+.ptm-field { width: 100%; border: 1px solid #dfe1e6; border-radius: 10px; padding: 8px 11px; font-size: 12.5px; font-family: inherit; background: #f4f5f7; color: #1f2430; }
+.ptm-field:focus { outline: none; border-color: #10b981; background: #fff; }
+.ptm-prio-row { display: flex; gap: 7px; }
+.ptm-prio-btn { flex: 1; border: 1.5px solid #dfe1e6; background: #fff; border-radius: 10px; padding: 7px 0; font-size: 11px; font-weight: 700; cursor: pointer; color: #6b7280; }
+.ptm-prio-btn[data-p="low"].active { background: #eef1f0; border-color: #6b7280; color: #6b7280; }
+.ptm-prio-btn[data-p="med"].active { background: #fef3c7; border-color: #b45309; color: #b45309; }
+.ptm-prio-btn[data-p="high"].active { background: #fee2e2; border-color: #b91c1c; color: #b91c1c; }
+.ptm-combo-wrap { position: relative; }
+.ptm-combo-list { position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: #fff; border: 1px solid #dfe1e6; border-radius: 10px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.22); max-height: 150px; overflow-y: auto; padding: 5px; z-index: 5; display: none; }
+.ptm-combo-list.open { display: block; }
+.ptm-combo-opt { padding: 6px 9px; border-radius: 7px; font-size: 11.5px; cursor: pointer; }
+.ptm-combo-opt:hover { background: #f4f5f7; }
+.ptm-combo-opt.add-new { color: #047857; font-weight: 700; }
+.ptm-tag-chip { display: inline-flex; align-items: center; gap: 6px; background: #d1fae5; color: #047857; border-radius: 999px; padding: 5px 11px; font-size: 11px; font-weight: 700; }
+.ptm-tag-chip button { border: none; background: none; color: #047857; cursor: pointer; font-size: 11px; }
+.ptm-checklist-add { display: flex; gap: 7px; }
+.ptm-checklist-add input { flex: 1; }
+.ptm-checklist-add button { border: none; background: #059669; color: #fff; border-radius: 9px; padding: 0 13px; font-size: 12px; cursor: pointer; font-weight: 700; }
+.ptm-check-items { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
+.ptm-check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ptm-check-item input[type=checkbox] { width: 15px; height: 15px; accent-color: #059669; }
+.ptm-check-item.done span { text-decoration: line-through; color: #9aa1a8; }
+.ptm-check-item .rm { margin-left: auto; border: none; background: none; color: #9aa1a8; cursor: pointer; font-size: 11px; }
+.ptm-drop-zone { border: 1.5px dashed #dfe1e6; border-radius: 12px; padding: 13px; text-align: center; font-size: 11.5px; color: #6b7280; cursor: pointer; background: #f4f5f7; }
+.ptm-drop-zone:hover { border-color: #10b981; background: #f0fbf6; }
+.ptm-att-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.ptm-att-chip { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #dfe1e6; border-radius: 10px; padding: 6px 10px; font-size: 10.5px; }
+.ptm-att-thumb { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#10b981,#047857); flex-shrink: 0; }
+.ptm-att-thumb.is-img { background-size: cover; background-position: center; }
+.ptm-att-meta b { display: block; font-size: 11px; }
+.ptm-att-meta small { color: #047857; font-weight: 700; }
+.ptm-att-meta .rm { border: none; background: none; color: #9aa1a8; cursor: pointer; font-size: 12px; margin-left: 4px; }
+.ptm-foot { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px 18px; }
+.ptm-foot .danger-link { background: none; border: none; color: #ef4444; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.ptm-foot .btns { display: flex; gap: 9px; }
+
+/* Export modal (เล็ก) */
+#task-export-modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 2100;
+  align-items: center; justify-content: center; padding: 16px;
+}
+#task-export-box { background: #fff; border-radius: 18px; width: 100%; max-width: 320px; animation: modalScaleIn 0.2s ease; }
+.ptx-preset-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.ptx-preset-btn { border: 1.5px solid #dfe1e6; background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 11px; font-weight: 700; color: #6b7280; cursor: pointer; }
+.ptx-preset-btn.active { background: #d1fae5; border-color: #10b981; color: #047857; }
+.ptx-fmt-row { display: flex; gap: 7px; }
+.ptx-fmt-btn { flex: 1; border: 1.5px solid #dfe1e6; background: #fff; border-radius: 10px; padding: 9px 0; font-size: 11.5px; font-weight: 700; color: #6b7280; cursor: pointer; }
+.ptx-fmt-btn.active { border-color: #059669; color: #047857; background: #f0fbf6; }
+
+@media (max-width: 860px) {
+  .ptb-board { grid-template-columns: 1fr; }
+  .ptb-grid2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  #task-board-box { width: calc(100vw - 16px); max-height: 92vh; }
+  #ptb-tbbody { padding: 12px; }
+  .ptb-stat-row { grid-template-columns: 1fr; }
+  .ptm-two-col { grid-template-columns: 1fr; }
 }
