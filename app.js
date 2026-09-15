@@ -706,6 +706,7 @@ function renderStaffList(result) {
         '<div class="name-line">' +
           '<p class="name">' + s.firstName + ' ' + s.lastName + '</p>' +
           '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
+          (s.username ? '<span class="id-badge">ID: ' + escapeHtmlPtb(s.username) + '</span>' : '') +
         '</div>' +
         '<p class="pos">' + (s.position || 'ไม่ระบุตำแหน่ง') + '</p>' +
         '<p class="meta">' + (s.phone || 'ไม่ระบุเบอร์โทร') + '</p>' +
@@ -927,6 +928,113 @@ function toggleStaffActive(checkboxEl, staffId, active) {
   });
 }
 
+// ===== ระบบปรับแต่งข้อความ (ตัวหนา/ตัวเอียง/ขนาด/สี) สำหรับช่อง "รายละเอียดงาน" ในฟอร์มสร้าง/แก้ไขงาน =====
+// เก็บเป็น HTML ที่จำกัดชนิด tag ไว้ (กรองผ่าน sanitizeRichText ทั้งตอนโหลดเข้ากล่องและตอนบันทึก กัน HTML/สไตล์
+// แปลกปลอมหลุดเข้ามา) ส่วนที่ export ออกเป็น Excel หรือแสดงในที่ที่ต้องการข้อความล้วนใช้ stripHtmlToText แทน
+var RICH_TEXT_ALLOWED_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, BR: 1, SPAN: 1, DIV: 1 };
+
+function sanitizeRichText(html) {
+  var container = document.createElement('div');
+  container.innerHTML = html || '';
+  (function walk(node) {
+    var child = node.firstChild;
+    while (child) {
+      var next = child.nextSibling;
+      if (child.nodeType === 1) {
+        var tag = child.tagName;
+        if (!RICH_TEXT_ALLOWED_TAGS[tag]) {
+          // tag ที่ไม่อนุญาต - unwrap เอาแค่เนื้อหาข้างในออกมาแทนที่จะตัดทิ้งทั้งหมด
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child);
+          child = next;
+          continue;
+        }
+        // ลบ attribute เดิมทั้งหมด เหลือแค่ style ที่กรองแล้ว (เฉพาะ span, เฉพาะ color/font-size)
+        var keepStyle = '';
+        if (tag === 'SPAN' && child.style) {
+          if (child.style.color) keepStyle += 'color:' + child.style.color + ';';
+          if (child.style.fontSize) keepStyle += 'font-size:' + child.style.fontSize + ';';
+        }
+        for (var i = child.attributes.length - 1; i >= 0; i--) {
+          child.removeAttribute(child.attributes[i].name);
+        }
+        if (keepStyle) child.setAttribute('style', keepStyle);
+        walk(child);
+      } else if (child.nodeType !== 3) {
+        // ไม่ใช่ text node หรือ element ที่อนุญาต (เช่น comment) - ตัดทิ้ง
+        node.removeChild(child);
+      }
+      child = next;
+    }
+  })(container);
+  return container.innerHTML;
+}
+
+function stripHtmlToText(html) {
+  var d = document.createElement('div');
+  d.innerHTML = html || '';
+  d.querySelectorAll('br').forEach(function (el) { el.replaceWith('\n'); });
+  d.querySelectorAll('div').forEach(function (el) { el.insertAdjacentText('beforebegin', '\n'); });
+  return (d.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function richTextExec(cmd) {
+  var el = document.getElementById('task-detail');
+  el.focus();
+  document.execCommand(cmd, false, null);
+}
+
+function richTextApplySize(sizePx) {
+  var el = document.getElementById('task-detail');
+  el.focus();
+  if (!sizePx) return; // "ปกติ" - ไม่ต้องห่อ span เพิ่ม ใช้ขนาดเริ่มต้นของกล่อง
+  wrapSelectionStyle(el, 'fontSize', sizePx);
+}
+
+function richTextApplyColor(hex, dot) {
+  var el = document.getElementById('task-detail');
+  el.focus();
+  wrapSelectionStyle(el, 'color', hex);
+  document.querySelectorAll('.rt-color-dot').forEach(function (d) { d.classList.remove('selected'); });
+  if (dot) dot.classList.add('selected');
+}
+
+function wrapSelectionStyle(el, styleProp, styleValue) {
+  var sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+    Toast.fire({ icon: 'info', title: 'เลือกข้อความที่ต้องการปรับก่อน' });
+    return;
+  }
+  var range = sel.getRangeAt(0);
+  if (!el.contains(range.commonAncestorContainer)) return;
+  var span = document.createElement('span');
+  span.style[styleProp] = styleValue;
+  try {
+    range.surroundContents(span);
+  } catch (e) {
+    // selection คร่อมหลาย element (เช่น ครอบ tag เปิด-ปิดไม่สมบูรณ์) - surroundContents ใช้ไม่ได้ ใช้ extract+insert แทน
+    var frag = range.extractContents();
+    span.appendChild(frag);
+    range.insertNode(span);
+  }
+  sel.removeAllRanges();
+  var newRange = document.createRange();
+  newRange.selectNodeContents(span);
+  sel.addRange(newRange);
+}
+
+// อัปเดตสถานะปุ่ม B/I ให้ไฮไลต์ตามตำแหน่ง cursor/selection ปัจจุบัน
+document.addEventListener('selectionchange', function () {
+  var el = document.getElementById('task-detail');
+  var boldBtn = document.getElementById('rt-bold-btn');
+  var italicBtn = document.getElementById('rt-italic-btn');
+  if (!el || !boldBtn || !italicBtn || document.activeElement !== el) return;
+  try {
+    boldBtn.classList.toggle('active', document.queryCommandState('bold'));
+    italicBtn.classList.toggle('active', document.queryCommandState('italic'));
+  } catch (e) {}
+});
+
 // ===== ฟอร์มสร้างงานใหม่ / แก้ไขงาน =====
 var mapsLoaded = false;
 var taskMap = null;
@@ -987,7 +1095,7 @@ function openTaskModalForEdit(taskId) {
       toggleAllDayFields();
     }
     document.getElementById('task-location').value = task.locationName || '';
-    document.getElementById('task-detail').value = task.detail || '';
+    document.getElementById('task-detail').innerHTML = sanitizeRichText(task.detail || '');
 
     document.getElementById('task-modal-overlay').style.display = 'flex';
     renderTaskStaffChecklist(staffListResult, task.staffIds || []);
@@ -1015,7 +1123,7 @@ function resetTaskForm() {
   document.getElementById('task-end-date-t').value = '';
   document.getElementById('task-end-time').value = '12:00';
   document.getElementById('task-location').value = '';
-  document.getElementById('task-detail').value = '';
+  document.getElementById('task-detail').innerHTML = '';
   toggleAllDayFields();
   toggleUndatedFields();
   if (taskMarker) taskMarker.setMap(null);
@@ -1248,7 +1356,8 @@ function submitAddTask() {
   var locationName = document.getElementById('task-location').value.trim();
   var lat = taskMarker ? taskMarker.getPosition().lat() : '';
   var lng = taskMarker ? taskMarker.getPosition().lng() : '';
-  var detail = document.getElementById('task-detail').value.trim();
+  var taskDetailEl = document.getElementById('task-detail');
+  var detail = taskDetailEl.textContent.trim() ? sanitizeRichText(taskDetailEl.innerHTML) : '';
   var token = localStorage.getItem(TOKEN_KEY);
 
   var payload = {
@@ -2124,7 +2233,7 @@ function exportMonthToExcel() {
       'ผู้ปฏิบัติงาน': staffNames,
       'สถานที่': row.locationName || '',
       'สถานะ': row.status,
-      'รายละเอียด': row.detail || ''
+      'รายละเอียด': stripHtmlToText(row.detail || '')
     });
   });
 
@@ -2487,7 +2596,8 @@ function openTaskDetailModal(event) {
   document.getElementById('td-type').textContent = TASK_TYPE_LABELS[props.taskType] || props.taskType;
   document.getElementById('td-date').textContent = formatEventDateRange(event);
   document.getElementById('td-location').textContent = props.location || '-';
-  document.getElementById('td-detail').textContent = props.detail || '-';
+  var tdDetailPlain = stripHtmlToText(props.detail || '');
+  document.getElementById('td-detail').innerHTML = tdDetailPlain ? sanitizeRichText(props.detail) : '-';
 
   var warningEl = document.getElementById('td-warning-banner');
   warningEl.style.display = 'none';
@@ -2694,12 +2804,36 @@ function renderNotificationsList() {
       '<div class="rc-top"><span class="rc-task">' + n.body + '</span></div>' +
       '<p class="rc-meta">' + timeLabel + '</p>' + actionsHtml;
 
-    if (!n.read && n.type !== 'changeRequestNew') {
+    // คลิกที่การ์ด: ถ้ายังไม่อ่านให้ทำเครื่องหมายอ่านแล้วเหมือนเดิม และถ้ามีงานผูกอยู่ (taskId ของปฏิทินหลัก
+    // หรือ personalTaskId ของ Personal Task Board) ให้เปิดการ์ดรายละเอียดงานซ้อนขึ้นมาเลยโดยไม่ปิดลิสต์นี้ก่อน
+    // (changeRequestNew ยังคงใช้ปุ่มอนุมัติ/ไม่อนุมัติเหมือนเดิม ไม่ต้องเปิดการ์ดงาน)
+    var hasLinkedTask = n.type !== 'changeRequestNew' && (n.taskId || n.personalTaskId);
+    var clickable = n.type !== 'changeRequestNew' && (!n.read || hasLinkedTask);
+    if (clickable) {
       card.style.cursor = 'pointer';
-      card.onclick = function () { markNotificationReadAndRefresh(n.id); };
+      card.onclick = function () {
+        if (!n.read) markNotificationReadAndRefresh(n.id);
+        if (n.personalTaskId) {
+          openPersonalTaskModal(n.personalTaskId);
+        } else if (n.taskId) {
+          openTaskFromNotification(n.taskId);
+        }
+      };
     }
     container.appendChild(card);
   });
+}
+
+// ===== เปิดการ์ดรายละเอียดงาน (ปฏิทินหลัก) จากการแจ้งเตือน - ซ้อนขึ้นมาโดยไม่ปิดลิสต์แจ้งเตือน =====
+// ใช้ calendarInstance.getEventById แทนการยิง API ใหม่ เพราะ events ทั้งหมดโหลดแบบ real-time listener
+// (ไม่จำกัดช่วงวันที่) อยู่แล้วใน lastRenderedEvents ตั้งแต่เปิดหน้าเว็บ
+function openTaskFromNotification(taskId) {
+  var ev = calendarInstance && calendarInstance.getEventById ? calendarInstance.getEventById(taskId) : null;
+  if (ev) {
+    openTaskDetailModal(ev);
+  } else {
+    Swal.fire({ icon: 'info', title: 'ไม่พบงานนี้แล้ว', text: 'งานอาจถูกลบหรือยกเลิกไปแล้ว' });
+  }
 }
 
 function markNotificationReadAndRefresh(notificationId) {

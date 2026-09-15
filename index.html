@@ -347,7 +347,24 @@
         <div id="task-map" style="display:none"></div>
 
         <label class="field-label">รายละเอียดงาน</label>
-        <textarea id="task-detail" placeholder="รายละเอียดเพิ่มเติมของงาน"></textarea>
+        <div class="rt-toolbar">
+          <button type="button" class="rt-btn" id="rt-bold-btn" title="ตัวหนา" onclick="richTextExec('bold')"><b>B</b></button>
+          <button type="button" class="rt-btn" id="rt-italic-btn" title="ตัวเอียง" onclick="richTextExec('italic')"><i>I</i></button>
+          <div class="rt-sep"></div>
+          <select class="rt-size-select" title="ขนาดตัวอักษร" onchange="richTextApplySize(this.value); this.selectedIndex = 1;">
+            <option value="11px">เล็ก</option>
+            <option value="" selected>ปกติ</option>
+            <option value="16px">ใหญ่</option>
+            <option value="20px">ใหญ่มาก</option>
+          </select>
+          <div class="rt-sep"></div>
+          <span class="rt-color-dot selected" style="background:#1f2430" onclick="richTextApplyColor('#1f2430', this)" title="สีปกติ"></span>
+          <span class="rt-color-dot" style="background:#ef4444" onclick="richTextApplyColor('#ef4444', this)" title="แดง"></span>
+          <span class="rt-color-dot" style="background:#059669" onclick="richTextApplyColor('#059669', this)" title="เขียว"></span>
+          <span class="rt-color-dot" style="background:#d97706" onclick="richTextApplyColor('#d97706', this)" title="ส้ม"></span>
+          <span class="rt-color-dot" style="background:#2563eb" onclick="richTextApplyColor('#2563eb', this)" title="น้ำเงิน"></span>
+        </div>
+        <div id="task-detail" class="rt-editable" contenteditable="true" data-placeholder="รายละเอียดเพิ่มเติมของงาน"></div>
       </div>
 
       <div class="tb-footer">

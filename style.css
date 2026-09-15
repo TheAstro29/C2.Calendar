@@ -520,6 +520,13 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .role-badge.ceo { background: #f4e6ff; color: #7b3fb0; }
 .role-badge.staff { background: #eef1f5; color: #6b7280; }
 
+/* tag แสดง user id (username) ต่อจาก role tag - สีน้ำเงินให้เห็นชัด แยกจาก role tag */
+.id-badge {
+  font-size: 10px; padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+  background: #dbeafe; color: #1d4ed8; font-weight: 700;
+  font-family: 'SFMono-Regular', Consolas, monospace; letter-spacing: 0.2px;
+}
+
 /* Modal วันหยุดองค์กร */
 #holiday-modal-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
@@ -695,10 +702,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   width: 100%; background: #059669; color: #fff; border: none;
 }
 
-/* Modal ดูรายละเอียดงาน (กดที่งานในปฏิทิน) - แทนที่ Swal.fire เดิม ให้เข้าธีมเดียวกับ modal อื่นๆ */
+/* Modal ดูรายละเอียดงาน (กดที่งานในปฏิทิน) - แทนที่ Swal.fire เดิม ให้เข้าธีมเดียวกับ modal อื่นๆ
+   z-index สูงกว่า modal ทั่วไป (2050) เจตนา - ตอนนี้เปิดซ้อนทับ modal การแจ้งเตือนได้ (จากการกดรายการแจ้งเตือน)
+   โดยไม่ปิด modal การแจ้งเตือนก่อน จึงต้องการันตีว่าลอยอยู่บนสุดเสมอไม่ว่าลำดับ DOM จะเป็นอย่างไร */
 #task-detail-modal-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-  align-items: center; justify-content: center; z-index: 2050;
+  align-items: center; justify-content: center; z-index: 2060;
   animation: modalFadeIn 0.18s ease;
 }
 #task-detail-box {
@@ -791,6 +800,36 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   width: 100%; padding: 9px 10px; font-size: 13px;
   border: 1px solid #d1d5db; border-radius: 6px;
 }
+
+/* แถบเครื่องมือปรับแต่งข้อความ (ตัวหนา/ตัวเอียง/ขนาด/สี) เหนือช่อง "รายละเอียดงาน" */
+.rt-toolbar {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  background: #f4f5f7; border: 1px solid #d1d5db; border-bottom: none;
+  border-radius: 6px 6px 0 0; padding: 6px 7px;
+}
+.rt-btn {
+  width: 28px; height: 28px; border-radius: 6px; border: 1px solid transparent; background: transparent;
+  color: #374151; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.rt-btn:hover { background: #e5e7eb; }
+.rt-btn.active { background: #059669; color: #fff; }
+.rt-sep { width: 1px; height: 20px; background: #d1d5db; margin: 0 2px; }
+.rt-size-select {
+  font-size: 12px; color: #374151; border: 1px solid #d1d5db; border-radius: 6px;
+  background: #fff; padding: 4px 6px; height: 28px; font-family: inherit;
+}
+.rt-color-dot {
+  width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #d1d5db; cursor: pointer;
+}
+.rt-color-dot.selected { box-shadow: 0 0 0 2px #059669; }
+.rt-editable {
+  width: 100%; min-height: 96px; padding: 9px 10px; font-size: 13px; line-height: 1.55;
+  border: 1px solid #d1d5db; border-top: none; border-radius: 0 0 6px 6px; color: #1f2430;
+  overflow-y: auto; max-height: 260px;
+}
+.rt-editable:empty:before { content: attr(data-placeholder); color: #9aa1a8; }
+
 .segmented { display: flex; border-radius: 6px; overflow: hidden; border: 1px solid #059669; }
 .segmented button {
   flex: 1; padding: 9px 6px; font-size: 12px; background: #fff; color: #059669; border: none;
@@ -860,6 +899,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #staff-form input, #staff-form select { font-size: 16px; }
   #staff-submit-btn { font-size: 16px; }
   .role-badge { font-size: 13px; }
+  .id-badge { font-size: 13px; }
 
   /* วันหยุดองค์กร */
   .holiday-row { font-size: 16px; }
