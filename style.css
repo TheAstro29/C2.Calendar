@@ -1120,6 +1120,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptb-deadline-row .d-who { font-size: 10px; color: #6b7280; }
 .ptb-deadline-row .d-date { font-size: 10px; font-weight: 700; }
 .ptb-deadline-row .d-date.od { color: #ef4444; }
+.ptb-deadline-row .d-date.today { color: #f97316; }
 
 .ptb-wl-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #f4f5f7; cursor: pointer; border-radius: 8px; }
 .ptb-wl-row:first-child { border-top: none; }

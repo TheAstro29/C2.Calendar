@@ -3255,11 +3255,15 @@ function renderPtbAdminOverview() {
     var deadlineHtml = result.upcoming.map(function (t) {
       var who = t.assigneeIds.map(function (id) { return ptbStaffName(id); }).join(', ');
       var d = t.dueDate ? firestoreDateToJs(t.dueDate) : null;
+      // จุดสี + ข้อความ: เกินกำหนดจริง = แดง, ครบกำหนดวันนี้ = ส้ม ("วันนี้"), ยังไม่ถึงกำหนด = เหลือง + วันที่
+      var dotColor = t.overdue ? '#ef4444' : (t.dueToday ? '#f97316' : '#fbbf24');
+      var dateClass = t.overdue ? 'od' : (t.dueToday ? 'today' : '');
+      var dateText = t.overdue ? ('เกินกำหนด · ' + fmtPtbDate(d)) : (t.dueToday ? 'วันนี้' : fmtPtbDate(d));
       return '<div class="ptb-deadline-row" onclick="openPersonalTaskModal(\'' + t.taskId + '\')">' +
-        '<span class="d-dot" style="background:' + (t.overdue ? '#ef4444' : '#fbbf24') + '"></span>' +
+        '<span class="d-dot" style="background:' + dotColor + '"></span>' +
         '<span class="d-title">' + escapeHtmlPtb(t.title) + '</span>' +
         '<span class="d-who">' + who + '</span>' +
-        '<span class="d-date ' + (t.overdue ? 'od' : '') + '">' + (t.overdue ? 'เกินกำหนด · ' : '') + fmtPtbDate(d) + '</span>' +
+        '<span class="d-date ' + dateClass + '">' + dateText + '</span>' +
       '</div>';
     }).join('');
     document.getElementById('ptb-deadline-list').innerHTML = deadlineHtml || '<div class="ptb-empty-hint">ไม่มีงานใกล้ครบกำหนด</div>';
