@@ -978,25 +978,37 @@ function stripHtmlToText(html) {
   return (d.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-function richTextExec(cmd) {
-  var el = document.getElementById('task-detail');
+// แถบเครื่องมือปรับแต่งข้อความใช้ร่วมกันได้หลายจุดในหน้าเว็บ (ฟอร์มงานปฏิทินหลัก + ฟอร์ม Personal Task Board)
+// โดยไม่ต้องพึ่ง id ตายตัว - แต่ละจุดห่อด้วย .rt-group (แถบเครื่องมือ + กล่อง .rt-editable) แล้วหาเป้าหมายจาก
+// element ที่ถูกคลิกด้วย .closest('.rt-group') เอาเอง กันปัญหา id ซ้ำกันเวลามีมากกว่า 1 จุดในหน้าเดียวกัน
+function rtGroupEditable(fromEl) {
+  var group = fromEl && fromEl.closest ? fromEl.closest('.rt-group') : null;
+  return group ? group.querySelector('.rt-editable') : null;
+}
+
+function richTextExec(cmd, btn) {
+  var el = rtGroupEditable(btn);
+  if (!el) return;
   el.focus();
   document.execCommand(cmd, false, null);
 }
 
-function richTextApplySize(sizePx) {
-  var el = document.getElementById('task-detail');
+function richTextApplySize(sizePx, fromEl) {
+  var el = rtGroupEditable(fromEl);
+  if (!el) return;
   el.focus();
   if (!sizePx) return; // "ปกติ" - ไม่ต้องห่อ span เพิ่ม ใช้ขนาดเริ่มต้นของกล่อง
   wrapSelectionStyle(el, 'fontSize', sizePx);
 }
 
 function richTextApplyColor(hex, dot) {
-  var el = document.getElementById('task-detail');
+  var el = rtGroupEditable(dot);
+  if (!el) return;
   el.focus();
   wrapSelectionStyle(el, 'color', hex);
-  document.querySelectorAll('.rt-color-dot').forEach(function (d) { d.classList.remove('selected'); });
-  if (dot) dot.classList.add('selected');
+  var group = dot.closest('.rt-group');
+  (group || document).querySelectorAll('.rt-color-dot').forEach(function (d) { d.classList.remove('selected'); });
+  dot.classList.add('selected');
 }
 
 function wrapSelectionStyle(el, styleProp, styleValue) {
@@ -1023,15 +1035,30 @@ function wrapSelectionStyle(el, styleProp, styleValue) {
   sel.addRange(newRange);
 }
 
-// อัปเดตสถานะปุ่ม B/I ให้ไฮไลต์ตามตำแหน่ง cursor/selection ปัจจุบัน
+// แก้บั๊ก: ปกติพอ mousedown ไปโดนปุ่ม/จุดสีในแถบเครื่องมือ เบราว์เซอร์จะยุบ selection ที่เลือกไว้ในกล่อง
+// รายละเอียดงานทิ้งไปก่อน (ตั้ง selection ใหม่ที่จุดคลิกแทน) ทำให้พอ handler ของปุ่มทำงานจริง (ตอน click)
+// window.getSelection() เจอ selection ว่างไปแล้ว แม้จะเพิ่งลากเลือกข้อความไว้ก็ตาม - เห็นชัดสุดกับปุ่มสี เพราะ
+// wrapSelectionStyle เช็คแล้วเจอว่า selection ยุบไปแล้ว เลยขึ้นแจ้งเตือน "เลือกข้อความก่อน" ทั้งที่เพิ่งเลือกไป
+// (ปุ่มตัวหนา/ตัวเอียงก็โดนบั๊กเดียวกัน แค่ไม่ error ให้เห็น เพราะ execCommand เงียบๆ ไม่ทำอะไรถ้าไม่มี selection)
+// แก้ด้วยการ preventDefault ตอน mousedown บนปุ่ม/จุดสีเหล่านี้ กัน browser ไปยุบ selection ก่อนที่ click จะทำงาน
+document.addEventListener('mousedown', function (e) {
+  if (e.target.closest && (e.target.closest('.rt-btn') || e.target.closest('.rt-color-dot'))) {
+    e.preventDefault();
+  }
+});
+
+// อัปเดตสถานะปุ่ม B/I ให้ไฮไลต์ตามตำแหน่ง cursor/selection ปัจจุบัน - ใช้ได้กับทุกจุดที่มี .rt-group
+// (หา group จาก element ที่ focus อยู่ตอนนี้ ไม่ผูกกับ id ตายตัว)
 document.addEventListener('selectionchange', function () {
-  var el = document.getElementById('task-detail');
-  var boldBtn = document.getElementById('rt-bold-btn');
-  var italicBtn = document.getElementById('rt-italic-btn');
-  if (!el || !boldBtn || !italicBtn || document.activeElement !== el) return;
+  var active = document.activeElement;
+  if (!active || !active.classList || !active.classList.contains('rt-editable')) return;
+  var group = active.closest('.rt-group');
+  if (!group) return;
+  var boldBtn = group.querySelector('.rt-bold-btn');
+  var italicBtn = group.querySelector('.rt-italic-btn');
   try {
-    boldBtn.classList.toggle('active', document.queryCommandState('bold'));
-    italicBtn.classList.toggle('active', document.queryCommandState('italic'));
+    if (boldBtn) boldBtn.classList.toggle('active', document.queryCommandState('bold'));
+    if (italicBtn) italicBtn.classList.toggle('active', document.queryCommandState('italic'));
   } catch (e) {}
 });
 
@@ -3442,7 +3469,7 @@ function openPersonalTaskModal(taskId, defaultAssigneeId) {
   var t = taskId ? _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0] : null;
 
   document.getElementById('ptm-title').value = t ? t.title : '';
-  document.getElementById('ptm-desc').value = t ? t.description : '';
+  document.getElementById('ptm-desc').innerHTML = t ? sanitizeRichText(t.description || '') : '';
   document.getElementById('ptm-delete-btn').style.display = t ? 'block' : 'none';
 
   var row = document.getElementById('ptm-assignee-row');
@@ -3778,9 +3805,12 @@ function savePersonalTaskModal() {
     return;
   }
 
+  var ptmDescEl = document.getElementById('ptm-desc');
+  var description = ptmDescEl.textContent.trim() ? sanitizeRichText(ptmDescEl.innerHTML) : '';
+
   var token = localStorage.getItem(TOKEN_KEY);
   var payload = {
-    token: token, title: title, description: document.getElementById('ptm-desc').value,
+    token: token, title: title, description: description,
     assigneeIds: assigneeIds, priority: priority, tag: tag,
     linkedEventId: linked ? linkedEventId : null, dueDate: dueDate, checklist: checklist
   };
