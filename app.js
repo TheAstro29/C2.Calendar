@@ -1029,6 +1029,15 @@ function wrapSelectionStyle(el, styleProp, styleValue) {
     span.appendChild(frag);
     range.insertNode(span);
   }
+  // แก้บั๊ก: ถ้า selection ยาวคร่อมเข้าไปใน span ที่เคยตั้งสี/ขนาดไว้ก่อนหน้า (เช่นคร่อมเข้าไปครึ่งหนึ่งของคำที่เคยเปลี่ยนสีไว้)
+  // ตอน extractContents ตัดสกัดออกมา เบราว์เซอร์จะ clone tag เก่าคร่อมส่วนที่ถูกตัดไว้ให้อัตโนมัติเพื่อรักษาโครงสร้าง DOM เดิม
+  // ทำให้ span เก่า (พร้อมสี/ขนาดเดิม) ไปซ้อนอยู่ "ข้างใน" span ใหม่ที่เพิ่งสร้าง แล้วชนะค่าใหม่ที่เพิ่งตั้ง เพราะ element ที่อยู่ลึกกว่า
+  // มีสิทธิ์เหนือกว่าตามกฎ CSS cascade - เป็นสาเหตุที่เปลี่ยนสีแล้วดูเหมือนไม่ขึ้น (มักเกิดกับ selection ยาวๆ ที่คร่อมคำที่เคยจัดสไตล์ไว้)
+  // แก้ด้วยการล้างค่า style ตัวเดียวกัน (เช่น color หรือ font-size) ออกจาก element ลูกทุกตัวที่อยู่ใน span ใหม่
+  span.querySelectorAll('[style]').forEach(function (node) {
+    node.style[styleProp] = '';
+    if (!node.getAttribute('style')) node.removeAttribute('style');
+  });
   sel.removeAllRanges();
   var newRange = document.createRange();
   newRange.selectNodeContents(span);
@@ -3488,7 +3497,11 @@ function openPersonalTaskModal(taskId, defaultAssigneeId) {
     document.getElementById('ptm-event-input').value = ev ? ev.taskName : '(Event ที่เคยผูกไว้)';
   }
   document.getElementById('ptm-manual-date').value = t && t.dueDate ? ptbDateToInputValue(t.dueDate) : ptbDateToInputValue(new Date());
+  // เช็ค "ไม่ระบุวันที่" ให้อัตโนมัติถ้าเป็นการแก้ไข Task ที่ไม่มีวันครบกำหนดและไม่ได้ผูก Event อยู่แล้ว (งานรูทีน)
+  // ส่วน Task ใหม่ปล่อยว่าง (ไม่ติ๊ก) ไว้ก่อนเพื่อไม่ให้พฤติกรรมเดิม (ค่าเริ่มต้นเป็นวันนี้) เปลี่ยนไปโดยไม่ได้ตั้งใจ
+  document.getElementById('ptm-nodate-toggle').checked = !!(t && !t.dueDate && !t.linkedEventId);
   ptmSyncToggle();
+  ptmSyncNoDate();
 
   document.querySelectorAll('.ptm-prio-btn').forEach(function (b) {
     b.classList.toggle('active', b.getAttribute('data-p') === (t ? t.priority : 'med'));
@@ -3605,6 +3618,17 @@ function ptmSyncToggle() {
   }
 }
 ptmLinkToggle.addEventListener('change', ptmSyncToggle);
+
+// ===== "ไม่ระบุวันที่" - สำหรับงานรูทีนที่ไม่ต้องมีกำหนดวัน กันไม่ต้องลบวันที่ในช่องกรอกเองทุกครั้ง =====
+var ptmNoDateToggle = document.getElementById('ptm-nodate-toggle');
+var ptmLinkToggleWrap = document.getElementById('ptm-link-toggle-wrap');
+var ptmDateFields = document.getElementById('ptm-date-fields');
+function ptmSyncNoDate() {
+  var noDate = ptmNoDateToggle.checked;
+  ptmLinkToggleWrap.style.display = noDate ? 'none' : '';
+  ptmDateFields.style.display = noDate ? 'none' : '';
+}
+ptmNoDateToggle.addEventListener('change', ptmSyncNoDate);
 
 document.querySelectorAll('.ptm-prio-btn').forEach(function (b) {
   b.addEventListener('click', function () {
@@ -3793,9 +3817,10 @@ function savePersonalTaskModal() {
   var priority = prioBtn ? prioBtn.getAttribute('data-p') : 'med';
   var tagChip = document.querySelector('#ptm-tag-selected .ptm-tag-chip');
   var tag = tagChip ? tagChip.getAttribute('data-val') : '';
-  var linked = ptmLinkToggle.checked;
+  var noDate = document.getElementById('ptm-nodate-toggle').checked;
+  var linked = !noDate && ptmLinkToggle.checked;
   var linkedEventId = linked ? (ptmEventInput.getAttribute('data-event-id') || '') : '';
-  var dueDate = linked ? null : ptmManualDate.value;
+  var dueDate = noDate ? '' : (linked ? null : ptmManualDate.value);
   var checklist = Array.prototype.map.call(document.querySelectorAll('#ptm-check-items .ptm-check-item'), function (r) {
     return { text: r.querySelector('span').textContent, done: r.classList.contains('done') };
   });

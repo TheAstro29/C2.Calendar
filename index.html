@@ -700,15 +700,20 @@
 
         <div>
           <div class="ptm-toggle-row">
-            <div class="ptm-sect-label">กำหนดวัน</div>
-            <label class="ptm-switch"><input type="checkbox" id="ptm-link-toggle"><span class="ptm-slider"></span></label>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="ptm-sect-label" style="margin-bottom:0;">กำหนดวัน</div>
+              <label class="ptm-nodate-chk"><input type="checkbox" id="ptm-nodate-toggle"> ไม่ระบุวันที่</label>
+            </div>
+            <label class="ptm-switch" id="ptm-link-toggle-wrap"><input type="checkbox" id="ptm-link-toggle"><span class="ptm-slider"></span></label>
           </div>
-          <div class="ptm-switch-lbl" id="ptm-toggle-label" style="margin-bottom:7px;"></div>
-          <div class="ptm-combo-wrap ptm-event-combo" id="ptm-event-combo">
-            <input class="ptm-field" placeholder="ค้นหา Event... เช่น ประชุมทีมขาย" id="ptm-event-input" autocomplete="off">
-            <div class="ptm-combo-list" id="ptm-event-list"></div>
+          <div id="ptm-date-fields">
+            <div class="ptm-switch-lbl" id="ptm-toggle-label" style="margin-bottom:7px;"></div>
+            <div class="ptm-combo-wrap ptm-event-combo" id="ptm-event-combo">
+              <input class="ptm-field" placeholder="ค้นหา Event... เช่น ประชุมทีมขาย" id="ptm-event-input" autocomplete="off">
+              <div class="ptm-combo-list" id="ptm-event-list"></div>
+            </div>
+            <input class="ptm-field ptm-date-field" type="date" id="ptm-manual-date">
           </div>
-          <input class="ptm-field ptm-date-field" type="date" id="ptm-manual-date">
 
           <div style="height:12px"></div>
           <div class="ptm-two-col">
