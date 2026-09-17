@@ -513,7 +513,7 @@ function renderMonthHolidayList(start, end) {
     .sort(function (a, b) { return a.value < b.value ? -1 : 1; });
 
   if (matched.length === 0) {
-    container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ไม่มีวันหยุดในเดือนนี้</p>';
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-faint)">ไม่มีวันหยุดในเดือนนี้</p>';
     return;
   }
   container.innerHTML = '';
@@ -722,7 +722,7 @@ var ROLE_LABELS = { admin: 'Admin', ceo: 'CEO', staff: 'Staff' };
 function renderStaffList(result) {
   var container = document.getElementById('staff-list');
   if (!result.success) {
-    container.innerHTML = '<p style="font-size:13px;color:#b91c1c">' + result.message + '</p>';
+    container.innerHTML = '<p style="font-size:13px;color:var(--danger-text)">' + result.message + '</p>';
     return;
   }
 
@@ -1244,7 +1244,7 @@ function renderTaskStaffChecklist(result, selectedIds) {
 
   var container = document.getElementById('task-staff-list');
   if (!result.success) {
-    container.innerHTML = '<p style="font-size:12px;color:#b91c1c">' + result.message + '</p>';
+    container.innerHTML = '<p style="font-size:12px;color:var(--danger-text)">' + result.message + '</p>';
     return;
   }
   container.innerHTML = '';
@@ -1884,7 +1884,7 @@ function renderHolidayList() {
   var container = document.getElementById('holiday-list');
   container.innerHTML = '';
   if (holidaysCache.length === 0) {
-    container.innerHTML = '<p style="font-size:13px;color:#6b7280">ยังไม่มีวันหยุดที่ตั้งไว้</p>';
+    container.innerHTML = '<p style="font-size:13px;color:var(--text-muted)">ยังไม่มีวันหยุดที่ตั้งไว้</p>';
     return;
   }
 
@@ -1998,7 +1998,7 @@ function loadMemberSidebar() {
     if (!result.success) {
       if (!cached) {
         document.getElementById('member-list').innerHTML =
-          '<p style="font-size:12px;color:#b91c1c">โหลดไม่สำเร็จ: ' + (result.message || 'ไม่รู้จัก action นี้') + '</p>';
+          '<p style="font-size:12px;color:var(--danger-text)">โหลดไม่สำเร็จ: ' + (result.message || 'ไม่รู้จัก action นี้') + '</p>';
       }
       return;
     }
@@ -2018,7 +2018,7 @@ function renderMemberList(staff) {
 
   var container = document.getElementById('member-list');
   if (staff.length === 0) {
-    container.innerHTML = '<p style="font-size:12px;color:#9aa1a8">ยังไม่มีผู้ปฏิบัติงาน</p>';
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-faint)">ยังไม่มีผู้ปฏิบัติงาน</p>';
     return;
   }
   container.innerHTML = '';
@@ -2406,7 +2406,11 @@ function updateListRangeToggle(viewType) {
 
 function setListRange(viewType) {
   if (!calendarInstance) return;
-  calendarInstance.changeView(viewType);
+  // แก้บั๊ก: เดิมเรียก changeView(viewType) เฉยๆ ซึ่งแค่เปลี่ยน "ชนิด" มุมมอง แต่ยังค้างอยู่ที่วันที่เดิม
+  // ที่ปฏิทินกำลังเลื่อนดูอยู่ (ไม่ใช่วันปัจจุบัน) ผู้ใช้กด "วันนี้/สัปดาห์นี้/เดือนนี้" คาดหวังว่าจะกระโดด
+  // ไปที่ปัจจุบันเลยตามชื่อปุ่ม จึงต้องส่ง new Date() เป็นพารามิเตอร์ที่ 2 ให้ changeView() นำทางไปพร้อมกัน
+  // ในการเรียกครั้งเดียว (ตามที่ FullCalendar API รองรับ) แทนที่จะแค่เปลี่ยนชนิดมุมมองอย่างเดียว
+  calendarInstance.changeView(viewType, new Date());
   // จำไว้เป็นค่า pref เดียวกับปุ่มสลับหลัก (มุมมอง List/เดือน) เพื่อให้เปิดแอปครั้งถัดไปกลับมาที่ช่วงเดิม
   localStorage.setItem(CALENDAR_VIEW_PREF_KEY, viewType);
   updateViewToggleLabel(viewType);
@@ -2833,7 +2837,7 @@ function openTaskDetailModal(event) {
   staffCard.innerHTML = '';
   var staffList = props.staff || [];
   if (!staffList.length) {
-    staffCard.innerHTML = '<span style="font-size:13px;color:#6b7280">-</span>';
+    staffCard.innerHTML = '<span style="font-size:13px;color:var(--text-muted)">-</span>';
   } else {
     staffList.forEach(function (s) {
       var item = document.createElement('div');
@@ -3010,7 +3014,7 @@ function setupNotificationsRealtimeListener() {
 function renderNotificationsList() {
   var container = document.getElementById('my-requests-list');
   if (lastNotifications.length === 0) {
-    container.innerHTML = '<p style="font-size:13px;color:#9aa1a8">ยังไม่มีการแจ้งเตือน</p>';
+    container.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">ยังไม่มีการแจ้งเตือน</p>';
     return;
   }
   container.innerHTML = '';
@@ -3333,7 +3337,7 @@ function renderCalendar(result) {
       if (isListView) {
         var dateLabel = document.createElement('div');
         dateLabel.style.fontSize = '12px';
-        dateLabel.style.color = '#6b7280';
+        dateLabel.style.color = 'var(--text-muted)';
         dateLabel.textContent = formatEventDateRange(arg.event);
         wrapper.appendChild(dateLabel);
       }
@@ -3791,7 +3795,7 @@ function ptmRenderAssigneePicker() {
   var list = document.getElementById('ptm-assignee-list');
   var opts = Object.keys(staffMapCache).filter(function (id) { return chosen.indexOf(id) === -1; });
   if (opts.length === 0) {
-    list.innerHTML = '<div style="padding:6px 8px; font-size:11px; color:#9aa1a8">เลือกครบทุกคนแล้ว</div>';
+    list.innerHTML = '<div style="padding:6px 8px; font-size:11px; color:var(--text-faint)">เลือกครบทุกคนแล้ว</div>';
     return;
   }
   list.innerHTML = opts.map(function (id) {
@@ -3870,8 +3874,8 @@ function ptmRenderEventList() {
   ptmEventList.innerHTML = opts.map(function (e) {
     var d = firestoreDateToJs(e.startDateTime);
     return '<div class="ptm-combo-opt" data-id="' + e.taskId + '" data-name="' + escapeHtmlPtb(e.taskName) + '">' +
-      escapeHtmlPtb(e.taskName) + ' <span style="color:#9aa1a8">' + (d ? fmtPtbDate(d) : '') + '</span></div>';
-  }).join('') || '<div style="padding:6px 9px; font-size:11.5px; color:#9aa1a8">ไม่พบ Event</div>';
+      escapeHtmlPtb(e.taskName) + ' <span style="color:var(--text-faint)">' + (d ? fmtPtbDate(d) : '') + '</span></div>';
+  }).join('') || '<div style="padding:6px 9px; font-size:11.5px; color:var(--text-faint)">ไม่พบ Event</div>';
   ptmEventList.querySelectorAll('.ptm-combo-opt[data-id]').forEach(function (o) {
     o.addEventListener('click', function () {
       ptmEventInput.value = o.getAttribute('data-name');

@@ -18,6 +18,13 @@
   --border-soft: #eef0f2;
   --surface: #ffffff;
   --surface-alt: #f4f5f7;
+  /* โทนสีความหมาย (semantic tint) ที่แต่เดิมฝัง hex ตรงๆ กระจายอยู่ทั้ง style.css และ app.js
+     (inline style) ทำให้พอสลับ dark mode พื้นหลัง/ตัวอักษรที่ผูกกับโทนพวกนี้ไม่ได้ปรับตาม กลืนกันอ่านไม่ออก
+     ย้ายมาเป็นตัวแปรกลางตรงนี้ แล้วให้ dark blocks ด้านล่าง override เป็นโทนที่อ่านออกบนพื้นเข้มแทน */
+  --danger-text: #b91c1c;
+  --tint-mint-bg: #f0fdf9;
+  --tint-amber-bg: #fffbeb;
+  --tint-amber-text: #b45309;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,6 +36,10 @@
     --border-soft: #283630;
     --surface: #1b2420;
     --surface-alt: #141c18;
+    --danger-text: #f87171;
+    --tint-mint-bg: #15281f;
+    --tint-amber-bg: #33280f;
+    --tint-amber-text: #f2c26b;
   }
   html:not([data-theme="light"]) body { background: var(--surface-alt); }
   :root:not([data-theme="light"]) .fc {
@@ -66,6 +77,10 @@
   --border-soft: #283630;
   --surface: #1b2420;
   --surface-alt: #141c18;
+  --danger-text: #f87171;
+  --tint-mint-bg: #15281f;
+  --tint-amber-bg: #33280f;
+  --tint-amber-text: #f2c26b;
 }
 html[data-theme="dark"] body { background: var(--surface-alt); }
 html[data-theme="dark"] .fc {
@@ -334,7 +349,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .member-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.22); }
 .request-card { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .request-card:hover { border-color: #059669; box-shadow: 0 2px 8px rgba(5,150,105,0.12); }
-.notif-unread { background: #f0fdf9; border-left: 3px solid #059669; }
+.notif-unread { background: var(--tint-mint-bg); border-left: 3px solid #059669; }
 
 /* To-Do List - แสดงใน sidebar ขวา (เฉพาะ Admin เห็น) */
 #todo-sidebar-section .sub { font-size: 11px; color: var(--text-faint); margin: 0 0 10px; }
@@ -1300,7 +1315,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   font-size: 12px; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text-soft); cursor: pointer;
 }
-.ptb-col.dragover { outline: 2px dashed #10b981; outline-offset: -4px; background: #eafbf3; }
+.ptb-col.dragover { outline: 2px dashed #10b981; outline-offset: -4px; background: var(--tint-mint-bg); }
 .ptb-cards { display: flex; flex-direction: column; gap: 8px; min-height: 36px; }
 .ptb-card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 10px 11px; cursor: grab;
@@ -1373,7 +1388,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 .ptm-head { display: flex; align-items: flex-start; gap: 10px; padding: 18px 20px 12px; }
 .ptm-head input.ptm-title {
-  flex: 1; border: none; outline: none; font-size: 16px; font-weight: 800; color: #1f2430;
+  flex: 1; border: none; outline: none; font-size: 16px; font-weight: 800; color: var(--text);
   font-family: inherit; padding: 4px 0; border-bottom: 2px solid transparent; background: transparent;
 }
 .ptm-head input.ptm-title:focus { border-bottom-color: #059669; }
@@ -1436,7 +1451,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-check-item.done span { text-decoration: line-through; color: var(--text-faint); }
 .ptm-check-item .rm { margin-left: auto; border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 11px; }
 .ptm-drop-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 13px; text-align: center; font-size: 11.5px; color: var(--text-muted); cursor: pointer; background: var(--surface-alt); }
-.ptm-drop-zone:hover { border-color: #10b981; background: #f0fbf6; }
+.ptm-drop-zone:hover { border-color: #10b981; background: var(--tint-mint-bg); }
 .ptm-att-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .ptm-att-chip { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; font-size: 10.5px; }
 .ptm-att-thumb { width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(135deg,#10b981,#047857); flex-shrink: 0; }
@@ -1445,8 +1460,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-att-meta small { color: #047857; font-weight: 700; }
 .ptm-att-meta .rm { border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 12px; margin-left: 4px; }
 /* การ์ดไฟล์ที่ "รอบันทึก Task" ตอนเพิ่ม Task ใหม่ + แนบไฟล์ ในขั้นตอนเดียว (ยังไม่ได้อัปโหลดขึ้น Storage จริง) */
-.ptm-att-chip.ptm-att-pending { border-style: dashed; background: #fffbeb; border-color: #f5d98a; }
-.ptm-att-chip.ptm-att-pending .ptm-att-meta small { color: #b45309; }
+.ptm-att-chip.ptm-att-pending { border-style: dashed; background: var(--tint-amber-bg); border-color: #f5d98a; }
+.ptm-att-chip.ptm-att-pending .ptm-att-meta small { color: var(--tint-amber-text); }
 .ptm-att-chip.ptm-att-pending .ptm-att-thumb { background: linear-gradient(135deg,#f5d98a,#d97706); }
 .ptm-att-pending-rm { border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 12px; margin-left: 2px; padding: 2px 4px; }
 .ptm-att-pending-rm:hover { color: #ef4444; }
