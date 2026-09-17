@@ -43,6 +43,7 @@ var _MODAL_CLOSE_FN = {
   "profile-modal-overlay": function () { closeProfileModal(); },
   "reschedule-modal-overlay": function () { closeRescheduleModal(); },
   "my-requests-modal-overlay": function () { closeMyRequestsModal(); },
+  "notif-settings-modal-overlay": function () { closeNotifSettingsModal(); },
   "task-detail-modal-overlay": function () { closeTaskDetailModal(); },
   "todo-board-modal-overlay": function () { closeTodoBoardModal(); },
   "task-board-modal-overlay": function () { closeTaskBoardModal(); },
@@ -127,7 +128,7 @@ var CLOUD_FUNCTION_ACTIONS = [
   'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead',
   'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
   'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
-  'registerPushToken'
+  'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -2744,38 +2745,61 @@ function printDashboardReport() {
   openExecReportInNewTab(html);
 }
 
+// ===== เมนู More (มือถือ) - ดีไซน์แบบ minimal grouped list (Concept C ที่เลือกไว้) แบ่งเป็นกลุ่มการ์ด
+// พื้นหลัง var(--surface-alt) แต่ละกลุ่ม, ไอคอนนำหน้าทุกรายการ, ปุ่มออกจากระบบแยกกลุ่มสีแดงชัดเจน
+// หมายเหตุ: เมนู "การแจ้งเตือน" (ประวัติ) ถูกเอาออกจากที่นี่ตามที่ขอ - เข้าถึงได้จากปุ่ม "ดูประวัติ" ในหน้า
+// "ตั้งค่าการแจ้งเตือน" แทน (มือถือไม่มีกระดิ่งบน topbar เพราะซ่อนไว้ - ดู #topbar-right ใน style.css) =====
+function mmItem(icon, label, fn, extraClass, badge) {
+  return '<button class="mm-item' + (extraClass ? ' ' + extraClass : '') + '" onclick="closeMoreMenu(); ' + fn + '">' +
+    '<span class="mm-ic">' + icon + '</span><span class="mm-meta">' + label + '</span>' +
+    (badge ? '<span class="mm-badge">' + badge + '</span>' : '') +
+    '</button>';
+}
+
 function openMoreMenu() {
   closeAllDrawers();
   var role = localStorage.getItem(ROLE_KEY);
   var name = localStorage.getItem(NAME_KEY);
   var container = document.getElementById('more-menu-list');
   var nameEl = document.getElementById('more-menu-name');
-  var refreshBtn = '<button onclick="closeMoreMenu(); mobileRefreshFromMenu();">🔄 รีเฟรชข้อมูล</button>';
-  // ไม่ปิดเมนูตอนกด เพื่อให้กดสลับดูผลไปเรื่อยๆ ได้เลยโดยไม่ต้องเปิดเมนูใหม่ทุกครั้ง - เรียก openMoreMenu()
-  // ซ้ำหลัง cycleTheme() เพื่อ re-render label/ไอคอนในเมนูให้ตรงกับสถานะใหม่ทันที (เมนูยังเปิดค้างอยู่)
-  var themeBtn = '<button onclick="cycleTheme(); openMoreMenu();">' + getThemeMenuLabel() + '</button>';
+  // ปุ่มธีมกดแล้วไม่ปิดเมนู (เรียก openMoreMenu() ซ้ำหลัง cycleTheme() เพื่อ re-render label/ไอคอนให้ตรงสถานะใหม่ทันที)
+  var themeItem = '<button class="mm-item" onclick="cycleTheme(); openMoreMenu();">' +
+    '<span class="mm-ic">' + THEME_META[getThemePref()].icon + '</span>' +
+    '<span class="mm-meta">' + THEME_META[getThemePref()].label + '</span></button>';
+  var refreshItem = mmItem('🔄', 'รีเฟรชข้อมูล', 'mobileRefreshFromMenu();');
 
   if (!localStorage.getItem(TOKEN_KEY)) {
-    nameEl.textContent = 'ยังไม่ได้เข้าสู่ระบบ';
-    container.innerHTML = refreshBtn + themeBtn + '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
+    nameEl.innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--text)">ยังไม่ได้เข้าสู่ระบบ</div>';
+    container.innerHTML = '<div class="mm-group">' + refreshItem + themeItem + '</div>' +
+      '<div class="mm-group">' + mmItem('🔑', 'เข้าสู่ระบบ', 'openLoginModal();') + '</div>';
   } else {
-    nameEl.textContent = name || '';
-    var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
-    var badgeText = unreadCount > 0 ? ' 🔴 (' + unreadCount + ')' : '';
-    var items = [];
-    items.push({ label: 'โปรไฟล์', fn: 'openProfileModal()' });
-    items.push({ label: 'การแจ้งเตือน' + badgeText, fn: 'openMyRequestsModal()' });
+    var initial = (name || '?').trim().charAt(0).toUpperCase();
+    nameEl.innerHTML = '<div id="more-menu-name-row">' +
+      '<div id="more-menu-avatar">' + initial + '</div>' +
+      '<div><div id="more-menu-name-text">' + (name || '') + '</div>' +
+      '<span class="mm-role-pill">⭐ ' + (ROLE_LABELS[role] || role) + '</span></div></div>';
+
+    var groups = [];
+    groups.push(refreshItem + themeItem);
+
+    var group2 = mmItem('👤', 'โปรไฟล์', 'openProfileModal();') +
+      mmItem('⚙️', 'ตั้งค่าการแจ้งเตือน', 'openNotifSettingsModal();');
+    groups.push(group2);
+
+    var group3 = '';
     if (role === 'admin') {
-      items.push({ label: 'บัญชีผู้ใช้', fn: 'openStaffModal()' });
-      items.push({ label: 'วันหยุด', fn: 'openHolidayModal()' });
+      group3 += mmItem('🧑‍💼', 'บัญชีผู้ใช้', 'openStaffModal();');
+      group3 += mmItem('📆', 'วันหยุด', 'openHolidayModal();');
     }
     if (role === 'admin' || role === 'ceo') {
-      items.push({ label: 'Dashboard สรุปงาน', fn: 'openDashboardModal()' });
-      items.push({ label: 'Export Excel (เดือนที่ดูอยู่)', fn: 'exportMonthToExcel()' });
+      group3 += mmItem('📊', 'Dashboard สรุปงาน', 'openDashboardModal();');
+      group3 += mmItem('📥', 'Export Excel (เดือนที่ดูอยู่)', 'exportMonthToExcel();');
     }
-    container.innerHTML = refreshBtn + themeBtn + items.map(function (it) {
-      return '<button onclick="closeMoreMenu(); ' + it.fn + '">' + it.label + '</button>';
-    }).join('') + '<button class="danger" onclick="closeMoreMenu(); doLogout();">ออกจากระบบ</button>';
+    if (group3) groups.push(group3);
+
+    groups.push(mmItem('🚪', 'ออกจากระบบ', 'doLogout();', 'danger'));
+
+    container.innerHTML = groups.map(function (g) { return '<div class="mm-group">' + g + '</div>'; }).join('');
   }
 
   document.getElementById('more-menu-overlay').classList.add('show');
@@ -2996,10 +3020,21 @@ function setupPushNotifications() {
   }).catch(function (err) { console.error('Service worker register error', err); });
 }
 
+// ===== เปิด/ปิดเสียงแจ้งเตือน (ตั้งค่าการแจ้งเตือน > เสียงแจ้งเตือน) - เก็บใน localStorage ล้วนๆ
+// (ไม่ผูกกับ backend เพราะเป็นเรื่องของเครื่อง/เบราว์เซอร์นี้เท่านั้น ไม่ต้อง sync ข้ามเครื่อง) ค่าเริ่มต้น = เปิด =====
+var NOTIF_SOUND_KEY = 'c2tech_notif_sound_enabled';
+function isNotifSoundEnabled() {
+  return localStorage.getItem(NOTIF_SOUND_KEY) !== '0';
+}
+function setNotifSoundEnabled(enabled) {
+  localStorage.setItem(NOTIF_SOUND_KEY, enabled ? '1' : '0');
+}
+
 // ===== โชว์แจ้งเตือนผ่าน Notification API ของเบราว์เซอร์/ระบบปฏิบัติการ =====
 // วิธีนี้ให้ผลเหมือนกันทั้ง PC และมือถือ: ระบบปฏิบัติการเป็นคนเล่น "เสียงแจ้งเตือนมาตรฐาน" ให้เองอัตโนมัติ
 // ไม่ต้องมาเลือกเสียงเองอีกต่อไป (เดิมใช้เสียงพูดสังเคราะห์ ซึ่งบางเครื่องไม่มีเสียงไทยที่ฟังดูเป็นธรรมชาติ)
 function playNotificationSound(title, body) {
+  if (!isNotifSoundEnabled()) return; // ผู้ใช้ปิดเสียงแจ้งเตือนไว้ในตั้งค่า
   if ('Notification' in window && Notification.permission === 'granted') {
     try {
       new Notification(title, { body: body, icon: 'icons/icon-192.png' });
@@ -3082,7 +3117,8 @@ function getNotifTypeInfo(type) {
     personalTask_deleted: { icon: '🗑️', color: 'red', tag: 'Personal Task' },
     personalTask_dueSoon: { icon: '⏰', color: 'amber', tag: 'ใกล้ครบกำหนด' },
     personalTask_dueToday: { icon: '⏰', color: 'orange', tag: 'ครบกำหนดวันนี้' },
-    personalTask_overdue: { icon: '⚠️', color: 'red', tag: 'เลยกำหนด' }
+    personalTask_overdue: { icon: '⚠️', color: 'red', tag: 'เลยกำหนด' },
+    test: { icon: '🔔', color: 'green', tag: 'ทดสอบ' }
   };
   return map[type] || { icon: '🔔', color: 'blue', tag: '' };
 }
@@ -3227,6 +3263,150 @@ function openMyRequestsModal() {
 }
 function closeMyRequestsModal() {
   document.getElementById('my-requests-modal-overlay').style.display = 'none';
+}
+
+// ===== หน้าตั้งค่าการแจ้งเตือน (#notif-settings-modal-overlay) - แยกจากกระดิ่ง/ประวัติแจ้งเตือนโดยเจตนา:
+// ที่นี่ควบคุม "จะรับอะไรบ้าง/รับทางไหน" ส่วนกระดิ่งควบคุม "ดูประวัติที่เคยส่งมา" (เข้าถึงได้จากปุ่ม "ดูประวัติ"
+// ในหน้านี้) ค่า per-type ผูกกับ accounts/{id}.notifPrefs ทาง Cloud Function getNotificationPrefs/
+// updateNotificationPrefs (ดู functions/index.js) ส่วนเสียงเป็น localStorage ล้วนๆ ไม่ต้องมี backend =====
+var NOTIF_CATEGORY_LABELS = {
+  assigned: { label: 'ถูกมอบหมาย/ถอดออกจาก Task', desc: 'เมื่อมีคนมอบหมายงานให้คุณ หรือถอดคุณออกจากงาน/Task' },
+  done: { label: 'Task เสร็จแล้ว', desc: 'เมื่อ Task ที่คุณรับผิดชอบร่วม ถูกทำเครื่องหมายว่าเสร็จแล้ว' },
+  rescheduled: { label: 'เลื่อนวันครบกำหนด', desc: 'เมื่อวันครบกำหนดของงาน/Task ที่เกี่ยวข้องถูกเปลี่ยน' },
+  deleted: { label: 'Task ถูกลบ', desc: 'เมื่องาน/Task ที่คุณเกี่ยวข้องถูกลบไป' },
+  dueReminder: { label: 'เตือนใกล้ครบ/เลยกำหนด', desc: 'แจ้งอัตโนมัติทุกเช้า ถ้าใกล้หรือเลยกำหนดแล้วยังไม่เสร็จ' }
+};
+var NOTIF_ADMIN_CATEGORY_LABELS = {
+  calendarActivity: { label: 'ความเคลื่อนไหวปฏิทินหลัก', desc: 'เมื่อมีการสร้าง/แก้ไข/ยกเลิกงานในปฏิทินหลัก' },
+  approvalRequest: { label: 'คำขออนุมัติใหม่', desc: 'เมื่อมีคำขอลบงาน/เปลี่ยนวันงาน รอการอนุมัติ' }
+};
+var _notifSettingsPrefs = null;
+
+function openNotifSettingsModal() {
+  document.getElementById('notif-settings-modal-overlay').style.display = 'flex';
+  _pushModalNav('notif-settings-modal-overlay');
+  loadAndRenderNotifSettings();
+}
+function closeNotifSettingsModal() {
+  document.getElementById('notif-settings-modal-overlay').style.display = 'none';
+}
+
+function loadAndRenderNotifSettings() {
+  var body = document.getElementById('notif-settings-body');
+  body.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">กำลังโหลด...</p>';
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('getNotificationPrefs', { token: token }).then(function (result) {
+    _notifSettingsPrefs = (result && result.prefs) || {};
+    renderNotifSettings();
+  }).catch(function (err) {
+    body.innerHTML = '<p style="font-size:13px;color:var(--danger-text)">โหลดค่าตั้งค่าไม่สำเร็จ: ' + err.message + '</p>';
+  });
+}
+
+function nsSwitch(key, checked, disabled) {
+  return '<label class="ns-sw"><input type="checkbox" ' + (checked ? 'checked' : '') + (disabled ? ' disabled' : '') +
+    ' onchange="onNotifSwitchChange(\'' + key + '\', this)"><span class="ns-sw-track"></span></label>';
+}
+function nsToggleRow(key, meta, checked) {
+  return '<div class="ns-row"><div class="ns-meta"><div class="ns-label">' + meta.label + '</div>' +
+    '<div class="ns-desc">' + meta.desc + '</div></div>' + nsSwitch(key, checked, false) + '</div>';
+}
+
+function renderNotifSettings() {
+  var body = document.getElementById('notif-settings-body');
+  var role = localStorage.getItem(ROLE_KEY);
+  var prefs = _notifSettingsPrefs || {};
+
+  var permission = ('Notification' in window) ? Notification.permission : 'unsupported';
+  var permStatusHtml;
+  if (permission === 'granted') {
+    permStatusHtml = '<span class="ns-status on">เปิดอยู่</span>';
+  } else if (permission === 'denied') {
+    permStatusHtml = '<span class="ns-status off">ถูกบล็อก</span>';
+  } else {
+    permStatusHtml = '<span class="ns-status off">ยังไม่อนุญาต</span>';
+  }
+
+  var permBannerHtml = '';
+  if (permission === 'default') {
+    permBannerHtml = '<div class="ns-perm-banner"><span>⚠️ ยังไม่ได้อนุญาตแจ้งเตือนเด้งบนเบราว์เซอร์นี้ กดปุ่มด้านข้างเพื่อเปิดใช้งาน</span>' +
+      '<button onclick="requestPushPermissionFromSettings(this)">อนุญาต</button></div>';
+  } else if (permission === 'denied') {
+    permBannerHtml = '<div class="ns-perm-banner"><span>🚫 คุณเคยปฏิเสธไว้ก่อนหน้านี้ ต้องไปเปิดเองในตั้งค่าเว็บไซต์ของเบราว์เซอร์</span></div>';
+  }
+
+  var channelsHtml = '<div class="ns-group-label">ช่องทางรับแจ้งเตือน</div><div class="ns-group">' +
+    '<div class="ns-row"><div class="ns-meta"><div class="ns-label">แจ้งเตือนในแอป</div>' +
+    '<div class="ns-desc">ขึ้นที่กระดิ่งด้านบนเสมอ (ปิดไม่ได้เพราะเป็นฐานหลักของระบบ)</div></div>' +
+    '<span class="ns-status on">เปิดอยู่</span></div>' +
+    '<div class="ns-row"><div class="ns-meta"><div class="ns-label">แจ้งเตือนเด้ง (Push)</div>' +
+    '<div class="ns-desc">เด้งที่มือถือ/เดสก์ท็อปได้แม้ปิดแอปอยู่ - โชว์สถานะจริงจากเบราว์เซอร์</div></div>' +
+    permStatusHtml + '</div>' +
+    '<div class="ns-row"><div class="ns-meta"><div class="ns-label">เสียงแจ้งเตือน</div>' +
+    '<div class="ns-desc">เล่นเสียงตอนมีแจ้งเตือนใหม่ ขณะเปิดแอปอยู่</div></div>' +
+    nsSwitch('sound', isNotifSoundEnabled(), false) + '</div>' +
+    '</div>' + permBannerHtml;
+
+  var typeRows = Object.keys(NOTIF_CATEGORY_LABELS).map(function (key) {
+    return nsToggleRow(key, NOTIF_CATEGORY_LABELS[key], prefs[key] !== false);
+  }).join('');
+  var typesHtml = '<div class="ns-group-label">ประเภทที่ต้องการรับแจ้งเตือน</div><div class="ns-group">' + typeRows + '</div>';
+
+  var adminHtml = '';
+  if (role === 'admin') {
+    var adminRows = Object.keys(NOTIF_ADMIN_CATEGORY_LABELS).map(function (key) {
+      return nsToggleRow(key, NOTIF_ADMIN_CATEGORY_LABELS[key], prefs[key] !== false);
+    }).join('');
+    adminHtml = '<div class="ns-group-label">เฉพาะ Admin</div><div class="ns-group">' + adminRows + '</div>';
+  }
+
+  var testBtnHtml = '<button class="ns-test-btn" onclick="sendTestNotifFromSettings(this)">🔔 ส่งแจ้งเตือนทดสอบ</button>';
+
+  body.innerHTML = channelsHtml + typesHtml + adminHtml + testBtnHtml;
+}
+
+// ===== สลับตั้งค่ารายประเภท - อัปเดต UI ทันที (optimistic) แล้วค่อยยิง backend, ถ้าพลาดค่อย revert กลับ
+// (key === 'sound' ไม่ยิง backend เพราะเป็นแค่ localStorage ของเครื่องนี้) =====
+function onNotifSwitchChange(key, inputEl) {
+  var newValue = inputEl.checked;
+  if (key === 'sound') {
+    setNotifSoundEnabled(newValue);
+    return;
+  }
+  var prevValue = _notifSettingsPrefs ? _notifSettingsPrefs[key] !== false : true;
+  if (_notifSettingsPrefs) _notifSettingsPrefs[key] = newValue;
+  var token = localStorage.getItem(TOKEN_KEY);
+  var payload = {};
+  payload[key] = newValue;
+  callApi('updateNotificationPrefs', { token: token, prefs: payload }).then(function (result) {
+    if (!result || !result.success) throw new Error((result && result.message) || 'บันทึกไม่สำเร็จ');
+  }).catch(function (err) {
+    inputEl.checked = prevValue;
+    if (_notifSettingsPrefs) _notifSettingsPrefs[key] = prevValue;
+    Swal.fire({ icon: 'error', title: 'บันทึกไม่สำเร็จ', text: err.message });
+  });
+}
+
+// ===== ปุ่ม "อนุญาต" ในแบนเนอร์ - เรียก setupPushNotifications() ซ้ำ (มันเช็ค Notification.permission เอง
+// ว่าเป็น 'default' ถึงจะขอสิทธิ์จริง) แล้วรอสักครู่ค่อย re-render เพื่ออัปเดต badge ตามที่ผู้ใช้เพิ่งเลือกตอบ =====
+function requestPushPermissionFromSettings(btn) {
+  setButtonLoading(btn, true, '...');
+  setupPushNotifications();
+  setTimeout(function () {
+    renderNotifSettings();
+  }, 600);
+}
+
+function sendTestNotifFromSettings(btn) {
+  setButtonLoading(btn, true, 'กำลังส่ง...');
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('sendTestNotification', { token: token }).then(function () {
+    Toast.fire({ icon: 'success', title: 'ส่งแจ้งเตือนทดสอบแล้ว รอสักครู่' });
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: err.message });
+  }).finally(function () {
+    setButtonLoading(btn, false);
+  });
 }
 
 function manualRefresh() {

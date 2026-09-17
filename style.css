@@ -356,11 +356,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 @keyframes modalScaleIn { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 #login-modal-overlay, #staff-modal-overlay, #holiday-modal-overlay, #task-modal-overlay,
 #profile-modal-overlay, #reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay,
-#todo-board-modal-overlay {
+#todo-board-modal-overlay, #notif-settings-modal-overlay {
   animation: modalFadeIn 0.18s ease;
 }
 #login-box, #staff-box, #holiday-box, #task-box, #profile-card-box,
-#reschedule-box, #pending-requests-box, #my-requests-box, #todo-board-box {
+#reschedule-box, #pending-requests-box, #my-requests-box, #todo-board-box, #notif-settings-box {
   animation: modalScaleIn 0.22s ease;
 }
 
@@ -891,13 +891,18 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
 
-/* Modal ขอเปลี่ยนวัน / รายการคำขอ - ใช้ style ร่วมกันแบบ modal ทั่วไป */
-#reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay {
+/* Modal ขอเปลี่ยนวัน / รายการคำขอ / ตั้งค่าการแจ้งเตือน - ใช้ style ร่วมกันแบบ modal ทั่วไป */
+#reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay, #notif-settings-modal-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   align-items: center; justify-content: center; z-index: 2050;
 }
 #reschedule-box, #pending-requests-box, #my-requests-box {
   background: var(--surface); border-radius: 14px; padding: 0; width: 420px; max-width: 92vw;
+  max-height: 85vh; overflow-y: hidden; position: relative;
+  display: flex; flex-direction: column;
+}
+#notif-settings-box {
+  background: var(--surface); border-radius: 14px; padding: 0; width: 460px; max-width: 92vw;
   max-height: 85vh; overflow-y: hidden; position: relative;
   display: flex; flex-direction: column;
 }
@@ -997,6 +1002,48 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   background: var(--surface-alt); color: var(--text-muted); border: 1px solid var(--border);
   white-space: nowrap;
 }
+
+/* ===== หน้าตั้งค่าการแจ้งเตือน (#notif-settings-modal-overlay) ===== */
+.ns-group-label {
+  font-size: 11px; font-weight: 800; color: var(--text-faint); text-transform: uppercase;
+  letter-spacing: .04em; margin: 18px 0 8px;
+}
+.ns-group-label:first-child { margin-top: 0; }
+.ns-group { background: var(--surface-alt); border: 1px solid var(--border-soft); border-radius: 12px; overflow: hidden; margin-bottom: 4px; }
+.ns-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border-soft); }
+.ns-row:last-child { border-bottom: none; }
+.ns-meta { flex: 1; min-width: 0; }
+.ns-label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.ns-desc { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.5; }
+.ns-status { font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; flex-shrink: 0; white-space: nowrap; }
+.ns-status.on { background: var(--tint-green-bg); color: #047857; }
+.ns-status.off { background: var(--tint-amber-bg); color: var(--tint-amber-text); }
+.ns-perm-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--tint-amber-bg); color: var(--tint-amber-text); border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; font-weight: 600; margin: 10px 0 16px;
+}
+.ns-perm-banner button {
+  background: #059669; color: #fff; border: none; border-radius: 8px; padding: 6px 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+}
+.ns-test-btn {
+  width: 100%; padding: 11px; margin: 16px 0 4px; border: 1.5px dashed #059669; border-radius: 10px;
+  background: transparent; color: #059669; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.ns-test-btn:hover { background: var(--tint-green-bg); }
+.ns-test-btn:disabled { opacity: .6; cursor: default; }
+.ns-sw { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+.ns-sw input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.ns-sw-track { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: background .15s; }
+.ns-sw-track::before {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.ns-sw input:checked + .ns-sw-track { background: #059669; }
+.ns-sw input:checked + .ns-sw-track::before { transform: translateX(18px); }
+.ns-sw input:disabled + .ns-sw-track { opacity: .5; cursor: not-allowed; }
+
 .btn-approve { background: #059669; color: #fff; border: none; }
 .btn-reject { background: var(--surface); color: #ef4444; border: 1px solid #ef4444; }
 .status-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
@@ -1267,14 +1314,33 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
     background: var(--surface); width: 100%; border-radius: 18px 18px 0 0; padding: 10px 20px 24px;
     max-height: 70vh; overflow-y: auto;
   }
-  #more-menu-handle { width: 40px; height: 4px; background: #dfe1e6; border-radius: 4px; margin: 4px auto 14px; }
-  #more-menu-name { font-size: 14px; font-weight: 600; color: var(--text); margin: 0 0 12px; text-align: center; }
-  #more-menu-list { display: flex; flex-direction: column; gap: 8px; }
-  #more-menu-list button {
-    width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
-    background: var(--surface); font-size: 14px; text-align: left; cursor: pointer; color: var(--text);
+  #more-menu-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 4px auto 14px; }
+  #more-menu-name { margin: 0 0 16px; }
+  #more-menu-list { display: flex; flex-direction: column; }
+
+  /* ===== เมนู More (mobile) - ดีไซน์แบบ minimal grouped list (Concept C) ===== */
+  #more-menu-name-row { display: flex; align-items: center; gap: 11px; }
+  #more-menu-avatar {
+    width: 42px; height: 42px; border-radius: 50%; background: #059669; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; flex-shrink: 0;
   }
-  #more-menu-list button.danger { color: #ef4444; border-color: #fecaca; }
+  #more-menu-name-text { font-size: 14.5px; font-weight: 800; color: var(--text); }
+  .mm-role-pill {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 800;
+    padding: 3px 9px; border-radius: 999px; background: var(--tint-green-bg); color: #047857; margin-top: 3px;
+  }
+  .mm-group { background: var(--surface-alt); border-radius: 14px; overflow: hidden; margin-bottom: 12px; border: 1px solid var(--border-soft); }
+  .mm-item {
+    display: flex; align-items: center; gap: 11px; width: 100%; padding: 12px 13px;
+    border: none; border-bottom: 1px solid var(--border-soft); background: transparent;
+    font-size: 13.5px; font-weight: 600; color: var(--text); text-align: left; cursor: pointer;
+  }
+  .mm-item:last-child { border-bottom: none; }
+  .mm-item:active { background: var(--border-soft); }
+  .mm-ic { width: 22px; text-align: center; font-size: 15px; flex-shrink: 0; }
+  .mm-item .mm-meta { flex: 1; }
+  .mm-item .mm-badge { background: #ef4444; color: #fff; font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 999px; }
+  .mm-item.danger { color: var(--danger-text); }
 
   /* ปฏิทินโหมด list บนมือถือ - ของที่เหลือเฉพาะมือถือจริงๆ (ปุ่ม/หัวปฏิทิน) อยู่ด้านล่างนี้
      ส่วนการแก้บั๊ก List view (ตัดคำ, flexbox) ย้ายไปเป็น global แล้ว เพราะ List view ใช้ได้ทุกขนาดจอ ไม่ใช่แค่มือถือ */

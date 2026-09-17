@@ -211,7 +211,7 @@
   <div id="more-menu-overlay" onclick="closeMoreMenu()">
     <div id="more-menu-sheet" onclick="event.stopPropagation()">
       <div id="more-menu-handle"></div>
-      <p id="more-menu-name"></p>
+      <div id="more-menu-name"></div>
       <div id="more-menu-list"></div>
     </div>
   </div>
@@ -625,6 +625,20 @@
         <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
       </div>
       <div id="my-requests-list" class="tb-body"></div>
+    </div>
+  </div>
+
+  <div id="notif-settings-modal-overlay">
+    <div id="notif-settings-box">
+      <div class="tb-head">
+        <h2>⚙️ ตั้งค่าการแจ้งเตือน</h2>
+        <button class="modal-close-btn" onclick="closeNotifSettingsModal()">✕</button>
+      </div>
+      <div class="tb-info-banner my-requests-head">
+        <span>กำหนดว่าจะรับแจ้งเตือนเรื่องไหนบ้าง และรับผ่านช่องทางไหน</span>
+        <button class="btn-outline" onclick="closeNotifSettingsModal(); openMyRequestsModal();">ดูประวัติ</button>
+      </div>
+      <div id="notif-settings-body" class="tb-body"></div>
     </div>
   </div>
 
