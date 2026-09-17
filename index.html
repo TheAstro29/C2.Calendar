@@ -4,6 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>C2 Calendar - ระบบลงนัดงาน</title>
+  <script>
+    // ต้องรันก่อน style.css โหลดเสร็จเสมอ (ก่อน <link> ด้านล่าง) เพื่อกันจอ "กระพริบ" สีผิดตอนโหลดหน้าแรก -
+    // ถ้าผู้ใช้เคยกดเลือกธีมเองไว้ (ไม่ใช่ "ตามเครื่อง") ให้เซ็ต data-theme ทันทีก่อนวาดหน้าจอ ไม่ต้องรอ
+    // app.js ทั้งไฟล์โหลดเสร็จก่อน (ดู applyThemePref()/cycleTheme() ใน app.js สำหรับ logic ตอนกดปุ่มสลับ)
+    (function () {
+      try {
+        var pref = localStorage.getItem('c2tech_calendar_theme_pref');
+        if (pref === 'light' || pref === 'dark') {
+          document.documentElement.setAttribute('data-theme', pref);
+        }
+      } catch (e) { /* localStorage ใช้งานไม่ได้ (โหมด private ฯลฯ) - ปล่อยผ่าน ใช้ธีมตามเครื่องแทน */ }
+    })();
+  </script>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -15,6 +28,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sweetalert2/11.10.1/sweetalert2.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -52,6 +68,7 @@
       </button>
     </div>
     <div id="topbar-right">
+      <button id="theme-toggle-btn" class="icon-toggle-btn" title="ธีม (กดเพื่อเปลี่ยน)" onclick="cycleTheme()">🌓</button>
       <button id="refresh-btn" class="icon-toggle-btn" title="รีเฟรชข้อมูล" onclick="manualRefresh()">
         <svg id="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
@@ -101,6 +118,21 @@
     </aside>
 
     <div id="calendar-wrap">
+      <!-- แถบชิปกรองประเภทงาน (เฉพาะมือถือ - ดู CSS @media max-width:768px) ให้กรองได้จากมุมมองปฏิทินเลย
+           ไม่ต้องเปิดเมนู "สรุป" ก่อน - ใช้ data-type/onclick เดียวกับ #type-legend ฝั่ง PC เพื่อ sync สถานะร่วมกัน -->
+      <div id="type-legend-mobile" class="mobile-type-chips">
+        <span class="legend-item chip" data-type="meeting" onclick="setTaskTypeFilter('meeting')"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม</span>
+        <span class="legend-item chip" data-type="onsite" onclick="setTaskTypeFilter('onsite')"><span class="legend-dot" style="background:#FFB48A"></span>นอกสถานที่</span>
+        <span class="legend-item chip" data-type="event" onclick="setTaskTypeFilter('event')"><span class="legend-dot" style="background:#C9A6FF"></span>กิจกรรม</span>
+        <span class="legend-item chip" data-type="leave" onclick="setTaskTypeFilter('leave')"><span class="legend-dot" style="background:#E5E7EB"></span>ลา</span>
+      </div>
+      <!-- แถบสลับช่วงเวลาของมุมมองรายการ (วันนี้/สัปดาห์นี้/เดือนนี้) - โชว์เฉพาะตอนอยู่มุมมอง List บนมือถือ
+           ควบคุม show/hide ด้วย JS (updateListRangeToggle) ดู app.js -->
+      <div id="list-range-toggle" class="list-range-toggle">
+        <button data-range="listDay" onclick="setListRange('listDay')">วันนี้</button>
+        <button data-range="listWeek" onclick="setListRange('listWeek')">สัปดาห์นี้</button>
+        <button data-range="listMonth" onclick="setListRange('listMonth')">เดือนนี้</button>
+      </div>
       <div id="calendar"></div>
     </div>
 
@@ -181,6 +213,19 @@
       <div id="more-menu-handle"></div>
       <p id="more-menu-name"></p>
       <div id="more-menu-list"></div>
+    </div>
+  </div>
+
+  <!-- Bottom sheet "+N เพิ่มเติม" ของมุมมองเดือนบนมือถือ (แนวทาง 1) - แทนที่ popover ค้างของ FullCalendar
+       ด้วยแผ่นเลื่อนขึ้นจากล่าง ให้ดูรายการทั้งหมดของวันนั้นแบบเต็มคำ ดู openDaySheet()/closeDaySheet() ใน app.js -->
+  <div id="day-sheet-overlay" onclick="closeDaySheet()">
+    <div id="day-sheet" onclick="event.stopPropagation()">
+      <div id="day-sheet-handle"></div>
+      <div id="day-sheet-head">
+        <p id="day-sheet-title"></p>
+        <button id="day-sheet-close" onclick="closeDaySheet()">✕</button>
+      </div>
+      <div id="day-sheet-list"></div>
     </div>
   </div>
 

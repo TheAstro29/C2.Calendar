@@ -64,6 +64,44 @@ var ROLE_KEY = 'c2tech_role';
 var ACCOUNT_ID_KEY = 'c2tech_account_id';
 var calendarInstance = null;
 
+// ===== Phase: ปุ่มสลับธีม Light/Dark เอง (นอกเหนือจากปรับตาม prefers-color-scheme อัตโนมัติ) =====
+// index.html มี inline script เล็กๆ ก่อนโหลด style.css คอยเซ็ต data-theme จาก localStorage ให้ตั้งแต่ต้น
+// (กัน "จอกระพริบ" สีผิดตอนโหลดหน้าแรกก่อนสคริปต์นี้มาถึง) ฟังก์ชันด้านล่างนี้ใช้ตอนกดปุ่มสลับเองอีกที
+var THEME_PREF_KEY = 'c2tech_calendar_theme_pref';
+var THEME_CYCLE = ['system', 'light', 'dark'];
+var THEME_META = {
+  system: { icon: '🌓', label: 'ธีม: ตามเครื่อง' },
+  light: { icon: '☀️', label: 'ธีม: สว่าง' },
+  dark: { icon: '🌙', label: 'ธีม: มืด' }
+};
+function getThemePref() {
+  var v = localStorage.getItem(THEME_PREF_KEY);
+  return (v === 'light' || v === 'dark') ? v : 'system';
+}
+function applyThemePref(pref) {
+  if (pref === 'light' || pref === 'dark') {
+    document.documentElement.setAttribute('data-theme', pref);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  var btn = document.getElementById('theme-toggle-btn');
+  if (btn) {
+    btn.textContent = THEME_META[pref].icon;
+    btn.title = THEME_META[pref].label + ' (กดเพื่อเปลี่ยน)';
+  }
+}
+function cycleTheme() {
+  var current = getThemePref();
+  var next = THEME_CYCLE[(THEME_CYCLE.indexOf(current) + 1) % THEME_CYCLE.length];
+  localStorage.setItem(THEME_PREF_KEY, next);
+  applyThemePref(next);
+  Toast.fire({ icon: 'success', title: THEME_META[next].label });
+}
+function getThemeMenuLabel() {
+  var pref = getThemePref();
+  return THEME_META[pref].icon + ' ' + THEME_META[pref].label + ' (กดเพื่อเปลี่ยน)';
+}
+
 var Toast = Swal.mixin({
   toast: true,
   position: 'top-end',
@@ -294,7 +332,9 @@ var activeTaskTypeFilter = null;
 function setTaskTypeFilter(type) {
   activeTaskTypeFilter = (activeTaskTypeFilter === type) ? null : type;
 
-  document.querySelectorAll('#type-legend .legend-item').forEach(function (el) {
+  // #type-legend-mobile คือแถบชิปกรองบนมือถือ (เหนือปฏิทิน) - ใช้ data-type/class เดียวกับ #type-legend
+  // ฝั่ง PC จึงอัปเดตสถานะ active/dimmed พร้อมกันในลูปเดียวได้เลย ไม่ต้องแยกฟังก์ชัน
+  document.querySelectorAll('#type-legend .legend-item, #type-legend-mobile .legend-item').forEach(function (el) {
     var isThis = el.getAttribute('data-type') === activeTaskTypeFilter;
     el.classList.toggle('active', !!activeTaskTypeFilter && isThis);
     el.classList.toggle('dimmed', !!activeTaskTypeFilter && !isThis);
@@ -432,6 +472,9 @@ function refreshCalendarDayCells() {
 // ทุกคนเห็นปฏิทินได้เสมอตั้งแต่เปิดหน้าเว็บ ไม่ต้อง login
 // ไม่ต้องมี local cache/stale-while-revalidate อีกต่อไป เพราะ Firestore real-time เร็วกว่าและทำงานแทนได้ดีกว่าอยู่แล้ว
 window.onload = function () {
+  // ปุ่มสลับธีมยังไม่มีตอน inline script ใน <head> เซ็ต data-theme ไว้ตั้งแต่ก่อนหน้านี้ (กันจอกระพริบ)
+  // ต้อง sync ไอคอน/ label ของปุ่มให้ตรงกับค่าที่จำไว้อีกทีตอนนี้ ที่ DOM ของปุ่มพร้อมแล้ว
+  applyThemePref(getThemePref());
   loadMemberSidebar();
   setupHolidaysRealtimeListener();
   setupTasksRealtimeListener();
@@ -2288,7 +2331,11 @@ function exportMonthToExcel() {
 
 function toggleCalendarViewMode() {
   if (!calendarInstance) return;
-  var newView = calendarInstance.view.type === 'listMonth' ? 'dayGridMonth' : 'listMonth';
+  // แก้ให้รองรับ view.type เป็น listDay/listWeek ได้ด้วย (ไม่ใช่แค่ listMonth เดิม) เพราะตอนนี้มุมมอง List
+  // มีแถบสลับช่วงย่อยแล้ว (ดู setListRange) - เดิมเช็คแค่ 'listMonth' ตรงๆ ทำให้กดสลับตอนอยู่ listWeek/listDay
+  // แล้วได้ 'listMonth' (list) ซ้ำแทนที่จะกลับไปมุมมองเดือนแบบตาราง (dayGridMonth) ตามที่ตั้งใจ
+  var isCurrentlyList = calendarInstance.view.type.indexOf('list') === 0;
+  var newView = isCurrentlyList ? 'dayGridMonth' : 'listMonth';
   calendarInstance.changeView(newView);
   localStorage.setItem(CALENDAR_VIEW_PREF_KEY, newView);
   updateViewToggleLabel(newView);
@@ -2335,7 +2382,148 @@ function reverseListViewDayOrder() {
 function updateViewToggleLabel(viewType) {
   var label = document.getElementById('mfn-view-toggle-label');
   if (!label) return;
-  label.textContent = viewType === 'listMonth' ? 'ดูเดือน' : 'ดูรายการ';
+  // เช็คด้วย indexOf('list') แทนการเทียบ 'listMonth' ตรงๆ ด้วยเหตุผลเดียวกับ toggleCalendarViewMode ด้านบน
+  // (ตอนนี้มุมมอง List มีทั้ง listDay/listWeek/listMonth ไม่ใช่แค่ listMonth เดิม)
+  label.textContent = viewType.indexOf('list') === 0 ? 'ดูเดือน' : 'ดูรายการ';
+}
+
+// ================================================================================
+// ===== Phase: มุมมองปฏิทินมือถือ อ่านง่ายขึ้น (คุยกับผู้ใช้แล้วเลือกแนวทางนี้) ===================
+// ================================================================================
+
+// ===== แถบสลับช่วงของมุมมอง List (วันนี้/สัปดาห์นี้/เดือนนี้) — โชว์เฉพาะตอนอยู่มุมมอง List บนมือถือ
+// (PC มีปุ่มสลับมุมมองจริงอยู่แล้วในแถบเครื่องมือด้านบน ไม่ต้องมีแถบซ้ำอีกชั้น) =====
+function updateListRangeToggle(viewType) {
+  var bar = document.getElementById('list-range-toggle');
+  if (!bar) return;
+  var show = isMobileView() && viewType.indexOf('list') === 0;
+  bar.classList.toggle('show', show);
+  if (!show) return;
+  bar.querySelectorAll('button').forEach(function (btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-range') === viewType);
+  });
+}
+
+function setListRange(viewType) {
+  if (!calendarInstance) return;
+  calendarInstance.changeView(viewType);
+  // จำไว้เป็นค่า pref เดียวกับปุ่มสลับหลัก (มุมมอง List/เดือน) เพื่อให้เปิดแอปครั้งถัดไปกลับมาที่ช่วงเดิม
+  localStorage.setItem(CALENDAR_VIEW_PREF_KEY, viewType);
+  updateViewToggleLabel(viewType);
+}
+
+// ===== เติมแถว "ไม่มีงาน" ให้วันที่ไม่มีงานเลยในมุมมอง List — เฉพาะ listDay/listWeek (ช่วงสั้น นับวันได้ไม่กี่วัน)
+// ไม่ทำกับ listMonth เพราะอาจมีวันว่างเป็นสิบวันต่อเดือน จะรกเกินไป — FullCalendar เองไม่มีตัวเลือกให้โชว์
+// วันว่างในมุมมอง List (ข้ามวันที่ไม่มี event ไปเลยโดยดีไซน์) จึงต้องแทรกแถวปลอมเข้าไปในตารางเองหลัง render
+// เสร็จแล้ว (เรียกจาก eventsSet ต่อจาก reverseListViewDayOrder เสมอ เพื่อให้ทำงานกับลำดับที่ reverse แล้ว) =====
+function fillEmptyListDays() {
+  if (!calendarInstance) return;
+  var view = calendarInstance.view;
+  if (view.type !== 'listDay' && view.type !== 'listWeek') return;
+
+  var calendarEl = document.getElementById('calendar');
+  var tbody = calendarEl && calendarEl.querySelector('.fc-list-table tbody');
+  if (!tbody) return;
+
+  // ล้างแถวว่างเก่าที่แทรกไว้รอบก่อนหน้าออกก่อนเสมอ กันแทรกซ้ำซ้อนเวลา eventsSet ยิงซ้ำ (เปลี่ยนตัวกรอง ฯลฯ)
+  tbody.querySelectorAll('.fc-list-day-empty').forEach(function (row) { row.remove(); });
+
+  var existingDates = {};
+  tbody.querySelectorAll('.fc-list-day').forEach(function (row) {
+    var d = row.getAttribute('data-date');
+    if (d) existingDates[d] = true;
+  });
+
+  var WEEKDAY_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  var MONTH_TH_SHORT = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+
+  // currentEnd เป็น exclusive (มาตรฐาน FullCalendar) จึงวนแค่ < currentEnd ไม่รวมวันนั้น
+  var cursor = new Date(view.currentStart.getFullYear(), view.currentStart.getMonth(), view.currentStart.getDate());
+  var endDate = view.currentEnd;
+  var missingRows = [];
+  while (cursor < endDate) {
+    var dateStr = cursor.getFullYear() + '-' + String(cursor.getMonth() + 1).padStart(2, '0') + '-' + String(cursor.getDate()).padStart(2, '0');
+    if (!existingDates[dateStr]) {
+      var headRow = document.createElement('tr');
+      headRow.className = 'fc-list-day fc-list-day-empty';
+      headRow.setAttribute('data-date', dateStr);
+      var isToday = new Date().toDateString() === cursor.toDateString();
+      headRow.innerHTML = '<th colspan="3"><div class="fc-list-day-cushion">' +
+        '<span>' + WEEKDAY_TH[cursor.getDay()] + ' ' + cursor.getDate() + ' ' + MONTH_TH_SHORT[cursor.getMonth()] +
+        (isToday ? ' · วันนี้' : '') + '</span></div></th>';
+      var emptyRow = document.createElement('tr');
+      emptyRow.className = 'fc-list-day-empty';
+      emptyRow.innerHTML = '<td colspan="3">ไม่มีงาน</td>';
+      missingRows.push({ date: dateStr, rows: [headRow, emptyRow] });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  if (missingRows.length === 0) return;
+
+  // จัดกลุ่มแถวที่มีอยู่แล้ว (จริง) ตาม data-date เดิม เพื่อเอาไปเรียงรวมกับแถววันว่างที่สร้างใหม่
+  var existingGroups = [];
+  var current = null;
+  Array.prototype.slice.call(tbody.children).forEach(function (row) {
+    if (row.classList.contains('fc-list-day')) {
+      current = { date: row.getAttribute('data-date'), rows: [row] };
+      existingGroups.push(current);
+    } else if (current) {
+      current.rows.push(row);
+    }
+  });
+
+  var allGroups = existingGroups.concat(missingRows);
+  // เรียงใหม่-ไปเก่า ให้ตรงกับพฤติกรรม reverseListViewDayOrder ที่ทำกับแถวจริงไปแล้วก่อนหน้านี้
+  allGroups.sort(function (a, b) { return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); });
+
+  var frag = document.createDocumentFragment();
+  allGroups.forEach(function (g) { g.rows.forEach(function (row) { frag.appendChild(row); }); });
+  tbody.appendChild(frag);
+}
+
+// ===== Bottom sheet "+N เพิ่มเติม" ของมุมมองเดือนบนมือถือ (แนวทาง 1) =====
+var TASK_TYPE_DOT_COLOR = { meeting: '#FCE38A', onsite: '#FFB48A', event: '#C9A6FF', leave: '#E5E7EB' };
+function openDaySheet(date, events) {
+  var overlay = document.getElementById('day-sheet-overlay');
+  var titleEl = document.getElementById('day-sheet-title');
+  var listEl = document.getElementById('day-sheet-list');
+  if (!overlay || !titleEl || !listEl) return;
+
+  var WEEKDAY_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+  var MONTH_TH_FULL = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+  titleEl.textContent = 'วัน' + WEEKDAY_TH[date.getDay()] + ' ' + date.getDate() + ' ' + MONTH_TH_FULL[date.getMonth()] +
+    ' ' + (date.getFullYear() + 543) + ' · ' + events.length + ' งาน';
+
+  var sorted = events.slice().sort(function (a, b) {
+    var ta = a.start ? a.start.getTime() : 0, tb = b.start ? b.start.getTime() : 0;
+    return ta - tb;
+  });
+
+  if (sorted.length === 0) {
+    listEl.innerHTML = '<div class="day-sheet-empty">ไม่มีงาน</div>';
+  } else {
+    listEl.innerHTML = sorted.map(function (ev, idx) {
+      var timeText = (!ev.allDay && ev.start) ? ev.start.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : 'ทั้งวัน';
+      var dotColor = TASK_TYPE_DOT_COLOR[ev.extendedProps.taskType] || '#ccc';
+      return '<div class="day-sheet-item" data-idx="' + idx + '">' +
+        '<span class="ds-time">' + timeText + '</span>' +
+        '<span class="ds-dot" style="background:' + dotColor + '"></span>' +
+        '<span class="ds-title">' + escapeHtmlPtb(ev.title) + '</span>' +
+        '</div>';
+    }).join('');
+    Array.prototype.slice.call(listEl.querySelectorAll('.day-sheet-item')).forEach(function (row, idx) {
+      row.addEventListener('click', function () {
+        closeDaySheet();
+        openTaskDetailModal(sorted[idx]);
+      });
+    });
+  }
+
+  overlay.classList.add('show');
+}
+function closeDaySheet() {
+  var overlay = document.getElementById('day-sheet-overlay');
+  if (overlay) overlay.classList.remove('show');
 }
 
 // ===== Dashboard สรุปงาน (Admin/CEO) =====
@@ -2549,10 +2737,13 @@ function openMoreMenu() {
   var container = document.getElementById('more-menu-list');
   var nameEl = document.getElementById('more-menu-name');
   var refreshBtn = '<button onclick="closeMoreMenu(); mobileRefreshFromMenu();">🔄 รีเฟรชข้อมูล</button>';
+  // ไม่ปิดเมนูตอนกด เพื่อให้กดสลับดูผลไปเรื่อยๆ ได้เลยโดยไม่ต้องเปิดเมนูใหม่ทุกครั้ง - เรียก openMoreMenu()
+  // ซ้ำหลัง cycleTheme() เพื่อ re-render label/ไอคอนในเมนูให้ตรงกับสถานะใหม่ทันที (เมนูยังเปิดค้างอยู่)
+  var themeBtn = '<button onclick="cycleTheme(); openMoreMenu();">' + getThemeMenuLabel() + '</button>';
 
   if (!localStorage.getItem(TOKEN_KEY)) {
     nameEl.textContent = 'ยังไม่ได้เข้าสู่ระบบ';
-    container.innerHTML = refreshBtn + '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
+    container.innerHTML = refreshBtn + themeBtn + '<button onclick="closeMoreMenu(); openLoginModal();">เข้าสู่ระบบ</button>';
   } else {
     nameEl.textContent = name || '';
     var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
@@ -2568,7 +2759,7 @@ function openMoreMenu() {
       items.push({ label: 'Dashboard สรุปงาน', fn: 'openDashboardModal()' });
       items.push({ label: 'Export Excel (เดือนที่ดูอยู่)', fn: 'exportMonthToExcel()' });
     }
-    container.innerHTML = refreshBtn + items.map(function (it) {
+    container.innerHTML = refreshBtn + themeBtn + items.map(function (it) {
       return '<button onclick="closeMoreMenu(); ' + it.fn + '">' + it.label + '</button>';
     }).join('') + '<button class="danger" onclick="closeMoreMenu(); doLogout();">ออกจากระบบ</button>';
   }
@@ -3011,7 +3202,23 @@ function renderCalendar(result) {
     eventDisplay: 'block',
     allDayText: 'ทั้งวัน',
     buttonText: { today: 'วันนี้', year: 'year' },
+    // ข้อความ "No events to display" เริ่มต้นของปลั๊กอิน List เป็นภาษาอังกฤษ ล้วนโผล่เฉพาะตอนทั้งสัปดาห์/วัน
+    // ที่เลือกดูไม่มีงานเลยสักอันเดียว (FullCalendar ไม่สร้าง <table> แถวรายวันมาให้ fillEmptyListDays()
+    // เติมแถวว่างต่อจึงต้องอาศัยข้อความนี้แทนในเคสนี้โดยเฉพาะ)
+    noEventsText: 'ไม่มีงานในช่วงนี้',
     events: result.events,
+    // Phase: ลดความแน่นของมุมมองเดือน (แนวทาง 1 จาก preview ที่คุยกับผู้ใช้) — โชว์งานเต็มคำแค่ 3 อันแรก
+    // ต่อวัน ที่เหลือยุบเป็น "+N เพิ่มเติม" กดแล้วเปิด bottom sheet ของเราเอง (มือถือ) แทน popover
+    // ค้างจอแคบเดิมของ FullCalendar - ใช้เลข 3 คงที่ทั้ง PC/มือถือให้พฤติกรรมสม่ำเสมอ ไม่มีโหมดพิเศษแยก
+    dayMaxEvents: 3,
+    moreLinkClick: function (info) {
+      if (!isMobileView()) return 'popover'; // จอกว้างพอ ใช้ popover เริ่มต้นของ FullCalendar ตามเดิม
+      var evs = (info.allSegs || [])
+        .map(function (seg) { return seg.event; })
+        .filter(function (ev) { return !ev.extendedProps.isHoliday; });
+      openDaySheet(info.date, evs);
+      return 'none'; // กันไม่ให้ FullCalendar เปิด popover ซ้อนทับ sheet ของเราอีกชั้น
+    },
     // Phase: การ์ดประเภทงาน (ไซด์บาร์ขวา) กดกรองปฏิทินได้ — ใส่ class ให้งานที่ไม่ตรงกับตัวกรองที่เลือกอยู่
     // แล้วซ่อนด้วย CSS (.fc-type-filtered) ดู setTaskTypeFilter() ที่เรียก calendarInstance.render() เพื่อให้
     // callback นี้ถูกประเมินใหม่ทุกครั้งที่เปลี่ยนตัวกรอง (ไม่กระทบ event ของจริงที่โหลดมา แค่ซ่อน/โชว์ด้วย CSS)
@@ -3026,11 +3233,18 @@ function renderCalendar(result) {
       // จึงข้ามไปเลยตอนอยู่มุมมองรายปี ปล่อยให้แผงคงค่าจากเดือนล่าสุดที่เคยดูไว้แทน
       if (arg.view.type === 'multiMonthYear') return;
       renderMonthHolidayList(arg.view.currentStart, arg.view.currentEnd);
+      // แถบสลับช่วง "วันนี้/สัปดาห์นี้/เดือนนี้" ของมุมมอง List (มือถือ) - โชว์เฉพาะตอนอยู่มุมมอง List
+      // และไฮไลต์ปุ่มที่ตรงกับ view.type ปัจจุบัน ต้องเรียกตรงนี้ (ไม่ใช่ eventsSet) เพราะเปลี่ยนมุมมองแล้ว
+      // แม้ยังไม่มี event ใหม่มาก็ต้องอัปเดตทันที
+      updateListRangeToggle(arg.view.type);
     },
     eventsSet: function () {
       // ยิงทุกครั้งที่ FullCalendar render เนื้อหาชุดใหม่เสร็จ (เปลี่ยนเดือน/เพิ่ม-แก้-ลบงาน/โหลดครั้งแรก)
       // ใช้จุดนี้เรียง list view ใหม่ให้วันล่าสุดอยู่บนสุด แทนที่จะเรียงเก่า->ใหม่ตามค่าเริ่มต้นของไลบรารี
       reverseListViewDayOrder();
+      // Phase: เติมแถว "ไม่มีงาน" ให้วันว่างในมุมมอง List ช่วงสั้น (วันนี้/สัปดาห์นี้) ต้องรันหลัง
+      // reverseListViewDayOrder เสมอ เพราะฟังก์ชันนี้อ้างอิงลำดับ/กลุ่มแถวที่ reverse แล้วเป็นฐาน
+      fillEmptyListDays();
       // จุดเดียวกันนี้ครอบคลุมทั้งเปลี่ยนเดือนและข้อมูลอัปเดต จึงใช้อัปเดตตัวเลขท้ายชื่อประเภทงาน
       // ในไซด์บาร์ขวาด้วย ให้ตรงกับช่วงเดือน/มุมมองที่กำลังดูอยู่เสมอ
       updateLegendCounts();
