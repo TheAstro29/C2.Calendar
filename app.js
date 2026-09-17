@@ -18,6 +18,14 @@ var fbStorage = firebase.storage();
 // อย่าลืม restrict ให้ครบทั้งสองแบบเหมือนกันก่อนใช้งานจริง
 var GOOGLE_MAPS_API_KEY = 'AIzaSyBjJLodAV1hkgaxxmgzvccMVAIW5S8hbqw';
 
+// ===== Web Push (FCM) - ต้องไปสร้าง "Web Push certificate" เองก่อนถึงจะใช้งานได้จริง =====
+// ขั้นตอน (ทำครั้งเดียว ไม่ต้องทำซ้ำอีก): Firebase Console -> เลือกโปรเจกต์ c2-calendar-c088f ->
+// ไอคอนเฟือง (Project settings) -> แท็บ "Cloud Messaging" -> เลื่อนลงหา "Web configuration" ->
+// กด "Generate key pair" -> คัดลอกค่าที่ขึ้นมา (ขึ้นต้นด้วยตัวอักษร/ตัวเลขยาวๆ) มาแปะแทนที่ข้อความ
+// 'PASTE_YOUR_FCM_VAPID_KEY_HERE' ด้านล่างนี้ - ถ้ายังไม่แปะ ระบบแจ้งเตือนอื่นๆ ในแอปยังทำงานปกติทุกอย่าง
+// (กระดิ่ง/แจ้งเตือนในแอป) แค่จะยังไม่มี Push แจ้งเตือนออกมาที่มือถือ/เดสก์ท็อปตอนปิดแอปอยู่เท่านั้น
+var FCM_VAPID_KEY = 'BILlcL9DwhAa7uVz8nFD_uS3ZNMa93EKewWzNQpNv-8RvIMFDb78g5DbKc94Y2iPfuQEGZNyWfyxPEoLc0EiSEM';
+
 // ============================================================
 // เชื่อมปุ่ม Back ของระบบ (มือถือ/เบราว์เซอร์) เข้ากับการปิด modal ต่างๆ
 // หลักการ: ทุกครั้งที่เปิด modal ใดๆ ให้บันทึกไว้ใน browser history (pushState) ด้วย ไม่ใช่แค่โชว์ DOM เฉยๆ
@@ -118,7 +126,8 @@ var CLOUD_FUNCTION_ACTIONS = [
   'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
   'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead',
   'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
-  'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport'
+  'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
+  'registerPushToken'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -680,6 +689,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'block'; // ทุก role ที่ login แล้วมี Task Board ของตัวเองได้
   requestNotificationPermission();
+  setupPushNotifications();
   setupNotificationsRealtimeListener();
   setupPersonalTasksListener();
   loadTodoList();
@@ -2944,6 +2954,48 @@ function requestNotificationPermission() {
   }
 }
 
+// ===== Push Notification (FCM) - ทำให้แจ้งเตือนเด้งออกมาที่มือถือ/เดสก์ท็อปได้แม้ปิดแท็บ/แอปไปแล้ว
+// (ต่างจาก playNotificationSound() ด้านบนที่ต้องเปิดแท็บค้างไว้ให้ JS ทำงานถึงจะได้ยิน/เห็น) เรียกครั้งเดียว
+// ตอนล็อกอิน/เข้าแอปสำเร็จจาก enterAdminMode() - ล้มเหลวได้แบบเงียบๆ ทุกจุด (เบราว์เซอร์เก่า, ปฏิเสธสิทธิ์,
+// ยังไม่ได้ตั้งค่า VAPID key ฯลฯ) เพราะแจ้งเตือนในแอปแบบเดิม (กระดิ่ง/เสียง) ต้องทำงานได้ปกติไม่ว่า Push จะติดตั้ง
+// สำเร็จหรือไม่ก็ตาม =====
+function setupPushNotifications() {
+  if (!('serviceWorker' in navigator) || !('Notification' in window) || !firebase.messaging) return;
+  if (!FCM_VAPID_KEY || FCM_VAPID_KEY.indexOf('PASTE_YOUR') === 0) return; // ยังไม่ได้ตั้งค่า VAPID key จาก Firebase Console
+
+  navigator.serviceWorker.register('firebase-messaging-sw.js').then(function (registration) {
+    var messaging = firebase.messaging();
+
+    function getAndSendToken() {
+      messaging.getToken({ vapidKey: FCM_VAPID_KEY, serviceWorkerRegistration: registration })
+        .then(function (currentToken) {
+          if (!currentToken) return;
+          var token = localStorage.getItem(TOKEN_KEY);
+          if (!token) return;
+          callApi('registerPushToken', { token: token, fcmToken: currentToken }).catch(function (err) {
+            console.error('registerPushToken error', err);
+          });
+        }).catch(function (err) { console.error('FCM getToken error', err); });
+    }
+
+    if (Notification.permission === 'granted') {
+      getAndSendToken();
+    } else if (Notification.permission === 'default') {
+      Notification.requestPermission().then(function (perm) {
+        if (perm === 'granted') getAndSendToken();
+      });
+    }
+    // ถ้าเคยปฏิเสธไปแล้ว (denied) ไม่ทำอะไรต่อ - เบราว์เซอร์ไม่ให้ขอซ้ำอยู่แล้ว ต้องไปกดอนุญาตเองในตั้งค่าเว็บไซต์
+
+    // ตอนแอปเปิดอยู่ (foreground) FCM จะไม่โชว์ notification ให้เอง (ต่างจากตอนปิด/มินิไมซ์ที่ไปเข้า
+    // firebase-messaging-sw.js แทน) เลยต้องดักโชว์เป็น Toast เองแทนตรงนี้ กันดูเหมือนแจ้งเตือนหายไปเฉยๆ
+    messaging.onMessage(function (payload) {
+      var body = (payload.notification && payload.notification.body) || '';
+      if (body) Toast.fire({ icon: 'info', title: body });
+    });
+  }).catch(function (err) { console.error('Service worker register error', err); });
+}
+
 // ===== โชว์แจ้งเตือนผ่าน Notification API ของเบราว์เซอร์/ระบบปฏิบัติการ =====
 // วิธีนี้ให้ผลเหมือนกันทั้ง PC และมือถือ: ระบบปฏิบัติการเป็นคนเล่น "เสียงแจ้งเตือนมาตรฐาน" ให้เองอัตโนมัติ
 // ไม่ต้องมาเลือกเสียงเองอีกต่อไป (เดิมใช้เสียงพูดสังเคราะห์ ซึ่งบางเครื่องไม่มีเสียงไทยที่ฟังดูเป็นธรรมชาติ)
@@ -3011,6 +3063,30 @@ function setupNotificationsRealtimeListener() {
     });
 }
 
+// ===== ไอคอนกลม + สี + ป้ายหมวดของแจ้งเตือนแต่ละประเภท (type มาจาก Cloud Functions ฝั่ง backend
+// ตรงๆ - ดู createNotification()/notifyTaskChange()/personalTaskDueReminders() ใน functions/index.js)
+// เพิ่ม type ใหม่ที่ backend เพิ่มขึ้นมาทีหลัง ให้มาเพิ่ม mapping ที่นี่ด้วยเสมอ ไม่งั้นจะตกไปใช้ค่า
+// default (กระดิ่งฟ้า ไม่มีป้ายหมวด) ซึ่งยังใช้งานได้ปกติ แค่ไม่ได้สื่อความหมายเฉพาะเจาะจง =====
+function getNotifTypeInfo(type) {
+  var map = {
+    task_created: { icon: '🆕', color: 'blue', tag: 'ปฏิทินหลัก' },
+    task_updated: { icon: '✏️', color: 'purple', tag: 'ปฏิทินหลัก' },
+    task_cancelled: { icon: '🗑️', color: 'red', tag: 'ปฏิทินหลัก' },
+    changeRequestNew: { icon: '📝', color: 'amber', tag: 'รออนุมัติ' },
+    changeRequestReviewed: { icon: '✅', color: 'green', tag: 'คำขอ' },
+    personalTask_created: { icon: '🆕', color: 'blue', tag: 'Personal Task' },
+    personalTask_assigned: { icon: '👤', color: 'purple', tag: 'Personal Task' },
+    personalTask_unassigned: { icon: '👤', color: 'slate', tag: 'Personal Task' },
+    personalTask_done: { icon: '✅', color: 'green', tag: 'Personal Task' },
+    personalTask_rescheduled: { icon: '📅', color: 'orange', tag: 'Personal Task' },
+    personalTask_deleted: { icon: '🗑️', color: 'red', tag: 'Personal Task' },
+    personalTask_dueSoon: { icon: '⏰', color: 'amber', tag: 'ใกล้ครบกำหนด' },
+    personalTask_dueToday: { icon: '⏰', color: 'orange', tag: 'ครบกำหนดวันนี้' },
+    personalTask_overdue: { icon: '⚠️', color: 'red', tag: 'เลยกำหนด' }
+  };
+  return map[type] || { icon: '🔔', color: 'blue', tag: '' };
+}
+
 function renderNotificationsList() {
   var container = document.getElementById('my-requests-list');
   if (lastNotifications.length === 0) {
@@ -3022,6 +3098,7 @@ function renderNotificationsList() {
     var card = document.createElement('div');
     card.className = 'request-card' + (n.read ? '' : ' notif-unread');
     var timeLabel = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString('th-TH') : '';
+    var info = getNotifTypeInfo(n.type);
 
     var actionsHtml = '';
     if (n.type === 'changeRequestNew' && !n.read) {
@@ -3032,8 +3109,13 @@ function renderNotificationsList() {
     }
 
     card.innerHTML =
-      '<div class="rc-top"><span class="rc-task">' + n.body + '</span></div>' +
-      '<p class="rc-meta">' + timeLabel + '</p>' + actionsHtml;
+      '<div class="notif-ic ' + info.color + '">' + info.icon + '</div>' +
+      '<div class="notif-body-col">' +
+        '<div class="rc-task">' + n.body + '</div>' +
+        '<div class="notif-meta-row"><span class="rc-meta">' + timeLabel + '</span>' +
+          (info.tag ? '<span class="notif-tag">' + info.tag + '</span>' : '') +
+        '</div>' + actionsHtml +
+      '</div>';
 
     // คลิกที่การ์ด: ถ้ายังไม่อ่านให้ทำเครื่องหมายอ่านแล้วเหมือนเดิม และถ้ามีงานผูกอยู่ (taskId ของปฏิทินหลัก
     // หรือ personalTaskId ของ Personal Task Board) ให้เปิดการ์ดรายละเอียดงานซ้อนขึ้นมาเลยโดยไม่ปิดลิสต์นี้ก่อน
@@ -3372,6 +3454,7 @@ var _personalTasksCache = [];
 var _taskTagsCache = [];
 var _ptbCurrentPersonId = null;
 var _ptmEditingTaskId = null;
+var _ptmReadOnly = false; // true = กำลังเปิดดู Task ของคนอื่นที่ไม่มีสิทธิ์แก้ไข/ลบ (ดู openPersonalTaskModal)
 var _unsubPersonalTasks = null;
 var _unsubTaskTags = null;
 // ไฟล์ที่ผู้ใช้เลือกแนบไว้ตอนกำลัง "เพิ่ม Task ใหม่" (ยังไม่มี taskId จริง เลยอัปโหลดขึ้น Storage ไม่ได้ทันที
@@ -3695,9 +3778,24 @@ function openPersonalTaskModal(taskId, defaultAssigneeId) {
   _ptmPendingFiles = []; // เคลียร์ไฟล์ที่ค้างจาก modal ครั้งก่อน (กันไฟล์เก่าหลุดติดมากับ Task ใหม่ที่ไม่เกี่ยวกัน)
   var t = taskId ? _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0] : null;
 
+  // แก้บั๊ก: เดิม modal นี้เปิดดู Task ของใครก็ได้แบบแก้ไขได้เต็มรูปแบบเสมอ (ช่องกรอก/ปุ่มลบไม่เคยเช็คสิทธิ์
+  // เลยแม้แต่นิดเดียว) ทั้งที่ตั้งแต่เปิดให้ทุก role ดูภาพรวมทั้งบริษัทได้ (ดูคอมเมนต์ใน openTaskBoardModal)
+  // คนที่ไม่ใช่ผู้สร้าง/ผู้รับผิดชอบร่วม/Admin กดบันทึก-ลบไปก็จะโดนเซิร์ฟเวอร์ปฏิเสธอยู่ดี (canManagePersonalTask
+  // ฝั่ง Cloud Function) แต่หน้าเว็บไม่เคยบอกล่วงหน้าเลยว่ากดไปแล้วจะไม่มีสิทธิ์ - เพิ่มเช็คสิทธิ์แบบเดียวกัน
+  // ไว้ตั้งแต่ฝั่งหน้าเว็บ แล้วสลับเป็นโหมดดูอย่างเดียวถ้าไม่ผ่าน (งานใหม่ที่ยังไม่มี taskId ถือว่าแก้ไขได้เสมอ)
+  var _ptmMyId = localStorage.getItem(ACCOUNT_ID_KEY);
+  var _ptmMyRole = localStorage.getItem(ROLE_KEY);
+  var canManage = !t || t.createdBy === _ptmMyId || _ptmMyRole === 'admin' || (t.assigneeIds || []).indexOf(_ptmMyId) !== -1;
+  _ptmReadOnly = !canManage;
+  document.getElementById('personal-task-box').classList.toggle('ptm-readonly', _ptmReadOnly);
+  document.getElementById('ptm-readonly-banner').style.display = _ptmReadOnly ? 'flex' : 'none';
+  document.getElementById('ptm-save-btn').style.display = _ptmReadOnly ? 'none' : '';
+
   document.getElementById('ptm-title').value = t ? t.title : '';
+  document.getElementById('ptm-title').readOnly = _ptmReadOnly;
   document.getElementById('ptm-desc').innerHTML = t ? sanitizeRichText(t.description || '') : '';
-  document.getElementById('ptm-delete-btn').style.display = t ? 'block' : 'none';
+  document.getElementById('ptm-desc').contentEditable = _ptmReadOnly ? 'false' : 'true';
+  document.getElementById('ptm-delete-btn').style.display = (t && canManage) ? 'block' : 'none';
 
   var row = document.getElementById('ptm-assignee-row');
   row.querySelectorAll('.ptm-avatar-chip').forEach(function (c) { c.remove(); });
@@ -4027,6 +4125,9 @@ document.getElementById('ptm-file-input').addEventListener('change', function (e
 
 // ===== บันทึก / ลบ Task =====
 function savePersonalTaskModal() {
+  // กันไว้อีกชั้น (defense-in-depth) เผื่อกรณีปุ่มถูกกดได้ทั้งที่ควรถูกซ่อน/บล็อกไปแล้วจาก .ptm-readonly
+  if (_ptmReadOnly) { Swal.fire({ icon: 'error', title: 'ไม่มีสิทธิ์แก้ไข Task นี้', text: 'ต้องเป็นผู้สร้าง, ผู้รับผิดชอบร่วม, หรือ Admin เท่านั้น' }); return; }
+
   var title = document.getElementById('ptm-title').value.trim();
   if (!title) { Swal.fire({ icon: 'warning', title: 'กรุณาใส่ชื่องาน' }); return; }
 
@@ -4097,6 +4198,7 @@ function savePersonalTaskModal() {
 
 function deleteCurrentPersonalTask() {
   if (!_ptmEditingTaskId) return;
+  if (_ptmReadOnly) { Swal.fire({ icon: 'error', title: 'ไม่มีสิทธิ์ลบ Task นี้', text: 'ต้องเป็นผู้สร้าง, ผู้รับผิดชอบร่วม, หรือ Admin เท่านั้น' }); return; }
   var taskId = _ptmEditingTaskId;
   Swal.fire({
     icon: 'warning', title: 'ยืนยันลบ Task นี้?', showCancelButton: true,

@@ -25,6 +25,14 @@
   --tint-mint-bg: #f0fdf9;
   --tint-amber-bg: #fffbeb;
   --tint-amber-text: #b45309;
+  /* โทนไอคอนกลม ๆ ของการ์ดแจ้งเตือน (แยกจากโทน tint ด้านบนที่ใช้เป็นพื้นหลังไฮไลต์การ์ด) - ใช้แยกสี
+     ตามประเภทเหตุการณ์ เพื่อให้กวาดตาแล้วรู้ทันทีว่าเป็นแจ้งเตือนแบบไหนโดยไม่ต้องอ่านข้อความก่อน */
+  --tint-blue-bg: #dbeafe;
+  --tint-purple-bg: #f4e6ff;
+  --tint-green-bg: #d1fae5;
+  --tint-orange-bg: #ffe7d1;
+  --tint-red-bg: #fee2e2;
+  --tint-slate-bg: #e5e7eb;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -40,6 +48,12 @@
     --tint-mint-bg: #15281f;
     --tint-amber-bg: #33280f;
     --tint-amber-text: #f2c26b;
+    --tint-blue-bg: #1e3a5f;
+    --tint-purple-bg: #3a2a52;
+    --tint-green-bg: #16332a;
+    --tint-orange-bg: #3a2a15;
+    --tint-red-bg: #3a1f1f;
+    --tint-slate-bg: #2a3330;
   }
   html:not([data-theme="light"]) body { background: var(--surface-alt); }
   :root:not([data-theme="light"]) .fc {
@@ -81,6 +95,12 @@
   --tint-mint-bg: #15281f;
   --tint-amber-bg: #33280f;
   --tint-amber-text: #f2c26b;
+  --tint-blue-bg: #1e3a5f;
+  --tint-purple-bg: #3a2a52;
+  --tint-green-bg: #16332a;
+  --tint-orange-bg: #3a2a15;
+  --tint-red-bg: #3a1f1f;
+  --tint-slate-bg: #2a3330;
 }
 html[data-theme="dark"] body { background: var(--surface-alt); }
 html[data-theme="dark"] .fc {
@@ -949,13 +969,33 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
 .request-card {
   border: 1px solid var(--border-soft); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px;
+  display: flex; gap: 10px; align-items: flex-start;
 }
-.request-card .rc-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-.request-card .rc-task { font-size: 13px; font-weight: 600; color: var(--text); }
-.request-card .rc-meta { font-size: 12px; color: var(--text-muted); margin: 2px 0; }
+.request-card .rc-task { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.45; }
+.request-card .rc-meta { font-size: 12px; color: var(--text-muted); }
 .request-card .rc-actions { display: flex; gap: 8px; margin-top: 10px; }
 .request-card .rc-actions button {
   flex: 1; padding: 7px; border-radius: 6px; font-size: 12px; cursor: pointer;
+}
+/* ===== ไอคอนวงกลมสีตามประเภทเหตุการณ์ + ป้ายกำกับหมวด + แถวเวลา (ทำให้กวาดตาแล้วรู้ทันทีว่าเป็นแจ้ง
+   เตือนแบบไหน โดยไม่ต้องอ่านข้อความก่อน - เดิมมีแต่ตัวหนังสือล้วนทุกประเภทหน้าตาเหมือนกันหมด) ===== */
+.notif-body-col { flex: 1; min-width: 0; }
+.notif-ic {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: flex;
+  align-items: center; justify-content: center; font-size: 14px; margin-top: 1px;
+}
+.notif-ic.blue { background: var(--tint-blue-bg); }
+.notif-ic.purple { background: var(--tint-purple-bg); }
+.notif-ic.green { background: var(--tint-green-bg); }
+.notif-ic.orange { background: var(--tint-orange-bg); }
+.notif-ic.red { background: var(--tint-red-bg); }
+.notif-ic.amber { background: var(--tint-amber-bg); }
+.notif-ic.slate { background: var(--tint-slate-bg); }
+.notif-meta-row { display: flex; align-items: center; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+.notif-tag {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  background: var(--surface-alt); color: var(--text-muted); border: 1px solid var(--border);
+  white-space: nowrap;
 }
 .btn-approve { background: #059669; color: #fff; border: none; }
 .btn-reject { background: var(--surface); color: #ef4444; border: 1px solid #ef4444; }
@@ -1128,6 +1168,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .request-card .rc-task { font-size: 16px; }
   .request-card .rc-meta { font-size: 15px; }
   .request-card .rc-actions button { font-size: 15px; }
+  .notif-ic { width: 34px; height: 34px; font-size: 16px; }
+  .notif-tag { font-size: 12px; }
   .status-pill { font-size: 14px; }
 
   /* สร้างงานใหม่ / แก้ไขงาน */
@@ -1468,6 +1510,34 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-foot { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px 18px; }
 .ptm-foot .danger-link { background: none; border: none; color: #ef4444; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .ptm-foot .btns { display: flex; gap: 9px; }
+
+/* ===== โหมดดูอย่างเดียว (read-only) ของ Personal Task Modal - ผู้ใช้แจ้งว่าเปิดดู Task ของคนอื่นที่ไม่มี
+   สิทธิ์แก้ไข (ไม่ใช่ผู้สร้าง/ผู้รับผิดชอบร่วม/Admin) แล้วยังเห็นฟอร์มแก้ไขได้ปกติกับปุ่ม "ลบ" โชว์อยู่ กด
+   บันทึก/ลบไปแล้วโดนเซิร์ฟเวอร์ปฏิเสธ (canManagePersonalTask) ทีหลัง - ย้ายมาเช็คสิทธิ์ตั้งแต่ฝั่งหน้าเว็บ
+   ก่อนเปิด modal เลย (ดู openPersonalTaskModal() ใน app.js) แล้วสลับ class นี้ที่ #personal-task-box
+   บล็อกการโต้ตอบทุกช่องด้วย pointer-events แทนการไล่ disable ทีละช่อง (ช่องกรอกใน .ptm-body มีเยอะ) ส่วน
+   ชื่องาน (.ptm-title) อยู่นอก .ptm-body เลยต้องกำกับแยก และปุ่มปิด/ยกเลิกต้องกดได้เสมอเลยไม่ครอบ .ptm-head/.ptm-foot ทั้งชุด */
+.ptm-readonly-banner {
+  display: none; align-items: center; gap: 8px; margin: 0 20px 10px;
+  padding: 9px 13px; border-radius: 10px; font-size: 12px; font-weight: 700;
+  background: var(--tint-amber-bg); color: var(--tint-amber-text); border: 1px solid #f5d98a;
+}
+#personal-task-box.ptm-readonly .ptm-body,
+#personal-task-box.ptm-readonly .ptm-title {
+  pointer-events: none;
+}
+#personal-task-box.ptm-readonly .ptm-body button,
+#personal-task-box.ptm-readonly .ptm-body input,
+#personal-task-box.ptm-readonly .ptm-body select,
+#personal-task-box.ptm-readonly .ptm-add-chip-btn,
+#personal-task-box.ptm-readonly .ptm-prio-row,
+#personal-task-box.ptm-readonly .ptm-checklist-add,
+#personal-task-box.ptm-readonly .ptm-drop-zone,
+#personal-task-box.ptm-readonly .ptm-switch,
+#personal-task-box.ptm-readonly .ptm-nodate-chk,
+#personal-task-box.ptm-readonly .rt-toolbar {
+  opacity: .55; cursor: not-allowed;
+}
 
 /* Export modal (เล็ก) */
 #task-export-modal-overlay {
