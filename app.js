@@ -300,8 +300,29 @@ function setButtonLoading(btn, loading, loadingText) {
 function hidePageLoading() {
   var el = document.getElementById('page-loading');
   if (!el) return;
+  cancelSlowLoadingHint(); // โหลดเสร็จแล้วไม่ต้องโชว์ข้อความเตือนเน็ตช้าอีก (เผื่อ timer ยังไม่ทันยิง)
   el.classList.add('fade-out');
   setTimeout(function () { el.style.display = 'none'; }, 400);
+}
+
+// ===== ข้อความเตือน "เน็ตช้ากว่าปกติ" ตอนรอ splash - ไม่ได้แก้ปัญหาที่ต้นเหตุ (Firestore/เน็ตช้า) แต่กัน
+// ผู้ใช้เข้าใจผิดว่าแอปค้าง ถ้ารอเกิน SLOW_LOADING_HINT_MS แล้ว splash ยังไม่ซ่อน (ยังไม่ได้ข้อมูลชุดแรก
+// จาก Firestore) จะโชว์ข้อความนี้ขึ้นมาแทน ยกเลิก timer ทันทีที่ hidePageLoading() ถูกเรียกจริง =====
+var SLOW_LOADING_HINT_MS = 7000;
+var _slowLoadingHintTimer = null;
+function startSlowLoadingHintTimer() {
+  _slowLoadingHintTimer = setTimeout(function () {
+    var hint = document.getElementById('page-loading-slow-hint');
+    if (hint) hint.classList.add('show');
+  }, SLOW_LOADING_HINT_MS);
+}
+function cancelSlowLoadingHint() {
+  if (_slowLoadingHintTimer) {
+    clearTimeout(_slowLoadingHintTimer);
+    _slowLoadingHintTimer = null;
+  }
+  var hint = document.getElementById('page-loading-slow-hint');
+  if (hint) hint.classList.remove('show');
 }
 
 var holidaysCache = [];
@@ -485,6 +506,7 @@ window.onload = function () {
   // ปุ่มสลับธีมยังไม่มีตอน inline script ใน <head> เซ็ต data-theme ไว้ตั้งแต่ก่อนหน้านี้ (กันจอกระพริบ)
   // ต้อง sync ไอคอน/ label ของปุ่มให้ตรงกับค่าที่จำไว้อีกทีตอนนี้ ที่ DOM ของปุ่มพร้อมแล้ว
   applyThemePref(getThemePref());
+  startSlowLoadingHintTimer();
   loadMemberSidebar();
   setupHolidaysRealtimeListener();
   setupTasksRealtimeListener();

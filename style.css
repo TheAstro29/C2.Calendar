@@ -440,6 +440,13 @@ body { margin: 0; background: var(--surface-alt); color: var(--text); overflow-x
 }
 #page-loading-logo .accent { color: #a7f3d0; font-weight: 800; }
 #page-loading-text { font-size: 16px; color: rgba(255,255,255,0.75); margin: 6px 0 0; }
+/* ข้อความเตือนกรณีเน็ต/Firestore ช้ากว่าปกติ (ดู showSlowLoadingHint() ใน app.js) - ซ่อนอยู่ตั้งแต่แรก
+   โผล่มาเองหลังรอเกินเวลาที่กำหนดถ้า splash ยังไม่ซ่อน กันผู้ใช้เข้าใจผิดว่าแอปค้าง ไม่ใช่แค่เน็ตช้า */
+#page-loading-slow-hint {
+  display: none; font-size: 13px; color: #fde68a; margin: 14px 0 0;
+  opacity: 0; transition: opacity 0.5s ease;
+}
+#page-loading-slow-hint.show { display: block; opacity: 1; }
 
 /* Spinner ทั่วไป */
 .spinner {
