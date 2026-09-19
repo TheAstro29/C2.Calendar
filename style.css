@@ -38,6 +38,11 @@
   --glass-bg: linear-gradient(155deg, rgba(255,255,255,0.62), rgba(240,253,249,0.5));
   --glass-border: 1px solid rgba(255,255,255,0.55);
   --glass-shadow: 0 8px 32px rgba(6,95,70,0.16), inset 0 1px 0 rgba(255,255,255,0.5);
+  /* เวอร์ชันทึบกว่า --glass-bg เดิม - ใช้เฉพาะจุดที่ลอยเหนือเนื้อหาสีสันหนาแน่น (เช่น speed-dial ของปุ่ม +
+     ที่ลอยตรงกลางตารางปฏิทิน) ที่กระจกโปร่งเดิมทำให้ตัวอักษรอ่านยาก ยังเป็นกระจก (มี blur) อยู่ แค่ลดความ
+     โปร่งแสงลงให้ตัวหนังสือคมชัดขึ้นแทน */
+  --glass-bg-solid: linear-gradient(155deg, rgba(255,255,255,0.94), rgba(240,253,249,0.9));
+  --glass-text-shadow: none;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -62,6 +67,8 @@
     --glass-bg: linear-gradient(155deg, rgba(27,36,32,0.58), rgba(19,28,24,0.48));
     --glass-border: 1px solid rgba(167,243,208,0.14);
     --glass-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+    --glass-bg-solid: linear-gradient(155deg, rgba(20,28,24,0.94), rgba(15,22,19,0.9));
+    --glass-text-shadow: 0 1px 3px rgba(0,0,0,0.5);
   }
   html:not([data-theme="light"]) body { background: var(--surface-alt); }
   :root:not([data-theme="light"]) .fc {
@@ -112,6 +119,8 @@
   --glass-bg: linear-gradient(155deg, rgba(27,36,32,0.58), rgba(19,28,24,0.48));
   --glass-border: 1px solid rgba(167,243,208,0.14);
   --glass-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
+  --glass-bg-solid: linear-gradient(155deg, rgba(20,28,24,0.94), rgba(15,22,19,0.9));
+  --glass-text-shadow: 0 1px 3px rgba(0,0,0,0.5);
 }
 html[data-theme="dark"] body { background: var(--surface-alt); }
 html[data-theme="dark"] .fc {
@@ -1451,13 +1460,24 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #mfn-speed-dial.show { display: flex; pointer-events: auto; }
   .mfn-speed-dial-item {
     pointer-events: auto;
-    font-size: 13px; font-weight: 600; color: var(--text); border: var(--glass-border);
-    border-radius: 999px; padding: 10px 20px; cursor: pointer; white-space: nowrap;
-    background: var(--glass-bg);
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; color: var(--text); border: var(--glass-border);
+    border-radius: 999px; padding: 9px 18px 9px 9px; cursor: pointer; white-space: nowrap;
+    /* หมายเหตุ: ปุ่มนี้ลอยอยู่เหนือตารางปฏิทินที่มีการ์ดสีสันหนาแน่น (ไม่เหมือน nav bar/banner ที่ปกติ
+       ลอยเหนือพื้นที่ว่างกว่า) กระจกแบบโปร่งเดิม (var(--glass-bg) เพียวๆ) เลยทำให้ตัวอักษรอ่านยากเวลา
+       พื้นหลังเป็นการ์ดสีส้ม/เหลืองหนาแน่น จึงผสมชั้นทึบแสงเพิ่มเข้าไปอีกชั้น (--glass-bg-solid) ให้ทึบพอ
+       อ่านง่ายแน่นอน แต่ยังคง blur+เงาแบบกระจกไว้เหมือนเดิม ไม่ใช่พื้นทึบแบนราบ */
+    background: var(--glass-bg-solid);
     -webkit-backdrop-filter: blur(18px) saturate(160%);
     backdrop-filter: blur(18px) saturate(160%);
     box-shadow: var(--glass-shadow);
+    text-shadow: var(--glass-text-shadow);
     opacity: 0; transform: translateY(8px); transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  .mfn-sd-ic {
+    flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    background: rgba(5,150,105,0.18);
   }
   #mfn-speed-dial.show .mfn-speed-dial-item { opacity: 1; transform: translateY(0); }
   @media (prefers-reduced-motion: reduce) {
