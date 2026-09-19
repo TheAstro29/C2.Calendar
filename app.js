@@ -1511,12 +1511,45 @@ var _todoTasksCache = [];
 var TASK_TYPE_COLUMN_ORDER = ['meeting', 'onsite', 'event', 'leave'];
 var TODO_AVATAR_PALETTE = ['#f59e0b', '#3b82f6', '#ec4899', '#8b5cf6', '#10b981', '#ef4444', '#0ea5a5'];
 
+var _todoListLoaded = false;
+
+// ===== Skeleton การ์ดสรุป To-Do (ไซด์บาร์ขวา) - โชว์ระหว่างรอ getUndatedTasks ตอบกลับครั้งแรกเท่านั้น =====
+function renderTodoSummarySkeleton() {
+  document.getElementById('todo-summary-count').innerHTML = '<span class="skel" style="display:inline-block;width:110px;height:12px;vertical-align:middle;"></span>';
+  var avatarsEl = document.getElementById('todo-summary-avatars');
+  avatarsEl.innerHTML = '';
+  for (var i = 0; i < 3; i++) {
+    var av = document.createElement('span');
+    av.className = 'skel avatar-mini';
+    av.style.background = '';
+    avatarsEl.appendChild(av);
+  }
+}
+
+// ===== Skeleton บอร์ด Kanban (To-Do) - รูปทรงคอลัมน์+การ์ดคร่าวๆ โชว์ตอนเปิด modal ก่อนข้อมูลชุดแรกมาถึง =====
+function renderKanbanSkeleton() {
+  var board = document.getElementById('todo-board-columns');
+  board.className = 'kanban-board';
+  var colHtml = '';
+  for (var c = 0; c < 4; c++) {
+    colHtml += '<div class="skel-kanban-col"><span class="skel" style="width:60%;height:13px;"></span>';
+    for (var i = 0; i < 2; i++) {
+      colHtml += '<div class="skel-kanban-card"><span class="skel" style="width:85%;height:11px;"></span>' +
+        '<span class="skel" style="width:55%;height:9px;"></span></div>';
+    }
+    colHtml += '</div>';
+  }
+  board.innerHTML = colHtml;
+}
+
 function loadTodoList() {
+  if (!_todoListLoaded) renderTodoSummarySkeleton();
   callApi('getUndatedTasks', {}).then(function (result) {
     if (!result.success) {
       document.getElementById('todo-summary-count').textContent = 'โหลดไม่สำเร็จ';
       return;
     }
+    _todoListLoaded = true;
     _todoTasksCache = result.tasks;
     renderTodoSummaryCard(result.tasks);
     // ถ้า Modal บอร์ดเปิดอยู่พอดี (เช่นมีคนเพิ่ม/ลบงานจากที่อื่นแบบ real-time) ให้รีเฟรชเนื้อในด้วย
@@ -1557,7 +1590,7 @@ function renderTodoSummaryCard(tasks) {
 }
 
 function openTodoBoardModal() {
-  renderKanbanBoard(_todoTasksCache);
+  if (_todoListLoaded) { renderKanbanBoard(_todoTasksCache); } else { renderKanbanSkeleton(); }
   document.getElementById('todo-board-modal-overlay').style.display = 'flex';
   _pushModalNav('todo-board-modal-overlay');
 }
@@ -2001,9 +2034,23 @@ function hexToRgba(hex, alpha) {
   return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
 
+// ===== Skeleton (shimmer) ตอนกำลังโหลดรายชื่อผู้ปฏิบัติงาน - โชว์เฉพาะตอนยังไม่มี cache ให้แสดงก่อน
+// (มี cache แล้วโชว์ของจริงได้ทันทีไม่ต้องมีสถานะโหลดคั่น) ดู Item 3 =====
+function renderMemberListSkeleton() {
+  var container = document.getElementById('member-list');
+  var rows = '';
+  for (var i = 0; i < 4; i++) {
+    rows += '<div class="skel-member-row">' +
+      '<span class="skel"></span>' +
+      '<span class="skel-lines"><span class="skel" style="width:70%;height:11px;"></span>' +
+      '<span class="skel" style="width:45%;height:9px;"></span></span></div>';
+  }
+  container.innerHTML = rows;
+}
+
 function loadMemberSidebar() {
   var cached = getLocalCache(STAFF_CACHE_KEY);
-  if (cached) renderMemberList(cached);
+  if (cached) { renderMemberList(cached); } else { renderMemberListSkeleton(); }
 
   callApi('getPublicStaffList', {}).then(function (result) {
     if (!result.success) {
@@ -2092,16 +2139,54 @@ function closeAllDrawers() {
 // ===== เมนูลอยมือถือ (แท่งลอยเต็มความกว้าง) =====
 function fabAction(action) {
   if (action === 'toggleView') {
+    closeFabSpeedDial();
     toggleCalendarViewMode();
   } else if (action === 'team') {
+    closeFabSpeedDial();
     toggleSidebar('member-sidebar');
   } else if (action === 'addtask') {
-    closeAllDrawers();
-    if (localStorage.getItem(TOKEN_KEY)) { openTaskModal(); } else { openLoginModal(); }
+    if (!localStorage.getItem(TOKEN_KEY)) { closeAllDrawers(); openLoginModal(); return; }
+    toggleFabSpeedDial();
   } else if (action === 'legend') {
+    closeFabSpeedDial();
     toggleSidebar('legend-sidebar');
   } else if (action === 'menu') {
+    closeFabSpeedDial();
     openMoreMenu();
+  }
+}
+
+// ===== Speed-dial ของปุ่ม "+" กลาง (Approach B): แตะแล้วโผล่ 2 ตัวเลือกด้านบนปุ่มแทนที่จะเปิดฟอร์ม
+// สร้างงานปฏิทินตรงๆ เหมือนเดิม - ใช้ toggle class เปิด/ปิด ไม่ผูก modal-nav (ไม่ใช่ modal จริง) =====
+function toggleFabSpeedDial() {
+  var dial = document.getElementById('mfn-speed-dial');
+  if (!dial) return;
+  if (dial.classList.contains('show')) { closeFabSpeedDial(); }
+  else { openFabSpeedDial(); }
+}
+function openFabSpeedDial() {
+  closeAllDrawers();
+  var dial = document.getElementById('mfn-speed-dial');
+  var backdrop = document.getElementById('mfn-speed-dial-backdrop');
+  var btn = document.getElementById('mfn-add-btn');
+  if (dial) dial.classList.add('show');
+  if (backdrop) backdrop.classList.add('show');
+  if (btn) btn.classList.add('mfn-add-open');
+}
+function closeFabSpeedDial() {
+  var dial = document.getElementById('mfn-speed-dial');
+  var backdrop = document.getElementById('mfn-speed-dial-backdrop');
+  var btn = document.getElementById('mfn-add-btn');
+  if (dial) dial.classList.remove('show');
+  if (backdrop) backdrop.classList.remove('show');
+  if (btn) btn.classList.remove('mfn-add-open');
+}
+function fabSpeedDialChoose(kind) {
+  closeFabSpeedDial();
+  if (kind === 'calendar') {
+    openTaskModal();
+  } else if (kind === 'personal') {
+    openPersonalTaskModal(null);
   }
 }
 
@@ -2340,6 +2425,82 @@ function exportMonthToExcel() {
   Toast.fire({ icon: 'success', title: 'Export สำเร็จ (' + rows.length + ' งาน)' });
 }
 
+// ===== เอฟเฟกต์สไลด์/ครอสเฟดตอนเปลี่ยนเดือน/มุมมองปฏิทิน (Item 5) - ทำแบบ sequential fade เท่านั้น
+// (ใส่คลาส exit -> รอจบ transition -> เรียก FullCalendar API จริง -> ใส่คลาส enter -> ลบออก) ไม่โคลน/ครอบ
+// DOM ภายในของ FullCalendar เอง จึงไม่กระทบ event listener ของปฏิทิน (คลิกวัน/ลากงาน ฯลฯ ยังทำงานปกติ) =====
+function _calPrefersReducedMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+function _calSwapRun(exitClass, enterFromClass, action) {
+  var el = document.getElementById('calendar');
+  if (!el || _calPrefersReducedMotion()) { action(); return; }
+  el.classList.add(exitClass);
+  var done = false;
+  function proceed() {
+    if (done) return;
+    done = true;
+    el.removeEventListener('transitionend', proceed);
+    action();
+    // ตั้งสถานะเริ่มต้นฝั่งตรงข้ามแบบไม่มี transition ก่อน แล้วค่อยลบในเฟรมถัดไปเพื่อ trigger อนิเมชันเข้า
+    el.classList.remove(exitClass);
+    el.classList.add('cal-no-anim', enterFromClass);
+    void el.offsetWidth; // force reflow
+    requestAnimationFrame(function () {
+      el.classList.remove('cal-no-anim');
+      requestAnimationFrame(function () { el.classList.remove(enterFromClass); });
+    });
+  }
+  el.addEventListener('transitionend', proceed);
+  setTimeout(proceed, 280); // fallback กันเคส transitionend ไม่ยิง (เช่น element ถูกซ่อนกลางทาง)
+}
+// สลับเดือน/สัปดาห์/วัน แบบมีทิศทาง (next = ออกทางซ้าย เข้าทางขวา, prev = กลับกัน)
+function calendarNavigate(dir) {
+  if (!calendarInstance) return;
+  var exit = dir === 'next' ? 'cal-exit-fwd' : 'cal-exit-back';
+  var enterFrom = dir === 'next' ? 'cal-exit-back' : 'cal-exit-fwd';
+  _calSwapRun(exit, enterFrom, function () { calendarInstance[dir](); });
+}
+// สลับมุมมอง (เดือน/สัปดาห์/วัน/รายการ/รายปี) แบบไม่มีทิศทาง ใช้ครอสเฟด+ย่อขนาดเล็กน้อยแทน
+function calendarSwapView(changeFn) {
+  _calSwapRun('cal-exit-fade', 'cal-exit-fade', changeFn);
+}
+// ดักคลิกปุ่ม prev/next/today/สลับมุมมองในแถบเครื่องมือของ FullCalendar เอง (headerToolbar) ด้วย capturing
+// listener ที่ #calendar-wrap แล้ว stopPropagation กันไม่ให้ click handler เดิมของ FullCalendar ทำงานซ้ำ
+// จากนั้นเรียก API ตัวเดียวกัน (prev()/next()/changeView()/today()) เองแทน แค่ห่อด้วยเอฟเฟกต์สไลด์/ครอสเฟด
+// ก่อน - ไม่ได้แก้/แทนที่ปุ่มหรือ DOM ของ FullCalendar เลย จึงไม่กระทบการทำงานภายในของมัน
+function setupCalendarSwapEffect() {
+  var wrap = document.getElementById('calendar-wrap');
+  if (!wrap || wrap._calSwapBound) return;
+  wrap._calSwapBound = true;
+  var viewBtnMap = {
+    'fc-dayGridMonth-button': 'dayGridMonth',
+    'fc-timeGridWeek-button': 'timeGridWeek',
+    'fc-timeGridDay-button': 'timeGridDay',
+    'fc-multiMonthYear-button': 'multiMonthYear'
+  };
+  wrap.addEventListener('click', function (e) {
+    if (!calendarInstance) return;
+    var btn = e.target.closest(
+      '.fc-prev-button, .fc-next-button, .fc-today-button, .fc-dayGridMonth-button, ' +
+      '.fc-timeGridWeek-button, .fc-timeGridDay-button, .fc-multiMonthYear-button'
+    );
+    if (!btn || !wrap.contains(btn)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.classList.contains('fc-prev-button')) { calendarNavigate('prev'); return; }
+    if (btn.classList.contains('fc-next-button')) { calendarNavigate('next'); return; }
+    if (btn.classList.contains('fc-today-button')) { calendarSwapView(function () { calendarInstance.today(); }); return; }
+    for (var cls in viewBtnMap) {
+      if (btn.classList.contains(cls)) {
+        (function (viewType) {
+          calendarSwapView(function () { calendarInstance.changeView(viewType); });
+        })(viewBtnMap[cls]);
+        return;
+      }
+    }
+  }, true);
+}
+
 function toggleCalendarViewMode() {
   if (!calendarInstance) return;
   // แก้ให้รองรับ view.type เป็น listDay/listWeek ได้ด้วย (ไม่ใช่แค่ listMonth เดิม) เพราะตอนนี้มุมมอง List
@@ -2347,12 +2508,14 @@ function toggleCalendarViewMode() {
   // แล้วได้ 'listMonth' (list) ซ้ำแทนที่จะกลับไปมุมมองเดือนแบบตาราง (dayGridMonth) ตามที่ตั้งใจ
   var isCurrentlyList = calendarInstance.view.type.indexOf('list') === 0;
   var newView = isCurrentlyList ? 'dayGridMonth' : 'listMonth';
-  calendarInstance.changeView(newView);
-  localStorage.setItem(CALENDAR_VIEW_PREF_KEY, newView);
-  updateViewToggleLabel(newView);
-  // หมายเหตุ: ไม่ต้องเรียก reverseListViewDayOrder() ซ้ำตรงนี้ — changeView() ทำให้ eventsSet
-  // ของปฏิทิน (ที่ผูก reverseListViewDayOrder ไว้แล้ว) ยิงเองอยู่แล้ว เรียกซ้ำจะกลายเป็นสลับ 2 ครั้ง
-  // (สลับแล้วสลับกลับ) ทำให้ list กลับไปเรียงแบบเดิม (เก่า->ใหม่) เหมือนไม่ได้แก้อะไรเลย — นี่คือบั๊กที่พบ
+  calendarSwapView(function () {
+    calendarInstance.changeView(newView);
+    localStorage.setItem(CALENDAR_VIEW_PREF_KEY, newView);
+    updateViewToggleLabel(newView);
+    // หมายเหตุ: ไม่ต้องเรียก reverseListViewDayOrder() ซ้ำตรงนี้ — changeView() ทำให้ eventsSet
+    // ของปฏิทิน (ที่ผูก reverseListViewDayOrder ไว้แล้ว) ยิงเองอยู่แล้ว เรียกซ้ำจะกลายเป็นสลับ 2 ครั้ง
+    // (สลับแล้วสลับกลับ) ทำให้ list กลับไปเรียงแบบเดิม (เก่า->ใหม่) เหมือนไม่ได้แก้อะไรเลย — นี่คือบั๊กที่พบ
+  });
 }
 
 // ===== สลับลำดับปฏิทินมุมมอง List ให้วันล่าสุดอยู่บนสุด =====
@@ -2421,10 +2584,12 @@ function setListRange(viewType) {
   // ที่ปฏิทินกำลังเลื่อนดูอยู่ (ไม่ใช่วันปัจจุบัน) ผู้ใช้กด "วันนี้/สัปดาห์นี้/เดือนนี้" คาดหวังว่าจะกระโดด
   // ไปที่ปัจจุบันเลยตามชื่อปุ่ม จึงต้องส่ง new Date() เป็นพารามิเตอร์ที่ 2 ให้ changeView() นำทางไปพร้อมกัน
   // ในการเรียกครั้งเดียว (ตามที่ FullCalendar API รองรับ) แทนที่จะแค่เปลี่ยนชนิดมุมมองอย่างเดียว
-  calendarInstance.changeView(viewType, new Date());
-  // จำไว้เป็นค่า pref เดียวกับปุ่มสลับหลัก (มุมมอง List/เดือน) เพื่อให้เปิดแอปครั้งถัดไปกลับมาที่ช่วงเดิม
-  localStorage.setItem(CALENDAR_VIEW_PREF_KEY, viewType);
-  updateViewToggleLabel(viewType);
+  calendarSwapView(function () {
+    calendarInstance.changeView(viewType, new Date());
+    // จำไว้เป็นค่า pref เดียวกับปุ่มสลับหลัก (มุมมอง List/เดือน) เพื่อให้เปิดแอปครั้งถัดไปกลับมาที่ช่วงเดิม
+    localStorage.setItem(CALENDAR_VIEW_PREF_KEY, viewType);
+    updateViewToggleLabel(viewType);
+  });
 }
 
 // ===== เติมแถว "ไม่มีงาน" ให้วันที่ไม่มีงานเลยในมุมมอง List — เฉพาะ listDay/listWeek (ช่วงสั้น นับวันได้ไม่กี่วัน)
@@ -3069,6 +3234,7 @@ function setupNotificationsRealtimeListener() {
           if (change.type === 'added') {
             var d = change.doc.data();
             playNotificationSound(d.title || 'C2 Calendar', d.body || '');
+            showInAppBanner(Object.assign({ id: change.doc.id }, d));
           }
         });
       }
@@ -3123,8 +3289,80 @@ function getNotifTypeInfo(type) {
   return map[type] || { icon: '🔔', color: 'blue', tag: '' };
 }
 
+// ===== แบนเนอร์แจ้งเตือนแบบอินแอป (ตอนเปิดแอปค้างอยู่) - แสดงทีละอันเดียวผ่านคิว กันซ้อนกันเวลามีแจ้งเตือน
+// เข้ามาถี่ๆ - เลื่อนลงจากขอบบน 5 วิ พร้อมแถบนับถอยหลัง แตะแล้วเปิด modal รายการแจ้งเตือนเดิม =====
+var _inAppBannerQueue = [];
+var _inAppBannerShowing = false;
+var _inAppBannerTimer = null;
+
+function showInAppBanner(notifDoc) {
+  _inAppBannerQueue.push(notifDoc);
+  _inAppBannerProcessQueue();
+}
+
+function _inAppBannerProcessQueue() {
+  if (_inAppBannerShowing) return;
+  var next = _inAppBannerQueue.shift();
+  if (!next) return;
+  _inAppBannerShowing = true;
+
+  var info = getNotifTypeInfo(next.type);
+  var el = document.getElementById('inapp-banner');
+  var icEl = document.getElementById('inapp-banner-ic');
+  icEl.className = 'notif-ic ' + info.color;
+  icEl.textContent = info.icon;
+  document.getElementById('inapp-banner-title').textContent = next.title || 'C2 Calendar';
+  document.getElementById('inapp-banner-text').textContent = next.body || '';
+
+  // รีสตาร์ทอนิเมชันแถบนับถอยหลังทุกครั้ง (ลบ/ใส่ element ใหม่ แทนแค่ toggle class เพราะ CSS animation
+  // จะไม่รันซ้ำถ้า element เดิมยังอยู่)
+  var track = document.getElementById('inapp-banner-progress-track');
+  track.innerHTML = '<div id="inapp-banner-progress-bar"></div>';
+
+  el.classList.add('show');
+
+  clearTimeout(_inAppBannerTimer);
+  _inAppBannerTimer = setTimeout(_inAppBannerDismiss, 5000);
+}
+
+function _inAppBannerDismiss() {
+  clearTimeout(_inAppBannerTimer);
+  var el = document.getElementById('inapp-banner');
+  el.classList.remove('show');
+  _inAppBannerShowing = false;
+  // เว้นจังหวะเล็กน้อยให้อนิเมชันเลื่อนขึ้นจบก่อน ค่อยโชว์อันถัดไปในคิว (ถ้ามี)
+  setTimeout(_inAppBannerProcessQueue, 350);
+}
+
+function inAppBannerClose(evt) {
+  if (evt) evt.stopPropagation();
+  _inAppBannerDismiss();
+}
+
+function inAppBannerTap() {
+  _inAppBannerDismiss();
+  if (localStorage.getItem(TOKEN_KEY)) { openMyRequestsModal(); }
+}
+
+// ===== Skeleton รายการแจ้งเตือน - โชว์เฉพาะตอน onSnapshot ของ setupNotificationsRealtimeListener() ยังไม่
+// เคยตอบกลับเลยสักครั้ง (isFirstNotifSnapshot) กันเคสเปิด modal ทันทีหลังล็อกอินก่อนข้อมูลชุดแรกมาถึง =====
+function renderNotificationsSkeleton() {
+  var container = document.getElementById('my-requests-list');
+  var rows = '';
+  for (var i = 0; i < 4; i++) {
+    rows += '<div class="skel-notif-row"><span class="skel"></span>' +
+      '<span class="skel-lines"><span class="skel" style="width:90%;height:11px;"></span>' +
+      '<span class="skel" style="width:50%;height:9px;"></span></span></div>';
+  }
+  container.innerHTML = rows;
+}
+
 function renderNotificationsList() {
   var container = document.getElementById('my-requests-list');
+  if (isFirstNotifSnapshot) {
+    renderNotificationsSkeleton();
+    return;
+  }
   if (lastNotifications.length === 0) {
     container.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">ยังไม่มีการแจ้งเตือน</p>';
     return;
@@ -3619,6 +3857,7 @@ function renderCalendar(result) {
     }
   });
   calendarInstance.render();
+  setupCalendarSwapEffect();
   updateViewToggleLabel(initialViewToUse);
   hidePageLoading();
 }
@@ -3643,10 +3882,13 @@ var _unsubTaskTags = null;
 // โดยไม่ต้องปิด-เปิด modal ใหม่มาแนบทีหลัง (ลบออกจาก array ด้วย ptmRemovePendingFile ได้ก่อนบันทึกจริง)
 var _ptmPendingFiles = [];
 
+var _personalTasksLoaded = false;
+
 function setupPersonalTasksListener() {
   if (_unsubPersonalTasks) return; // กันสมัครซ้ำถ้าเรียกซ้อน
 
   _unsubPersonalTasks = fbDb.collection('personalTasks').onSnapshot(function (snapshot) {
+    _personalTasksLoaded = true;
     _personalTasksCache = snapshot.docs.map(function (doc) {
       var d = doc.data();
       return {
@@ -3684,6 +3926,7 @@ function teardownPersonalTasksListener() {
   if (_unsubTaskTags) { _unsubTaskTags(); _unsubTaskTags = null; }
   _personalTasksCache = [];
   _taskTagsCache = [];
+  _personalTasksLoaded = false;
 }
 
 function updatePtbSummaryCard() {
@@ -3809,7 +4052,21 @@ function sortPtbTaskList(list) {
   });
 }
 
+// ===== Skeleton บอร์ด Task ส่วนบุคคล (PTB) - 3 คอลัมน์ (todo/doing/done) โชว์ตอน setupPersonalTasksListener()
+// ยังไม่เคยได้ snapshot แรกกลับมาเลย (เปิด modal เร็วกว่าที่ Firestore listener จะตอบ) =====
+function renderPtbBoardSkeleton(containerId) {
+  var el = document.getElementById(containerId);
+  var html = '';
+  PTB_COLS.forEach(function (col) {
+    html += '<div class="ptb-col"><div class="ptb-col-head"><span class="sw" style="background:' + col.color + '"></span>' + col.label + '</div>' +
+      '<div class="ptb-cards"><div class="skel-kanban-card"><span class="skel" style="width:80%;height:11px;"></span>' +
+      '<span class="skel" style="width:50%;height:9px;"></span></div></div></div>';
+  });
+  el.innerHTML = html;
+}
+
 function renderPtbBoard(containerId, personId) {
+  if (!_personalTasksLoaded) { renderPtbBoardSkeleton(containerId); return; }
   var el = document.getElementById(containerId);
   el.innerHTML = '';
   applyPtbSortModeToSelects();
