@@ -10,6 +10,12 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var fbAuth = firebase.auth();
 var fbDb = firebase.firestore();
+// เน็ตมือถือ/เครือข่ายบางเจ้าบล็อก-หน่วง WebChannel (WebSocket-like) ที่ Firestore ใช้เชื่อมต่อแบบ real-time
+// ปกติ ทำให้กว่าจะได้ข้อมูลชุดแรกช้าผิดปกติ (เห็น splash ค้างนาน/ขึ้นข้อความ "เชื่อมต่อช้ากว่าปกติ" บ่อย) -
+// ตั้งค่านี้ให้ Firestore เดาสภาพเครือข่ายเองและสลับไปใช้ long-polling อัตโนมัติเฉพาะตอนจำเป็นเท่านั้น
+// (ไม่ใช่บังคับ long-polling ตลอดแบบ experimentalForceLongPolling ซึ่งช้ากว่าบนเน็ตปกติ) ต้องตั้งก่อนเรียก
+// ใช้งาน fbDb ครั้งแรกเท่านั้น (เมธอด/listener ใดๆ) ไม่งั้น Firestore จะ error ว่าตั้งค่าหลังเริ่มใช้แล้วไม่ได้
+fbDb.settings({ experimentalAutoDetectLongPolling: true });
 var fbFunctions = firebase.app().functions("asia-southeast1");
 var fbStorage = firebase.storage();
 
