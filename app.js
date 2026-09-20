@@ -1756,22 +1756,41 @@ function renderColorSwatches(selectedColor, avatarEl) {
   });
 }
 
+// ===== Skeleton การ์ดโปรไฟล์ (Item 3 เพิ่มทีหลัง) - เดิมการ์ดนี้จะโล่งว่างเปล่าทั้งใบระหว่างรอ
+// getMyProfile ตอบกลับ (ทุก field เป็นค่าว่างจนกว่าจะเซ็ตจริง) ผู้ใช้เห็นเป็นช่องว่างๆ ไม่รู้ว่ากำลังโหลด
+// อยู่หรือเปล่า จึงเติม skeleton ให้ครบทุกจุดที่จะมีข้อความจริงโผล่ขึ้นภายหลัง - ใช้ .skel-on-dark เฉพาะ
+// ส่วนที่อยู่บนแบนเนอร์เขียว (รูป/ชื่อ/ตำแหน่ง) และ .skel ปกติสำหรับส่วนที่อยู่บนพื้นขาวด้านล่าง =====
+function renderProfileSkeleton() {
+  document.getElementById('profile-photo').style.display = 'none';
+  document.getElementById('profile-avatar').style.display = 'none';
+  document.getElementById('profile-avatar-skel').style.display = 'block';
+  document.getElementById('profile-fullname').innerHTML = '<span class="skel-on-dark" style="display:inline-block;width:130px;height:16px;margin:0 auto;"></span>';
+  document.getElementById('profile-position').innerHTML = '<span class="skel-on-dark" style="display:inline-block;width:90px;height:12px;margin:4px auto 0;"></span>';
+  document.getElementById('profile-username').innerHTML = '<span class="skel" style="display:inline-block;width:70px;height:12px;"></span>';
+  document.getElementById('profile-gender').innerHTML = '<span class="skel" style="display:inline-block;width:44px;height:12px;"></span>';
+  document.getElementById('profile-age').innerHTML = '<span class="skel" style="display:inline-block;width:44px;height:12px;"></span>';
+  document.getElementById('profile-birthdate').innerHTML = '<span class="skel" style="display:inline-block;width:80px;height:12px;"></span>';
+}
+
 function openProfileModal() {
   document.getElementById('profile-modal-overlay').style.display = 'flex';
   document.getElementById('profile-edit-section').style.display = 'none';
   document.getElementById('profile-password-section').style.display = 'none';
   document.getElementById('profile-edit-toggle-btn').textContent = 'แก้ไขข้อมูล';
   _pushModalNav('profile-modal-overlay');
+  renderProfileSkeleton();
 
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getMyProfile', { token: token }).then(function (result) {
     if (!result.success) {
+      closeProfileModal(); // ปิดการ์ดไปเลยแทนที่จะปล่อย skeleton ค้างอยู่หลัง error dialog
       Swal.fire({ icon: 'error', title: 'โหลดโปรไฟล์ไม่สำเร็จ', text: result.message });
       return;
     }
     var p = result.profile;
     var avatar = document.getElementById('profile-avatar');
     var photoEl = document.getElementById('profile-photo');
+    document.getElementById('profile-avatar-skel').style.display = 'none';
 
     if (p.photoURL) {
       photoEl.src = p.photoURL;
@@ -3557,9 +3576,22 @@ function closeNotifSettingsModal() {
   document.getElementById('notif-settings-modal-overlay').style.display = 'none';
 }
 
+// ===== Skeleton หน้าตั้งค่าการแจ้งเตือน - จำลองแถว toggle (.ns-row: label+desc ซ้าย, สวิตช์ขวา) ตาม
+// จำนวนคร่าวๆ ที่จะเห็นจริง ไม่ต้องคำนวณจำนวนแถวแอดมิน/role ให้ตรงเป๊ะ เพราะโชว์แค่ชั่วคราวระหว่างรอเท่านั้น =====
+function renderNotifSettingsSkeleton() {
+  var rows = '';
+  for (var i = 0; i < 5; i++) {
+    rows += '<div class="ns-row"><div class="ns-meta">' +
+      '<span class="skel" style="display:block;width:150px;height:13px;margin-bottom:6px;"></span>' +
+      '<span class="skel" style="display:block;width:210px;height:11px;"></span></div>' +
+      '<span class="skel" style="width:42px;height:24px;border-radius:999px;flex-shrink:0;"></span></div>';
+  }
+  return rows;
+}
+
 function loadAndRenderNotifSettings() {
   var body = document.getElementById('notif-settings-body');
-  body.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">กำลังโหลด...</p>';
+  body.innerHTML = renderNotifSettingsSkeleton();
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getNotificationPrefs', { token: token }).then(function (result) {
     _notifSettingsPrefs = (result && result.prefs) || {};
@@ -4174,11 +4206,46 @@ function escapeHtmlPtb(s) {
   });
 }
 
+// ===== Skeleton หน้า "ภาพรวมทั้งบริษัท" - getCompanyTaskSummary เป็น Cloud Function ที่ทำ aggregation
+// ฝั่งเซิร์ฟเวอร์ข้ามทั้งองค์กร ช้ากว่าจุดอื่นที่ใช้ real-time listener ธรรมดา ระหว่างรอทั้ง 3 ส่วน (แถบสถิติ/
+// งานใกล้ครบกำหนด/ภาระงานรายคน) จะว่างเปล่าเดิม ใช้รูปทรงคอนเทนเนอร์จริง (.ptb-stat-tile/.ptb-deadline-row/
+// .ptb-wl-row) เดิมแทน .skel ข้างในเพื่อให้ layout ไม่กระตุกตอนสลับเป็นข้อมูลจริง =====
+function renderPtbOverviewSkeleton() {
+  var stats = '';
+  for (var i = 0; i < 3; i++) {
+    stats += '<div class="ptb-stat-tile"><span class="skel" style="display:inline-block;width:58px;height:10px;"></span>' +
+      '<div style="margin-top:7px;"><span class="skel" style="display:inline-block;width:42px;height:22px;"></span></div></div>';
+  }
+  document.getElementById('ptb-stat-row').innerHTML = stats;
+
+  var deadlineRows = '';
+  for (var d = 0; d < 3; d++) {
+    deadlineRows += '<div class="ptb-deadline-row">' +
+      '<span class="skel" style="width:6px;height:6px;border-radius:50%;flex-shrink:0;"></span>' +
+      '<span class="skel" style="flex:1;height:11px;max-width:130px;"></span>' +
+      '<span class="skel" style="width:46px;height:10px;flex-shrink:0;"></span>' +
+      '<span class="skel" style="width:38px;height:10px;flex-shrink:0;"></span></div>';
+  }
+  document.getElementById('ptb-deadline-list').innerHTML = deadlineRows;
+
+  var wlRows = '';
+  for (var w = 0; w < 3; w++) {
+    wlRows += '<div class="ptb-wl-row"><span class="skel" style="width:28px;height:28px;border-radius:50%;flex-shrink:0;"></span>' +
+      '<div style="flex:1;min-width:0;"><span class="skel" style="display:block;width:96px;height:11px;margin-bottom:6px;"></span>' +
+      '<span class="skel" style="display:block;width:100%;height:6px;border-radius:5px;"></span></div></div>';
+  }
+  document.getElementById('ptb-workload-list').innerHTML = wlRows;
+}
+
 // ===== มุมมอง Admin/CEO — ภาพรวมทั้งบริษัท =====
 function renderPtbAdminOverview() {
+  renderPtbOverviewSkeleton();
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getCompanyTaskSummary', { token: token }).then(function (result) {
     if (!result.success) {
+      document.getElementById('ptb-stat-row').innerHTML = '';
+      document.getElementById('ptb-deadline-list').innerHTML = '<div class="ptb-empty-hint">โหลดภาพรวมไม่สำเร็จ</div>';
+      document.getElementById('ptb-workload-list').innerHTML = '';
       Swal.fire({ icon: 'error', title: 'โหลดภาพรวมไม่สำเร็จ', text: result.message });
       return;
     }
@@ -4224,6 +4291,9 @@ function renderPtbAdminOverview() {
 
     window._ptbLastSummary = result; // เก็บไว้ใช้ตอน export
   }).catch(function (err) {
+    document.getElementById('ptb-stat-row').innerHTML = '';
+    document.getElementById('ptb-deadline-list').innerHTML = '<div class="ptb-empty-hint">โหลดภาพรวมไม่สำเร็จ</div>';
+    document.getElementById('ptb-workload-list').innerHTML = '';
     Swal.fire({ icon: 'error', title: 'โหลดภาพรวมไม่สำเร็จ', text: err.message });
   });
 }
