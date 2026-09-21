@@ -3224,10 +3224,13 @@ function setupPushNotifications() {
     // ถ้าเคยปฏิเสธไปแล้ว (denied) ไม่ทำอะไรต่อ - เบราว์เซอร์ไม่ให้ขอซ้ำอยู่แล้ว ต้องไปกดอนุญาตเองในตั้งค่าเว็บไซต์
 
     // ตอนแอปเปิดอยู่ (foreground) FCM จะไม่โชว์ notification ให้เอง (ต่างจากตอนปิด/มินิไมซ์ที่ไปเข้า
-    // firebase-messaging-sw.js แทน) เลยต้องดักโชว์เป็น Toast เองแทนตรงนี้ กันดูเหมือนแจ้งเตือนหายไปเฉยๆ
+    // firebase-messaging-sw.js แทน) เดิมเคยดักโชว์เป็น Toast เองแทนตรงนี้ แต่ตอนนี้ทุกแจ้งเตือนที่ backend
+    // สร้าง (createNotification) จะเขียนลง Firestore "notifications" เสมอคู่กับการยิง push อยู่แล้ว
+    // ซึ่ง setupNotificationsRealtimeListener() ดักฟังอยู่และโชว์เป็น in-app banner ให้ทันทีที่มีเอกสารใหม่
+    // (ครอบคลุมทุกประเภทแจ้งเตือน 100%) จึงตัด Toast.fire ตรงนี้ออก กัน popup ซ้อนกับ banner สำหรับ
+    // เหตุการณ์เดียวกัน - เหลือ onMessage ไว้เฉยๆ เผื่ออนาคตต้องใช้ทำอย่างอื่น (เช่นอัปเดต badge count)
     messaging.onMessage(function (payload) {
-      var body = (payload.notification && payload.notification.body) || '';
-      if (body) Toast.fire({ icon: 'info', title: body });
+      // ไม่ต้องทำอะไร - ให้ banner (ผ่าน Firestore listener) เป็นตัวแสดงแจ้งเตือนแบบเดียวเท่านั้น
     });
   }).catch(function (err) { console.error('Service worker register error', err); });
 }
