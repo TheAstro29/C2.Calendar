@@ -3916,6 +3916,12 @@ function renderCalendar(result) {
     },
     eventClick: function (info) {
       if (info.event.extendedProps.isHoliday) return;
+      // แก้บั๊ก: ตอนกดงานจากใน popover "+n เพิ่มเติม" ของ FullCalendar (จอ PC ใช้ popover เริ่มต้นของ
+      // ไลบรารีเอง - ดู moreLinkClick ด้านบน) ตัว popover จะไม่ปิดอัตโนมัติเพราะเรากดงาน "ใน" popover เอง
+      // (ไม่ใช่กดนอกพื้นที่ ซึ่งเป็นเงื่อนไขปิดปกติของ FullCalendar) และ .fc-popover มี z-index สูงมาก (ปกติ
+      // 9999 ตามค่ามาตรฐานไลบรารี) สูงกว่า modal รายละเอียดงานของเรา (2050) ผลคือ popover ลอยค้างทับ modal
+      // ที่เพิ่งเปิดพอดี จึงต้องปิด/เอา popover ออกจากจอเองตรงนี้ก่อนเปิด modal เสมอ กันปัญหานี้ทุกครั้ง
+      document.querySelectorAll('.fc-popover').forEach(function (el) { el.remove(); });
       openTaskDetailModal(info.event);
     }
   });
