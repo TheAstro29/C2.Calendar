@@ -39,6 +39,13 @@ var FCM_VAPID_KEY = 'BILlcL9DwhAa7uVz8nFD_uS3ZNMa93EKewWzNQpNv-8RvIMFDb78g5DbKc9
 // แทนที่จะปล่อยให้เบราว์เซอร์ปิดแอป/ออกจากหน้าปฏิทินไปเลยทั้งที่ผู้ใช้แค่อยากปิดหน้าต่างที่เปิดอยู่
 // ============================================================
 var _navRestoringCal = false;
+// แก้บั๊ก: เดิม popstate handler ปิด modal overlay ที่ display:flex อยู่ "ทุกตัวพร้อมกัน" ในครั้งเดียว - ปกติ
+// เปิดทีละอันจริง แต่บางจุดของแอปเปิด modal ซ้อนกัน 2 ชั้นได้ (เช่น เปิดลิสต์แจ้งเตือนแล้วกดงานในนั้น เปิด
+// modal รายละเอียดงานซ้อนขึ้นมาอีกชั้นโดยไม่ปิด modal แจ้งเตือนก่อน) ทำให้กด Back ครั้งเดียวปิดทั้ง 2 modal
+// พร้อมกันทั้งที่ pushState ไว้แค่ 1 ครั้งต่อการเปิด 1 modal - stack นี้เก็บลำดับการเปิดไว้ ให้กด Back
+// แต่ละครั้งปิดแค่ modal ที่เปิดล่าสุด (ชั้นบนสุด) ทีละชั้นแทน ตรงกับความคาดหวังของผู้ใช้และจำนวน history
+// entry ที่ pushState ไว้จริง
+var _openModalStack = [];
 
 var _MODAL_CLOSE_FN = {
   "login-modal-overlay": function () { closeLoginModal(); },
@@ -60,16 +67,22 @@ var _MODAL_CLOSE_FN = {
 function _pushModalNav(overlayId) {
   if (_navRestoringCal) return;
   try { history.pushState({ __c2calnav: true, modal: overlayId }, ""); } catch (e) {}
+  _openModalStack.push(overlayId);
 }
 
 window.addEventListener("popstate", function () {
   _navRestoringCal = true;
-  // ปิด modal overlay ที่เปิดอยู่ทั้งหมด (ปกติเปิดทีละอันในเวลาเดียวกัน)
-  document.querySelectorAll('[id$="-modal-overlay"]').forEach(function (el) {
-    if (el.style.display === "flex" && _MODAL_CLOSE_FN[el.id]) {
-      _MODAL_CLOSE_FN[el.id]();
-    }
+  // ล้าง entry ที่ modal ถูกปิดไปแล้วจริง (เช่นกดปุ่ม "ปิด"/✕ เอง ไม่ได้ผ่านปุ่ม Back) ออกจาก stack ก่อน
+  // กันไม่ให้ค้างชี้ไปที่ modal ที่ไม่ได้เปิดอยู่แล้ว
+  _openModalStack = _openModalStack.filter(function (id) {
+    var el = document.getElementById(id);
+    return el && el.style.display === "flex";
   });
+  // ปิดแค่ modal ที่เปิดล่าสุด (ชั้นบนสุด) ทีละชั้นต่อการกด Back หนึ่งครั้ง
+  var topId = _openModalStack.pop();
+  if (topId && _MODAL_CLOSE_FN[topId]) {
+    _MODAL_CLOSE_FN[topId]();
+  }
   _navRestoringCal = false;
 });
 
@@ -134,7 +147,8 @@ var CLOUD_FUNCTION_ACTIONS = [
   'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead',
   'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
   'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
-  'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification'
+  'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
+  'addTaskComment', 'addPersonalTaskComment'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -733,6 +747,7 @@ function exitAdminMode() {
   document.getElementById('dashboard-btn').style.display = 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'none';
   teardownPersonalTasksListener();
+  if (_unsubNotifications) { _unsubNotifications(); _unsubNotifications = null; }
   lastNotifications = [];
   isFirstNotifSnapshot = true;
   loadTodoList();
@@ -2986,10 +3001,13 @@ function openMoreMenu() {
       '<div class="mm-group">' + mmItem('🔑', 'เข้าสู่ระบบ', 'openLoginModal();') + '</div>';
   } else {
     var initial = (name || '?').trim().charAt(0).toUpperCase();
+    // แก้บั๊ก: เดิมใส่ initial/name ลง innerHTML ตรงๆ ไม่ escape (name มาจากชื่อเต็มที่แอดมินตั้งให้ ซึ่ง
+    // เป็นข้อความอิสระ) ถ้ามีอักขระ < หรือ " ปนอยู่ อาจกลายเป็น HTML ที่ render จริงในเมนูของผู้ใช้คนนั้นเอง -
+    // escapeHtmlPtb() ตัวเดียวกับที่ใช้ทั่วแอปอยู่แล้ว (เช่น Personal Task Board)
     nameEl.innerHTML = '<div id="more-menu-name-row">' +
-      '<div id="more-menu-avatar">' + initial + '</div>' +
-      '<div><div id="more-menu-name-text">' + (name || '') + '</div>' +
-      '<span class="mm-role-pill">⭐ ' + (ROLE_LABELS[role] || role) + '</span></div></div>';
+      '<div id="more-menu-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+      '<div><div id="more-menu-name-text">' + escapeHtmlPtb(name || '') + '</div>' +
+      '<span class="mm-role-pill">⭐ ' + escapeHtmlPtb(ROLE_LABELS[role] || role) + '</span></div></div>';
 
     var groups = [];
     groups.push(refreshItem + themeItem);
@@ -3061,8 +3079,89 @@ function requestDeleteTaskConfirm(taskId) {
 }
 
 // ===== Modal ดูรายละเอียดงาน (กดที่งานในปฏิทิน) =====
+// ===== ระบบคอมเมนต์ในการ์ดงาน - subscribe เฉพาะตอน modal เปิดอยู่ ต้อง unsubscribe ทุกครั้งที่ปิด modal
+// (กันบั๊กแบบเดียวกับ listener แจ้งเตือนที่เคยรั่วข้ามบัญชี - ดู _unsubNotifications ด้านบน) =====
+var _tdCommentsUnsub = null;
+var _tdCurrentTaskId = null;
+
 function closeTaskDetailModal() {
   document.getElementById('task-detail-modal-overlay').style.display = 'none';
+  if (_tdCommentsUnsub) { _tdCommentsUnsub(); _tdCommentsUnsub = null; }
+  _tdCurrentTaskId = null;
+  document.getElementById('td-cmt-toggle').classList.remove('open');
+  document.getElementById('td-cmt-body').classList.remove('open');
+}
+
+function toggleTaskCommentsSection() {
+  document.getElementById('td-cmt-toggle').classList.toggle('open');
+  document.getElementById('td-cmt-body').classList.toggle('open');
+}
+
+function subscribeTaskComments(taskId) {
+  if (_tdCommentsUnsub) { _tdCommentsUnsub(); _tdCommentsUnsub = null; }
+  _tdCommentsUnsub = fbDb.collection('tasks').doc(taskId).collection('comments')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(function (snapshot) {
+      // กันเคส: modal ถูกปิด/เปิดงานอื่นไปแล้วระหว่างที่ callback นี้ยังไม่ทันมา (race condition) -
+      // เช็คว่ายังเป็นงานเดียวกับที่ modal เปิดอยู่จริงก่อนเขียนลง DOM
+      if (_tdCurrentTaskId !== taskId) return;
+      renderTaskComments(snapshot.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }));
+    }, function (err) {
+      console.error('subscribeTaskComments error', err);
+    });
+}
+
+function renderTaskComments(comments) {
+  var listEl = document.getElementById('td-cmt-list');
+  var countEl = document.getElementById('td-cmt-count');
+  if (comments.length === 0) {
+    listEl.innerHTML = '<div class="td-cmt-empty">ยังไม่มีความคิดเห็น</div>';
+    countEl.style.display = 'none';
+  } else {
+    countEl.textContent = comments.length;
+    countEl.style.display = 'inline-block';
+    listEl.innerHTML = comments.map(function (c) {
+      var timeLabel = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString('th-TH') : 'กำลังส่ง...';
+      var initial = (c.authorName || '?').trim().charAt(0).toUpperCase();
+      return '<div class="td-cmt-item">' +
+        '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+        '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + '">' +
+          '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
+          (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
+          '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span></div>' +
+          '<div class="td-cmt-text">' + escapeHtmlPtb(c.text || '') + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+  listEl.scrollTop = listEl.scrollHeight;
+}
+
+function sendTaskComment() {
+  var taskId = _tdCurrentTaskId;
+  if (!taskId) return;
+  var input = document.getElementById('td-cmt-input');
+  var text = (input.value || '').trim();
+  if (!text) return;
+  var urgentBox = document.getElementById('td-cmt-urgent');
+  var isUrgent = !!(urgentBox && urgentBox.checked);
+  var sendBtn = document.getElementById('td-cmt-send-btn');
+  var token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+
+  sendBtn.disabled = true;
+  callApi('addTaskComment', { token: token, taskId: taskId, text: text, urgent: isUrgent }).then(function (result) {
+    sendBtn.disabled = false;
+    if (result.success) {
+      input.value = '';
+      if (urgentBox) urgentBox.checked = false;
+      // ไม่ต้อง render ซ้ำเอง - onSnapshot ของ subscribeTaskComments() จะได้ข้อมูลใหม่มาเองอัตโนมัติ
+    } else {
+      Swal.fire({ icon: 'error', title: 'ส่งความคิดเห็นไม่สำเร็จ', text: result.message });
+    }
+  }).catch(function (err) {
+    sendBtn.disabled = false;
+    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+  });
 }
 
 function openTaskDetailModal(event) {
@@ -3095,6 +3194,23 @@ function openTaskDetailModal(event) {
       item.appendChild(document.createTextNode(s.name));
       staffCard.appendChild(item);
     });
+  }
+
+  // ระบบคอมเมนต์ - ต้อง login ก่อนถึงจะเห็น/ใช้งานได้ (คนดูสาธารณะไม่มีตัวตนให้ผูกกับคอมเมนต์)
+  var cmtToken = localStorage.getItem(TOKEN_KEY);
+  var cmtSection = document.getElementById('td-comments-section');
+  document.getElementById('td-cmt-toggle').classList.remove('open');
+  document.getElementById('td-cmt-body').classList.remove('open');
+  if (cmtToken) {
+    cmtSection.style.display = 'block';
+    _tdCurrentTaskId = taskId;
+    document.getElementById('td-cmt-list').innerHTML = '<div class="td-cmt-empty">กำลังโหลด...</div>';
+    document.getElementById('td-cmt-count').style.display = 'none';
+    document.getElementById('td-cmt-input').value = '';
+    subscribeTaskComments(taskId);
+  } else {
+    cmtSection.style.display = 'none';
+    _tdCurrentTaskId = null;
   }
 
   var actionsEl = document.getElementById('td-actions');
@@ -3271,12 +3387,19 @@ function playNotificationSound(title, body) {
 // ===== ระบบแจ้งเตือนแบบใหม่ (Real-time + ถาวร 30 วัน) แทนระบบเดิมทั้งหมด =====
 var lastNotifications = [];
 var isFirstNotifSnapshot = true;
+// แก้บั๊ก: เดิม listener ตัวนี้ไม่เคยถูก unsubscribe ตอน logout เลย - ถ้า login คนละบัญชีต่อกันในแท็บ
+// เดียวกัน (ไม่ได้ refresh หน้า เช่นเครื่องคอมกลางที่หลายคนผลัดกันใช้) listener ของคนเก่าจะยังทำงานค้างอยู่
+// ซ้อนกับของคนใหม่ ทำให้แจ้งเตือน/เสียง/badge ของคนเก่าหลุดมาปนกับคนใหม่ที่เพิ่ง login เข้ามา (ข้อมูลรั่ว
+// ข้ามบัญชี) - เก็บตัว unsubscribe ไว้ในตัวแปรนี้ แล้วเรียกเคลียร์ใน exitAdminMode() เหมือนที่ทำกับ
+// _unsubPersonalTasks/_unsubTaskTags อยู่แล้ว
+var _unsubNotifications = null;
 
 function setupNotificationsRealtimeListener() {
   var myId = localStorage.getItem(ACCOUNT_ID_KEY);
   if (!myId) return;
+  if (_unsubNotifications) return; // กันสมัครซ้ำถ้าเรียกซ้อน
 
-  fbDb.collection('notifications').where('recipientId', '==', myId)
+  _unsubNotifications = fbDb.collection('notifications').where('recipientId', '==', myId)
     .onSnapshot(function (snapshot) {
       // เล่นเสียงเฉพาะตอนมีรายการใหม่เข้ามาจริง (ไม่ใช่ตอนโหลดครั้งแรก)
       if (!isFirstNotifSnapshot) {
@@ -3334,6 +3457,8 @@ function getNotifTypeInfo(type) {
     personalTask_dueSoon: { icon: '⏰', color: 'amber', tag: 'ใกล้ครบกำหนด' },
     personalTask_dueToday: { icon: '⏰', color: 'orange', tag: 'ครบกำหนดวันนี้' },
     personalTask_overdue: { icon: '⚠️', color: 'red', tag: 'เลยกำหนด' },
+    taskComment: { icon: '💬', color: 'purple', tag: 'ความคิดเห็น' },
+    taskComment_urgent: { icon: '⚠️', color: 'red', tag: 'ด่วน' },
     test: { icon: '🔔', color: 'green', tag: 'ทดสอบ' }
   };
   return map[type] || { icon: '🔔', color: 'blue', tag: '' };
@@ -3435,7 +3560,7 @@ function renderNotificationsList() {
     card.innerHTML =
       '<div class="notif-ic ' + info.color + '">' + info.icon + '</div>' +
       '<div class="notif-body-col">' +
-        '<div class="rc-task">' + n.body + '</div>' +
+        '<div class="rc-task">' + escapeHtmlPtb(n.body || '') + '</div>' +
         '<div class="notif-meta-row"><span class="rc-meta">' + timeLabel + '</span>' +
           (info.tag ? '<span class="notif-tag">' + info.tag + '</span>' : '') +
         '</div>' + actionsHtml +
@@ -3944,6 +4069,12 @@ var _ptbCurrentPersonId = null;
 var _ptmEditingTaskId = null;
 var _ptmReadOnly = false; // true = กำลังเปิดดู Task ของคนอื่นที่ไม่มีสิทธิ์แก้ไข/ลบ (ดู openPersonalTaskModal)
 var _unsubPersonalTasks = null;
+
+// ===== ระบบคอมเมนต์ของ Personal Task Board - แพทเทิร์นเดียวกับ _tdCommentsUnsub/_tdCurrentTaskId ของ Task
+// หลัก (ต้อง unsubscribe ทุกครั้งที่ปิด modal กันบั๊ก listener รั่วข้ามบัญชี) ต่างกันแค่ collection เป็น
+// personalTasks และฟิลด์ผู้รับผิดชอบเป็น assigneeIds (ไม่ใช่ staffIds) =====
+var _ptmCmtUnsub = null;
+var _ptmCmtCurrentTaskId = null;
 var _unsubTaskTags = null;
 // ไฟล์ที่ผู้ใช้เลือกแนบไว้ตอนกำลัง "เพิ่ม Task ใหม่" (ยังไม่มี taskId จริง เลยอัปโหลดขึ้น Storage ไม่ได้ทันที
 // เพราะ Storage Rules เช็ค assigneeIds ของ Task ที่มีอยู่จริงในฐานข้อมูล) - พักไว้ในนี้ก่อน แล้วอัปโหลดจริง
@@ -4376,11 +4507,117 @@ function openPersonalTaskModal(taskId, defaultAssigneeId) {
 
   document.getElementById('ptm-att-list').innerHTML = (t ? t.attachments : []).map(function (a) { return ptmAttChipHtml(a); }).join('');
 
+  // ระบบคอมเมนต์ - ต้อง login ก่อนถึงจะเห็น/ใช้งานได้ (เหมือน Task หลัก) และต้องเป็น Task ที่บันทึกแล้วเท่านั้น
+  // (Task ใหม่ที่ยังไม่มี taskId ยังไม่มีที่ให้ผูกคอมเมนต์ด้วย) - ซ่อนทั้งแผงข้าง (PC) และแท็บ (มือถือ) ถ้าไม่เข้าเงื่อนไข
+  var ptmCmtToken = localStorage.getItem(TOKEN_KEY);
+  var ptmCmtPanel = document.getElementById('ptm-cmt-panel');
+  var ptmWrap = document.getElementById('ptm-modal-wrap');
+  var ptmTabs = document.getElementById('ptm-mobile-tabs');
+  ptmWrap.classList.remove('ptm-show-cmt');
+  ptmSwitchMobileView('form');
+  if (t && ptmCmtToken) {
+    ptmCmtPanel.classList.add('ptm-has-cmt');
+    ptmTabs.style.display = '';
+    _ptmCmtCurrentTaskId = taskId;
+    document.getElementById('ptm-cmt-list').innerHTML = '<div class="td-cmt-empty">กำลังโหลด...</div>';
+    document.getElementById('ptm-cmt-badge').style.display = 'none';
+    document.getElementById('ptm-mtab-cnt').style.display = 'none';
+    document.getElementById('ptm-cmt-input').value = '';
+    subscribePersonalTaskComments(taskId);
+  } else {
+    ptmCmtPanel.classList.remove('ptm-has-cmt');
+    ptmTabs.style.display = 'none';
+    _ptmCmtCurrentTaskId = null;
+    if (_ptmCmtUnsub) { _ptmCmtUnsub(); _ptmCmtUnsub = null; }
+  }
+
   document.getElementById('personal-task-modal-overlay').style.display = 'flex';
   _pushModalNav('personal-task-modal-overlay');
 }
 function closePersonalTaskModal() {
   document.getElementById('personal-task-modal-overlay').style.display = 'none';
+  if (_ptmCmtUnsub) { _ptmCmtUnsub(); _ptmCmtUnsub = null; }
+  _ptmCmtCurrentTaskId = null;
+}
+
+// สลับมุมมอง "รายละเอียดงาน" / "ความคิดเห็น" - มีผลเฉพาะจอแคบ/มือถือ (ดู .ptm-modal-wrap.ptm-show-cmt ใน
+// style.css) บน PC ทั้งสองฝั่งโชว์พร้อมกันอยู่แล้วเป็นแผงข้างถาวร ฟังก์ชันนี้แค่ไม่มีผลอะไรที่นั่น
+function ptmSwitchMobileView(view) {
+  var showCmt = view === 'cmt';
+  document.getElementById('ptm-modal-wrap').classList.toggle('ptm-show-cmt', showCmt);
+  document.getElementById('ptm-mtab-form').classList.toggle('active', !showCmt);
+  document.getElementById('ptm-mtab-cmt').classList.toggle('active', showCmt);
+}
+
+function subscribePersonalTaskComments(taskId) {
+  if (_ptmCmtUnsub) { _ptmCmtUnsub(); _ptmCmtUnsub = null; }
+  _ptmCmtUnsub = fbDb.collection('personalTasks').doc(taskId).collection('comments')
+    .orderBy('createdAt', 'asc')
+    .onSnapshot(function (snapshot) {
+      // กันเคส race condition แบบเดียวกับ subscribeTaskComments ของ Task หลัก - เช็คว่ายังเป็น Task
+      // เดียวกับที่ modal เปิดอยู่จริงก่อนเขียนลง DOM (ผู้ใช้อาจปิด/เปิด Task อื่นไปแล้วระหว่างรอ callback)
+      if (_ptmCmtCurrentTaskId !== taskId) return;
+      renderPersonalTaskComments(snapshot.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }));
+    }, function (err) {
+      console.error('subscribePersonalTaskComments error', err);
+    });
+}
+
+function renderPersonalTaskComments(comments) {
+  var listEl = document.getElementById('ptm-cmt-list');
+  var badgeEl = document.getElementById('ptm-cmt-badge');
+  var tabCntEl = document.getElementById('ptm-mtab-cnt');
+  if (comments.length === 0) {
+    listEl.innerHTML = '<div class="td-cmt-empty">ยังไม่มีความคิดเห็น</div>';
+    badgeEl.style.display = 'none';
+    tabCntEl.style.display = 'none';
+  } else {
+    badgeEl.textContent = comments.length;
+    badgeEl.style.display = 'inline-block';
+    tabCntEl.textContent = comments.length;
+    tabCntEl.style.display = 'inline-block';
+    listEl.innerHTML = comments.map(function (c) {
+      var timeLabel = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString('th-TH') : 'กำลังส่ง...';
+      var initial = (c.authorName || '?').trim().charAt(0).toUpperCase();
+      return '<div class="td-cmt-item">' +
+        '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+        '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + '">' +
+          '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
+          (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
+          '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span></div>' +
+          '<div class="td-cmt-text">' + escapeHtmlPtb(c.text || '') + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+  listEl.scrollTop = listEl.scrollHeight;
+}
+
+function sendPersonalTaskComment() {
+  var taskId = _ptmCmtCurrentTaskId;
+  if (!taskId) return;
+  var input = document.getElementById('ptm-cmt-input');
+  var text = (input.value || '').trim();
+  if (!text) return;
+  var urgentBox = document.getElementById('ptm-cmt-urgent');
+  var isUrgent = !!(urgentBox && urgentBox.checked);
+  var sendBtn = document.getElementById('ptm-cmt-send-btn');
+  var token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+
+  sendBtn.disabled = true;
+  callApi('addPersonalTaskComment', { token: token, taskId: taskId, text: text, urgent: isUrgent }).then(function (result) {
+    sendBtn.disabled = false;
+    if (result.success) {
+      input.value = '';
+      if (urgentBox) urgentBox.checked = false;
+      // ไม่ต้อง render ซ้ำเอง - onSnapshot ของ subscribePersonalTaskComments() จะได้ข้อมูลใหม่มาเองอัตโนมัติ
+    } else {
+      Swal.fire({ icon: 'error', title: 'ส่งความคิดเห็นไม่สำเร็จ', text: result.message });
+    }
+  }).catch(function (err) {
+    sendBtn.disabled = false;
+    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+  });
 }
 
 function ptbDateToInputValue(d) {

@@ -739,10 +739,18 @@
 
   <!-- ===== Modal เพิ่ม/แก้ไข Task ===== -->
   <div id="personal-task-modal-overlay">
+    <div class="ptm-modal-wrap" id="ptm-modal-wrap">
     <div id="personal-task-box">
       <div class="ptm-head">
         <input class="ptm-title" id="ptm-title" placeholder="ชื่องาน...">
         <button class="modal-close-btn" onclick="closePersonalTaskModal()">✕</button>
+      </div>
+      <!-- แท็บสลับ "รายละเอียดงาน" / "ความคิดเห็น" - เห็นเฉพาะจอแคบ/มือถือ (บน PC ความคิดเห็นกางเป็นแผงข้าง
+           ถาวรอยู่แล้ว) และเห็นเฉพาะตอน Task นี้เปิดใช้คอมเมนต์ได้ (บันทึกแล้ว + login อยู่ - คุม .display
+           ที่ openPersonalTaskModal() ใน app.js) -->
+      <div class="ptm-mobile-tabs" id="ptm-mobile-tabs" style="display:none;">
+        <button class="ptm-mtab active" id="ptm-mtab-form" onclick="ptmSwitchMobileView('form')">รายละเอียดงาน</button>
+        <button class="ptm-mtab" id="ptm-mtab-cmt" onclick="ptmSwitchMobileView('cmt')">💬 ความคิดเห็น<span class="ptm-mtab-cnt" id="ptm-mtab-cnt" style="display:none;">0</span></button>
       </div>
       <!-- แถบแจ้งเตือนโหมดดูอย่างเดียว - โชว์เฉพาะตอนเปิดดู Task ของคนอื่นที่ไม่ใช่ผู้สร้าง/ผู้รับผิดชอบร่วม/Admin
            ควบคุม .display ที่ openPersonalTaskModal() ใน app.js -->
@@ -843,6 +851,25 @@
         </div>
       </div>
     </div>
+
+    <!-- ===== ระบบคอมเมนต์ - PC: แผงข้างถาวร / มือถือ: สลับมาเต็มจอเมื่อกดแท็บ "ความคิดเห็น" (ดู .ptm-has-cmt
+         และ .ptm-show-cmt ใน style.css กับ openPersonalTaskModal()/ptmSwitchMobileView() ใน app.js) ===== -->
+    <div class="ptm-cmt-panel" id="ptm-cmt-panel">
+      <div class="ptm-cmt-panel-head">
+        <div class="ptm-sect-label">ความคิดเห็น</div>
+        <span class="td-cmt-badge" id="ptm-cmt-badge" style="display:none;">0</span>
+      </div>
+      <div class="ptm-cmt-panel-list" id="ptm-cmt-list"></div>
+      <div class="ptm-cmt-panel-input">
+        <div class="td-cmt-input-row">
+          <textarea id="ptm-cmt-input" maxlength="2000" placeholder="พิมพ์ความคิดเห็น..."></textarea>
+          <button class="td-cmt-send-btn" id="ptm-cmt-send-btn" onclick="sendPersonalTaskComment()">ส่ง</button>
+        </div>
+        <label class="td-cmt-urgent-toggle"><input type="checkbox" id="ptm-cmt-urgent"> ทำเครื่องหมายว่าด่วน</label>
+        <div class="td-cmt-hint">ผู้รับผิดชอบทุกคนใน Task นี้จะได้รับการแจ้งเตือน</div>
+      </div>
+    </div>
+    </div>
   </div>
 
   <!-- ===== Modal Export รายงาน ===== -->
@@ -888,6 +915,23 @@
       <div class="td-section">
         <div class="td-section-title">ผู้ปฏิบัติงาน</div>
         <div id="td-staff-card" class="td-card"></div>
+      </div>
+      <div id="td-comments-section" class="td-section" style="display:none;">
+        <div class="td-cmt-toggle" id="td-cmt-toggle" onclick="toggleTaskCommentsSection()">
+          <span>💬 ความคิดเห็น<span id="td-cmt-count" class="td-cmt-badge" style="display:none;"></span></span>
+          <span class="td-cmt-chevron">▾</span>
+        </div>
+        <div id="td-cmt-body" class="td-cmt-body">
+          <div id="td-cmt-list" class="td-cmt-list"></div>
+          <div class="td-cmt-input-row">
+            <textarea id="td-cmt-input" placeholder="พิมพ์ความคิดเห็น..." maxlength="2000"></textarea>
+            <button id="td-cmt-send-btn" class="td-cmt-send-btn" onclick="sendTaskComment()">➤</button>
+          </div>
+          <label class="td-cmt-urgent-toggle">
+            <input type="checkbox" id="td-cmt-urgent"> ทำเครื่องหมายว่า "ด่วน" (แจ้งเตือนแบบเน้นสี)
+          </label>
+          <div class="td-cmt-hint">ผู้ปฏิบัติงานในการ์ดนี้จะได้รับแจ้งเตือนทันทีที่มีคอมเมนต์ใหม่</div>
+        </div>
       </div>
       <div id="td-actions" class="td-actions"></div>
     </div>
