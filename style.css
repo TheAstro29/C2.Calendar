@@ -1168,7 +1168,14 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
    เพราะทั้ง 2 ระบบใช้คลาส .td-cmt-* เดียวกันหมด ===== */
 .kebab-btn { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; border: none; background: transparent; color: var(--text-faint); font-size: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; line-height: 1; padding: 0; }
 .kebab-btn:hover { background: var(--border-soft); color: var(--text); }
-.kebab-menu { position: absolute; top: 26px; right: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.28); overflow: hidden; min-width: 110px; z-index: 5; }
+/* หมายเหตุ: .kebab-menu ถูกสร้างแบบลอย (fixed) แนบกับ document.body โดย toggleCommentKebab() ใน app.js
+   เสมอ (ไม่ได้ฝังอยู่ใน .td-cmt-bubble ที่มี overflow:hidden ของ modal) เพื่อไม่ให้โดน #td-cmt-list/
+   #ptm-cmt-list (overflow-y:auto) ตัดขาด - ดังนั้น z-index ต้องสูงกว่า modal คอมเมนต์ทั้ง 2 ตัวที่อาจเปิดอยู่
+   ตอนนั้น คือ #task-detail-modal-overlay (2060) และ #personal-task-modal-overlay (2100) ไม่งั้นเมนูจะโดน
+   พื้นหลัง modal บังจนมองไม่เห็นทั้งที่จริงๆ ถูกสร้างขึ้นมาแล้ว (บั๊กที่เจอจริงตอนทดสอบกับผู้ใช้) - ตั้งไว้สูง
+   กว่า modal ทุกตัวในแอป แต่ยังต่ำกว่า SweetAlert2 (.swal2-container z-index: 3000 !important) เพื่อให้กล่อง
+   ยืนยันการลบยังคงอยู่บนสุดเสมอ */
+.kebab-menu { position: absolute; top: 26px; right: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.28); overflow: hidden; min-width: 110px; z-index: 2900; }
 .kebab-menu button { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: none; padding: 8px 11px; font-size: 12px; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
 .kebab-menu button:hover { background: var(--surface-alt); }
 .kebab-menu button.danger { color: #ef4444; }
