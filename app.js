@@ -148,7 +148,8 @@ var CLOUD_FUNCTION_ACTIONS = [
   'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
   'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
   'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
-  'addTaskComment', 'addPersonalTaskComment'
+  'addTaskComment', 'addPersonalTaskComment',
+  'editTaskComment', 'deleteTaskComment', 'editPersonalTaskComment', 'deletePersonalTaskComment'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -3088,6 +3089,8 @@ function closeTaskDetailModal() {
   document.getElementById('task-detail-modal-overlay').style.display = 'none';
   if (_tdCommentsUnsub) { _tdCommentsUnsub(); _tdCommentsUnsub = null; }
   _tdCurrentTaskId = null;
+  closeGlobalKebabMenu();
+  _cmtEditingId = null;
   document.getElementById('td-cmt-toggle').classList.remove('open');
   document.getElementById('td-cmt-body').classList.remove('open');
 }
@@ -3111,29 +3114,194 @@ function subscribeTaskComments(taskId) {
     });
 }
 
-function renderTaskComments(comments) {
+// ===== แก้ไข/ลบคอมเมนต์ (Design A - เมนู kebab ⋮) - ใช้ร่วมกันทั้ง Task หลักและ Personal Task Board
+// เพราะทั้ง 2 ระบบใช้คลาส .td-cmt-* เดียวกันหมด ยืนยันกับผู้ใช้แล้ว: เจ้าของคอมเมนต์เท่านั้นที่แก้ไข/ลบ
+// ได้, แก้ไขไม่จำกัดเวลา, ลบได้แค่ภายใน 30 นาที (ปุ่มลบซ่อนไปเลยหลังพ้นเวลา), ลบแบบ soft-delete โชว์
+// สไตล์ LINE (ชื่อผู้คอมเมนต์ยังอยู่ + ข้อความ "ได้ลบข้อความนี้แล้ว") =====
+var COMMENT_DELETE_WINDOW_MS = 30 * 60 * 1000;
+var _cmtOpenKebabId = null;
+var _cmtEditingId = null;
+
+function _cmtCanDelete(c) {
+  if (!c.createdAt || !c.createdAt.toDate) return false;
+  return (Date.now() - c.createdAt.toDate().getTime()) <= COMMENT_DELETE_WINDOW_MS;
+}
+
+function _cmtRerender(kind) {
+  if (kind === 'task') renderTaskComments(_tdLastComments, true);
+  else renderPersonalTaskComments(_ptmLastComments, true);
+}
+
+function buildCommentItemHtml(c, kind, myAccountId) {
+  var initial = (c.authorName || '?').trim().charAt(0).toUpperCase();
+
+  if (c.deleted) {
+    return '<div class="td-cmt-item">' +
+      '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+      '<div class="td-cmt-bubble deleted">' +
+        '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span></div>' +
+        '<div class="td-cmt-text">🚫 ' + escapeHtmlPtb(c.authorName || '') + ' ได้ลบข้อความนี้แล้ว</div>' +
+      '</div></div>';
+  }
+
+  var isOwn = !!myAccountId && c.authorId === myAccountId;
+  var timeLabel = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString('th-TH') : 'กำลังส่ง...';
+
+  if (isOwn && _cmtEditingId === c.id) {
+    return '<div class="td-cmt-item">' +
+      '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+      '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + '">' +
+        '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
+        (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
+        '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span></div>' +
+        '<textarea class="td-cmt-edit-box" id="cmt-edit-box-' + c.id + '">' + escapeHtmlPtb(c.text || '') + '</textarea>' +
+        '<div class="td-cmt-edit-actions">' +
+          '<button class="td-cmt-edit-btn cancel" onclick="cancelEditComment(\'' + kind + '\')">ยกเลิก</button>' +
+          '<button class="td-cmt-edit-btn save" onclick="saveEditComment(\'' + kind + '\', \'' + c.id + '\')">บันทึก</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+
+  // หมายเหตุ: เมนู kebab ไม่ได้ฝังเป็น HTML ในนี้โดยตรง (ต่างจาก mockup ตอนออกแบบ) เพราะ #td-cmt-list/
+  // #ptm-cmt-list เป็นกล่อง overflow-y:auto ความสูงจำกัด (max-height) ถ้าคอมเมนต์อยู่ท้ายๆ รายการ เมนูที่
+  // โผล่ลงด้านล่างปุ่ม ⋮ จะโดนกล่องตัดขาดทันที (ทดสอบแล้วเจอบั๊กนี้จริงตอน verify) - แก้โดยให้ปุ่ม ⋮ แค่เปิด
+  // เมนูลอย (fixed position) แนบกับ document.body แทน ดู toggleCommentKebab() ด้านล่าง
+  var kebabHtml = isOwn
+    ? '<button class="kebab-btn" onclick="toggleCommentKebab(event, \'' + kind + '\', \'' + c.id + '\')">⋮</button>'
+    : '';
+
+  return '<div class="td-cmt-item">' +
+    '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
+    '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + (isOwn ? ' own' : '') + '">' +
+      kebabHtml +
+      '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
+      (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
+      '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span>' +
+      (c.editedAt ? '<span class="td-cmt-edited-tag">(แก้ไขแล้ว)</span>' : '') +
+      '</div>' +
+      '<div class="td-cmt-text">' + escapeHtmlPtb(c.text || '') + '</div>' +
+    '</div></div>';
+}
+
+// เมนู kebab แบบลอย (fixed) แนบกับ document.body ตัวเดียวใช้ร่วมกันทั้ง 2 ระบบคอมเมนต์ - หลุดพ้นปัญหา
+// ถูกตัดขาดโดย overflow-y:auto ของ #td-cmt-list/#ptm-cmt-list ตามที่คอมเมนต์ไว้ใน buildCommentItemHtml()
+function closeGlobalKebabMenu() {
+  var m = document.getElementById('cmt-global-kebab-menu');
+  if (m) m.remove();
+  _cmtOpenKebabId = null;
+}
+
+function toggleCommentKebab(evt, kind, commentId) {
+  if (evt) evt.stopPropagation();
+  if (_cmtOpenKebabId === commentId) { closeGlobalKebabMenu(); return; }
+  closeGlobalKebabMenu();
+  _cmtOpenKebabId = commentId;
+  var list = kind === 'task' ? _tdLastComments : _ptmLastComments;
+  var c = null;
+  for (var i = 0; i < list.length; i++) { if (list[i].id === commentId) { c = list[i]; break; } }
+  if (!c) return;
+  var canDelete = _cmtCanDelete(c);
+  var btn = evt.currentTarget;
+  var rect = btn.getBoundingClientRect();
+  var menu = document.createElement('div');
+  menu.id = 'cmt-global-kebab-menu';
+  menu.className = 'kebab-menu';
+  menu.style.position = 'fixed';
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.right = (window.innerWidth - rect.right) + 'px';
+  menu.innerHTML = '<button onclick="startEditComment(event, \'' + kind + '\', \'' + commentId + '\')">✏️ แก้ไข</button>' +
+    (canDelete ? '<div class="sep"></div><button class="danger" onclick="deleteCommentConfirm(event, \'' + kind + '\', \'' + commentId + '\')">🗑️ ลบ</button>' : '');
+  document.body.appendChild(menu);
+}
+
+function startEditComment(evt, kind, commentId) {
+  if (evt) evt.stopPropagation();
+  closeGlobalKebabMenu();
+  _cmtEditingId = commentId;
+  _cmtRerender(kind);
+  var box = document.getElementById('cmt-edit-box-' + commentId);
+  if (box) { box.focus(); box.selectionStart = box.selectionEnd = box.value.length; }
+}
+
+function cancelEditComment(kind) {
+  _cmtEditingId = null;
+  _cmtRerender(kind);
+}
+
+function saveEditComment(kind, commentId) {
+  var box = document.getElementById('cmt-edit-box-' + commentId);
+  if (!box) return;
+  var text = (box.value || '').trim();
+  if (!text) return;
+  var token = localStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+  var taskId = kind === 'task' ? _tdCurrentTaskId : _ptmCmtCurrentTaskId;
+  if (!taskId) return;
+  var action = kind === 'task' ? 'editTaskComment' : 'editPersonalTaskComment';
+  box.disabled = true;
+  callApi(action, { token: token, taskId: taskId, commentId: commentId, text: text }).then(function (result) {
+    if (result.success) {
+      _cmtEditingId = null;
+      _cmtRerender(kind); // onSnapshot จะอัปเดตข้อความจริงตามมาเองอีกที
+    } else {
+      box.disabled = false;
+      Swal.fire({ icon: 'error', title: 'แก้ไขความคิดเห็นไม่สำเร็จ', text: result.message });
+    }
+  }).catch(function (err) {
+    box.disabled = false;
+    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+  });
+}
+
+function deleteCommentConfirm(evt, kind, commentId) {
+  if (evt) evt.stopPropagation();
+  closeGlobalKebabMenu();
+  Swal.fire({
+    icon: 'warning', title: 'ลบความคิดเห็นนี้?', text: 'เมื่อลบแล้วจะไม่สามารถกู้คืนข้อความได้',
+    showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#ef4444'
+  }).then(function (res) {
+    if (!res.isConfirmed) return;
+    var token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return;
+    var taskId = kind === 'task' ? _tdCurrentTaskId : _ptmCmtCurrentTaskId;
+    if (!taskId) return;
+    var action = kind === 'task' ? 'deleteTaskComment' : 'deletePersonalTaskComment';
+    callApi(action, { token: token, taskId: taskId, commentId: commentId }).then(function (result) {
+      if (!result.success) {
+        Swal.fire({ icon: 'error', title: 'ลบความคิดเห็นไม่สำเร็จ', text: result.message });
+      }
+      // onSnapshot จะอัปเดต UI เป็นสถานะ "ลบแล้ว" ให้เองอัตโนมัติเมื่อสำเร็จ
+    }).catch(function (err) {
+      Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+    });
+  });
+}
+
+// ปิดเมนู kebab ลอยเมื่อคลิกนอกเมนู/ปุ่ม หรือเมื่อมีการ scroll ที่ไหนก็ตาม (กันเมนูค้างตำแหน่งเดิมทั้งที่
+// ปุ่ม ⋮ เลื่อนตำแหน่งไปแล้วจาก scroll ของ #td-cmt-list/#ptm-cmt-list หรือหน้าเว็บ)
+document.addEventListener('click', function (e) {
+  if (_cmtOpenKebabId === null) return;
+  if (e.target.closest('.kebab-menu') || e.target.closest('.kebab-btn')) return;
+  closeGlobalKebabMenu();
+});
+window.addEventListener('scroll', function () { closeGlobalKebabMenu(); }, true);
+
+var _tdLastComments = [];
+
+function renderTaskComments(comments, skipScroll) {
+  _tdLastComments = comments;
   var listEl = document.getElementById('td-cmt-list');
   var countEl = document.getElementById('td-cmt-count');
+  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
   if (comments.length === 0) {
     listEl.innerHTML = '<div class="td-cmt-empty">ยังไม่มีความคิดเห็น</div>';
     countEl.style.display = 'none';
   } else {
     countEl.textContent = comments.length;
     countEl.style.display = 'inline-block';
-    listEl.innerHTML = comments.map(function (c) {
-      var timeLabel = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString('th-TH') : 'กำลังส่ง...';
-      var initial = (c.authorName || '?').trim().charAt(0).toUpperCase();
-      return '<div class="td-cmt-item">' +
-        '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
-        '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + '">' +
-          '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
-          (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
-          '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span></div>' +
-          '<div class="td-cmt-text">' + escapeHtmlPtb(c.text || '') + '</div>' +
-        '</div></div>';
-    }).join('');
+    listEl.innerHTML = comments.map(function (c) { return buildCommentItemHtml(c, 'task', myAccountId); }).join('');
   }
-  listEl.scrollTop = listEl.scrollHeight;
+  if (!skipScroll) listEl.scrollTop = listEl.scrollHeight;
 }
 
 function sendTaskComment() {
@@ -4538,6 +4706,8 @@ function closePersonalTaskModal() {
   document.getElementById('personal-task-modal-overlay').style.display = 'none';
   if (_ptmCmtUnsub) { _ptmCmtUnsub(); _ptmCmtUnsub = null; }
   _ptmCmtCurrentTaskId = null;
+  closeGlobalKebabMenu();
+  _cmtEditingId = null;
 }
 
 // สลับมุมมอง "รายละเอียดงาน" / "ความคิดเห็น" - มีผลเฉพาะจอแคบ/มือถือ (ดู .ptm-modal-wrap.ptm-show-cmt ใน
@@ -4563,10 +4733,14 @@ function subscribePersonalTaskComments(taskId) {
     });
 }
 
-function renderPersonalTaskComments(comments) {
+var _ptmLastComments = [];
+
+function renderPersonalTaskComments(comments, skipScroll) {
+  _ptmLastComments = comments;
   var listEl = document.getElementById('ptm-cmt-list');
   var badgeEl = document.getElementById('ptm-cmt-badge');
   var tabCntEl = document.getElementById('ptm-mtab-cnt');
+  var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
   if (comments.length === 0) {
     listEl.innerHTML = '<div class="td-cmt-empty">ยังไม่มีความคิดเห็น</div>';
     badgeEl.style.display = 'none';
@@ -4576,20 +4750,9 @@ function renderPersonalTaskComments(comments) {
     badgeEl.style.display = 'inline-block';
     tabCntEl.textContent = comments.length;
     tabCntEl.style.display = 'inline-block';
-    listEl.innerHTML = comments.map(function (c) {
-      var timeLabel = c.createdAt && c.createdAt.toDate ? c.createdAt.toDate().toLocaleString('th-TH') : 'กำลังส่ง...';
-      var initial = (c.authorName || '?').trim().charAt(0).toUpperCase();
-      return '<div class="td-cmt-item">' +
-        '<div class="td-cmt-avatar">' + escapeHtmlPtb(initial) + '</div>' +
-        '<div class="td-cmt-bubble' + (c.urgent ? ' urgent' : '') + '">' +
-          '<div class="td-cmt-top"><span class="td-cmt-name">' + escapeHtmlPtb(c.authorName || '') + '</span>' +
-          (c.urgent ? '<span class="td-cmt-tag">⚠ ด่วน</span>' : '') +
-          '<span class="td-cmt-time">' + escapeHtmlPtb(timeLabel) + '</span></div>' +
-          '<div class="td-cmt-text">' + escapeHtmlPtb(c.text || '') + '</div>' +
-        '</div></div>';
-    }).join('');
+    listEl.innerHTML = comments.map(function (c) { return buildCommentItemHtml(c, 'ptm', myAccountId); }).join('');
   }
-  listEl.scrollTop = listEl.scrollHeight;
+  if (!skipScroll) listEl.scrollTop = listEl.scrollHeight;
 }
 
 function sendPersonalTaskComment() {
