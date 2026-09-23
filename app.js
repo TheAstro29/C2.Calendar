@@ -3115,17 +3115,11 @@ function subscribeTaskComments(taskId) {
 }
 
 // ===== แก้ไข/ลบคอมเมนต์ (Design A - เมนู kebab ⋮) - ใช้ร่วมกันทั้ง Task หลักและ Personal Task Board
-// เพราะทั้ง 2 ระบบใช้คลาส .td-cmt-* เดียวกันหมด ยืนยันกับผู้ใช้แล้ว: เจ้าของคอมเมนต์เท่านั้นที่แก้ไข/ลบ
-// ได้, แก้ไขไม่จำกัดเวลา, ลบได้แค่ภายใน 30 นาที (ปุ่มลบซ่อนไปเลยหลังพ้นเวลา), ลบแบบ soft-delete โชว์
-// สไตล์ LINE (ชื่อผู้คอมเมนต์ยังอยู่ + ข้อความ "ได้ลบข้อความนี้แล้ว") =====
-var COMMENT_DELETE_WINDOW_MS = 30 * 60 * 1000;
+// เพราะทั้ง 2 ระบบใช้คลาส .td-cmt-* เดียวกันหมด ยืนยันกับผู้ใช้แล้ว: เจ้าของคอมเมนต์เท่านั้นที่แก้ไข/ลบได้
+// ทั้งแก้ไขและลบทำได้ตลอดเวลาไม่จำกัด (ปรับจากเดิมที่เคยจำกัดลบแค่ 30 นาที) ลบแบบ soft-delete โชว์สไตล์
+// LINE (ชื่อผู้คอมเมนต์ยังอยู่ + ข้อความ "ได้ลบข้อความนี้แล้ว") =====
 var _cmtOpenKebabId = null;
 var _cmtEditingId = null;
-
-function _cmtCanDelete(c) {
-  if (!c.createdAt || !c.createdAt.toDate) return false;
-  return (Date.now() - c.createdAt.toDate().getTime()) <= COMMENT_DELETE_WINDOW_MS;
-}
 
 function _cmtRerender(kind) {
   if (kind === 'task') renderTaskComments(_tdLastComments, true);
@@ -3200,7 +3194,6 @@ function toggleCommentKebab(evt, kind, commentId) {
   var c = null;
   for (var i = 0; i < list.length; i++) { if (list[i].id === commentId) { c = list[i]; break; } }
   if (!c) return;
-  var canDelete = _cmtCanDelete(c);
   var btn = evt.currentTarget;
   var rect = btn.getBoundingClientRect();
   var menu = document.createElement('div');
@@ -3209,8 +3202,9 @@ function toggleCommentKebab(evt, kind, commentId) {
   menu.style.position = 'fixed';
   menu.style.top = (rect.bottom + 4) + 'px';
   menu.style.right = (window.innerWidth - rect.right) + 'px';
+  // แก้ไข/ลบได้ตลอดเวลาไม่จำกัด (ตามที่ผู้ใช้ปรับล่าสุด - เดิมเคยจำกัดลบแค่ 30 นาที)
   menu.innerHTML = '<button onclick="startEditComment(event, \'' + kind + '\', \'' + commentId + '\')">✏️ แก้ไข</button>' +
-    (canDelete ? '<div class="sep"></div><button class="danger" onclick="deleteCommentConfirm(event, \'' + kind + '\', \'' + commentId + '\')">🗑️ ลบ</button>' : '');
+    '<div class="sep"></div><button class="danger" onclick="deleteCommentConfirm(event, \'' + kind + '\', \'' + commentId + '\')">🗑️ ลบ</button>';
   document.body.appendChild(menu);
 }
 
