@@ -22,17 +22,16 @@ firebase.initializeApp({
 
 var messaging = firebase.messaging();
 
-// โชว์ notification ของระบบปฏิบัติการเองตอนแอปอยู่เบื้องหลัง/ปิดไปแล้ว
+// แก้บั๊ก: แจ้งเตือนเด้งซ้อน 2 ใบต่อ push 1 ครั้ง - เดิมโค้ดตรงนี้เรียก self.registration.showNotification()
+// เอง แต่ payload ที่ backend ส่งมา (ดู sendPushToAccount() ใน functions/index.js) มีฟิลด์
+// "notification: {title, body}" ติดมาด้วยเสมอ ซึ่งพอ payload มีฟิลด์ notification แบบนี้ ตัว Firebase
+// Messaging SDK เองจะโชว์ notification ของระบบปฏิบัติการให้อัตโนมัติอยู่แล้ว (ก่อนโค้ดข้างล่างนี้จะรันด้วยซ้ำ)
+// - เรียก showNotification() เองซ้ำอีกที เลยกลายเป็นเด้ง 2 ใบต่อ 1 push (icon/badge/data ที่เคยตั้งเองตรงนี้
+// ก็มาจาก payload.webpush.notification/data ซึ่ง SDK ใช้ตอนโชว์อัตโนมัติอยู่แล้วเหมือนกัน ไม่ได้หายไปไหน)
+// เลยตัดการเรียก showNotification() เองออก ปล่อยให้ SDK โชว์แบบเดียวพอ - ถ้าวันไหนอยากทำอะไรเพิ่มเติมตอน
+// รับ background message (เช่นอัปเดต badge count) ค่อยมาเติม logic อื่นในนี้ได้ แต่ห้ามเรียก showNotification เอง
 messaging.onBackgroundMessage(function (payload) {
-  var title = (payload.notification && payload.notification.title) || 'C2 Calendar';
-  var body = (payload.notification && payload.notification.body) || '';
-  var data = payload.data || {};
-  self.registration.showNotification(title, {
-    body: body,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    data: data
-  });
+  // ไม่ต้องทำอะไร - SDK โชว์ notification ให้อัตโนมัติแล้วจาก payload.notification ที่ backend ส่งมา
 });
 
 // กดที่ตัว notification แล้วโฟกัสแท็บที่เปิดอยู่ (ถ้ามี) หรือเปิดแท็บใหม่ไปหน้าแรกของแอป
