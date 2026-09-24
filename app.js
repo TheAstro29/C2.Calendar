@@ -1403,7 +1403,8 @@ function renderTaskStaffChecklist(result, selectedIds) {
     // เดิมซ่อน Admin ออกจากตัวเลือกมอบหมายงาน - ผู้ใช้แจ้งว่าต้องเลือก Admin เป็นผู้ปฏิบัติงานได้ด้วย จึงเอาการ
     // ซ่อนออก ให้ Admin ที่ยัง active โชว์ในรายชื่อเหมือนพนักงานคนอื่นๆ ปกติ
     .forEach(function (s) {
-      var isSelf = myRole === 'staff' && s.staffId === myAccountId;
+      // ล็อคชื่อตัวเองเสมอตอนลงนัดงาน ทั้ง staff และ ceo (เดิมล็อคแค่ staff) มีแค่ admin เท่านั้นที่ไม่ถูกล็อค
+      var isSelf = (myRole === 'staff' || myRole === 'ceo') && s.staffId === myAccountId;
       var checked = isSelf || selectedIds.indexOf(s.staffId) !== -1;
       var label = document.createElement('label');
       label.innerHTML =
