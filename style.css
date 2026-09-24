@@ -746,27 +746,51 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .side-panel.collapsed { width: 100%; height: 0; padding: 0; opacity: 0; }
 }
 
-/* Modal login - Glassmorphism */
+/* ===== Modal login - ดีไซน์ "Aurora Mesh" (เลือกจาก 4 แบบที่ทำ preview ให้ดูก่อน) =====
+   พื้นหลังเป็น mesh gradient เขียวเข้มหลายชั้นทึบสนิท ปิดปฏิทินด้านหลังมิดชิด ไม่ให้เห็นเลย (เดิมใช้
+   backdrop-filter: blur() บนพื้นหลังโปร่งแสง ทำให้ยังเห็นปฏิทินเลือนๆ อยู่ด้านหลัง) การ์ด login ยังคง
+   กระจกโปร่งแสง (glassmorphism) ลอยอยู่ตรงกลาง เพิ่มโลโก้/ชื่อแอปไว้เหนือการ์ดด้วย */
 #login-modal-overlay {
-  display: none; position: fixed; inset: 0;
-  background: linear-gradient(135deg, rgba(5,150,105,0.55), rgba(4,120,87,0.5));
-  backdrop-filter: blur(2px);
-  align-items: center; justify-content: center; z-index: 2050;
+  display: none; position: fixed; inset: 0; overflow: hidden;
+  background: #053a2c;
+  flex-direction: column; align-items: center; justify-content: center; gap: 26px;
+  padding: 32px 24px; z-index: 2050;
 }
+/* เลเยอร์ mesh gradient แยกไว้ต่างหาก (อยู่ล่างสุด) กันไปชนกับ backdrop-filter ของการ์ดด้านบน */
+#login-mesh-bg {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background:
+    radial-gradient(ellipse 620px 500px at 12% 8%, rgba(16,185,129,0.5), transparent 60%),
+    radial-gradient(ellipse 560px 620px at 92% 18%, rgba(6,95,70,0.6), transparent 55%),
+    radial-gradient(ellipse 680px 560px at 20% 96%, rgba(4,120,87,0.55), transparent 60%),
+    radial-gradient(ellipse 560px 560px at 100% 100%, rgba(167,243,208,0.15), transparent 55%),
+    linear-gradient(160deg, #064e3b 0%, #053a2c 55%, #042f24 100%);
+}
+#login-brand { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#login-logo-wrap { position: relative; width: 76px; height: 76px; }
+#login-logo-glow {
+  position: absolute; inset: -14px; filter: blur(6px);
+  background: radial-gradient(circle, rgba(167,243,208,0.35), transparent 70%);
+}
+#login-logo-wrap svg { position: relative; }
+#login-brand-text { font-size: 21px; font-weight: 700; color: #fff; letter-spacing: 0.2px; }
+#login-brand-text .accent { color: #6ee7b7; }
+#login-footer { position: relative; z-index: 1; font-size: 11.5px; color: rgba(255,255,255,0.4); margin: 0; }
+
 #login-box {
-  background: rgba(255,255,255,0.14);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid rgba(255,255,255,0.35);
-  border-radius: 18px; padding: 36px 30px; width: 300px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.35);
-  position: relative;
+  position: relative; z-index: 1;
+  background: rgba(255,255,255,0.10);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 20px; padding: 32px 26px; width: 300px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 #login-box.shake {
   animation: shake 0.45s ease;
   border-color: rgba(255,107,107,0.8);
-  box-shadow: 0 8px 40px rgba(0,0,0,0.35), 0 0 0 3px rgba(255,107,107,0.35);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35), 0 0 0 3px rgba(255,107,107,0.35);
 }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
@@ -785,26 +809,26 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 .pw-toggle-btn:hover { opacity: 1; }
 
-#login-box h2 { font-size: 18px; margin: 0 0 4px; color: #fff; font-weight: 600; }
-#login-box p.sub { font-size: 13px; color: rgba(255,255,255,0.7); margin: 0 0 20px; }
+#login-box h2 { font-size: 19px; margin: 0 0 2px; color: #fff; font-weight: 600; }
+#login-box p.sub { font-size: 13px; color: rgba(255,255,255,0.65); margin: 0 0 18px; }
 #login-box input {
-  width: 100%; padding: 11px 12px; margin-bottom: 12px; font-size: 14px;
-  border: 1px solid rgba(255,255,255,0.35); border-radius: 8px;
-  background: rgba(255,255,255,0.12); color: #fff;
+  width: 100%; padding: 12px 14px; margin-bottom: 12px; font-size: 14px;
+  border: 1px solid rgba(255,255,255,0.28); border-radius: 10px;
+  background: rgba(255,255,255,0.10); color: #fff;
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 #login-box input::placeholder { color: rgba(255,255,255,0.55); }
 #login-box input:focus {
-  outline: none; border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.18);
+  outline: none; border-color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.16);
 }
 #login-box button.submit {
-  width: 100%; padding: 11px; color: #fff; border: none;
-  background: linear-gradient(135deg, #10b981, #059669);
-  border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; margin-top: 4px;
-  box-shadow: 0 4px 14px rgba(5,150,105,0.4);
+  width: 100%; padding: 13px; color: #fff; border: none;
+  background: linear-gradient(135deg, #34d399, #059669);
+  border-radius: 10px; font-size: 14.5px; font-weight: 600; cursor: pointer; margin-top: 4px;
+  box-shadow: 0 8px 20px rgba(5,150,105,0.45);
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-#login-box button.submit:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(5,150,105,0.5); }
+#login-box button.submit:hover { transform: translateY(-1px); box-shadow: 0 10px 26px rgba(4,120,87,0.55); }
 #login-close {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: rgba(255,255,255,0.7);

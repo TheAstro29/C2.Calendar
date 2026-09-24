@@ -249,6 +249,29 @@
   </div>
 
   <div id="login-modal-overlay">
+    <!-- ดีไซน์ "Aurora Mesh" - พื้นหลังเขียวทึบหลายชั้นแบบ mesh gradient ปิดปฏิทินด้านหลังมิดชิด ไม่โชว์ให้เห็นเลย
+         (เดิมใช้ backdrop-filter: blur() ทำให้ยังเห็นปฏิทินเลือนๆ อยู่ด้านหลัง เปลี่ยนเป็นทึบสนิทแทน) -->
+    <div id="login-mesh-bg" aria-hidden="true"></div>
+
+    <div id="login-brand">
+      <div id="login-logo-wrap">
+        <div id="login-logo-glow"></div>
+        <svg width="76" height="76" viewBox="0 0 64 64" fill="none">
+          <rect x="4" y="6" width="56" height="54" rx="16" fill="rgba(255,255,255,0.14)"/>
+          <rect x="20" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
+          <rect x="39" y="2" width="5" height="12" rx="2.5" fill="#ffffff"/>
+          <rect x="12" y="12" width="40" height="40" rx="9" fill="#ffffff"/>
+          <rect x="12" y="12" width="40" height="13" rx="9" fill="#047857"/>
+          <circle cx="21" cy="34" r="3" fill="#059669"/>
+          <circle cx="32" cy="34" r="3" fill="#059669"/>
+          <circle cx="43" cy="34" r="3" fill="#a7f3d0"/>
+          <circle cx="21" cy="44" r="3" fill="#059669"/>
+          <circle cx="32" cy="44" r="3" fill="#a7f3d0"/>
+        </svg>
+      </div>
+      <div id="login-brand-text"><span class="accent">C2</span> Calendar</div>
+    </div>
+
     <div id="login-box">
       <button id="login-close" onclick="closeLoginModal()">✕</button>
       <h2>เข้าสู่ระบบ C2 Calendar</h2>
@@ -261,6 +284,8 @@
       <p id="login-error-text"></p>
       <button id="login-submit-btn" class="submit" onclick="doLogin()">เข้าสู่ระบบ</button>
     </div>
+
+    <p id="login-footer">© C2 Tech Company Limited</p>
   </div>
 
   <div id="staff-modal-overlay">
