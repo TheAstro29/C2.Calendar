@@ -485,11 +485,16 @@ function buildEventsFromTaskDocs(docs) {
 }
 
 // ===== ฟังการเปลี่ยนแปลงงานแบบ real-time (แทนที่ loadPublicEvents/loadAdminEvents เดิม) =====
-// อ่านได้ทุกคนเสมอ (แม้ไม่ login) ตาม Security Rules ที่ตั้งไว้ - ไม่ต้องแยก public/admin อีกต่อไป
+// แก้เรื่องความปลอดภัย: เดิมอ่านได้ทุกคนเสมอแม้ไม่ login (ตาม Security Rules เดิม) เปลี่ยนเป็นต้อง login
+// ก่อนแล้วเท่านั้น (allow read: if request.auth != null;) - เรียกฟังก์ชันนี้ได้ก็ต่อเมื่อผ่าน
+// startAuthenticatedApp() แล้ว คืนค่า unsubscribe function กลับไปเก็บไว้ ให้ doLogout() เรียกปิด
+// listener ทิ้งได้ตอน logout (กันข้อมูลงานเก่าค้างอยู่หลัง logout)
 var lastTaskDocs = [];
+var _unsubTasks = null;
+var _unsubHolidays = null;
 
 function setupTasksRealtimeListener() {
-  fbDb.collection('tasks').onSnapshot(function (snapshot) {
+  return fbDb.collection('tasks').onSnapshot(function (snapshot) {
     lastTaskDocs = snapshot.docs;
     lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
     renderCalendar({ success: true, events: lastRenderedEvents });
@@ -500,7 +505,7 @@ function setupTasksRealtimeListener() {
 
 // ===== ฟังการเปลี่ยนแปลงวันหยุดแบบ real-time (แทนที่ loadHolidays เดิม) =====
 function setupHolidaysRealtimeListener() {
-  fbDb.collection('holidays').onSnapshot(function (snapshot) {
+  return fbDb.collection('holidays').onSnapshot(function (snapshot) {
     holidaysCache = snapshot.docs.map(function (d) {
       var row = d.data();
       return { holidayId: d.id, type: row.type, value: row.value, name: row.name };
@@ -521,18 +526,18 @@ function refreshCalendarDayCells() {
   renderCalendar({ success: true, events: lastRenderedEvents });
 }
 
-// ทุกคนเห็นปฏิทินได้เสมอตั้งแต่เปิดหน้าเว็บ ไม่ต้อง login
-// ไม่ต้องมี local cache/stale-while-revalidate อีกต่อไป เพราะ Firestore real-time เร็วกว่าและทำงานแทนได้ดีกว่าอยู่แล้ว
+// แก้เรื่องความปลอดภัย: บังคับ login ก่อนถึงจะเข้าดูปฏิทินได้เสมอ (เดิมทุกคนที่มีลิงก์ดูได้แม้ไม่ login -
+// เปลี่ยนตาม request ของผู้ใช้เพื่อกันบุคคลภายนอกเข้าถึงข้อมูลงาน/วันหยุด) checkExistingSession() ด้านล่างเป็น
+// คนตัดสินใจว่าจะเข้าแอปเลย (มี session เดิมที่ยัง valid) หรือต้องโชว์หน้าบังคับ login ก่อน - ตัว
+// setupHolidaysRealtimeListener()/setupTasksRealtimeListener()/loadMemberSidebar()/loadTodoList() ที่เคย
+// เรียกตรงนี้ทันที ย้ายไปเรียกใน startAuthenticatedApp() แทน (เรียกได้ก็ต่อเมื่อ login แล้วเท่านั้น เพราะ
+// Firestore Security Rules ของ tasks/holidays เปลี่ยนเป็น allow read: if request.auth != null; แล้ว)
 window.onload = function () {
   // ปุ่มสลับธีมยังไม่มีตอน inline script ใน <head> เซ็ต data-theme ไว้ตั้งแต่ก่อนหน้านี้ (กันจอกระพริบ)
   // ต้อง sync ไอคอน/ label ของปุ่มให้ตรงกับค่าที่จำไว้อีกทีตอนนี้ ที่ DOM ของปุ่มพร้อมแล้ว
   applyThemePref(getThemePref());
   startSlowLoadingHintTimer();
-  loadMemberSidebar();
-  setupHolidaysRealtimeListener();
-  setupTasksRealtimeListener();
   checkExistingSession();
-  loadTodoList();
 
   ['username', 'password'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -632,19 +637,96 @@ function getOverlappingHolidays(startDateTime, endDateTime) {
 function checkExistingSession() {
   var token = localStorage.getItem(TOKEN_KEY);
   var name = localStorage.getItem(NAME_KEY);
-  if (!token) return;
+  if (!token) { hidePageLoading(); showAuthGate(); return; }
 
   callApi('validateSessionCallable', { token: token }).then(function (result) {
-    if (result.valid) {
-      localStorage.setItem(ROLE_KEY, result.role);
-      localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
-      enterAdminMode(name, result.role);
-      loadAdminEvents(token);
-    } else {
+    if (!result.valid) {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(NAME_KEY);
+      hidePageLoading();
+      showAuthGate();
+      return;
     }
+    localStorage.setItem(ROLE_KEY, result.role);
+    localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
+
+    // มี session ของแอป (Firestore sessions collection) ที่ยัง valid แล้ว แต่ต้องรอ Firebase Auth
+    // (fbAuth) เองด้วยว่า restore สถานะ login กลับมาจริงหรือยัง ก่อนจะเริ่มอ่าน Firestore (tasks/holidays)
+    // เพราะ Security Rules เช็ค request.auth != null - ปกติ Firebase SDK จะ restore ให้เองอัตโนมัติจาก
+    // ข้อมูลที่จำไว้ในเครื่อง (indexedDB) แต่เป็นการทำงานแบบ async ไม่ทันตอน onload เรียกเสมอไป ถ้าเริ่ม
+    // listener ก่อน auth restore เสร็จ จะโดน permission-denied ทันที (และ onSnapshot ไม่ retry เองด้วย)
+    var unsub = fbAuth.onAuthStateChanged(function (user) {
+      unsub();
+      if (user) {
+        startAuthenticatedApp(name, result.role);
+      } else {
+        // มี session ของแอปอยู่ (ยังไม่หมดอายุ) แต่ Firebase Auth ในเบราว์เซอร์หลุดไปแล้ว (เช่น ล้าง
+        // site data/เปลี่ยนเครื่อง) ถือว่าต้อง login ใหม่เพื่อความปลอดภัย ไม่ปล่อยให้เข้าแบบครึ่งๆ กลางๆ
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(NAME_KEY);
+        hidePageLoading();
+        showAuthGate();
+      }
+    });
+  }).catch(function (err) {
+    console.error('ตรวจสอบ session ไม่สำเร็จ', err);
+    hidePageLoading();
+    showAuthGate();
   });
+}
+
+// ===== บังคับ login ก่อนเข้าใช้งาน (auth gate) =====
+// ใช้ modal login เดิมตัวเดียวกัน (#login-modal-overlay) แต่เปิดแบบ "บังคับ" - ซ่อนปุ่มปิด (✕) และห้าม
+// ปิดผ่านทางอื่น (ดู closeLoginModal ด้านล่างที่เช็ค class นี้) จนกว่าจะ login สำเร็จจริงเท่านั้น ไม่ push
+// เข้า browser history stack (_pushModalNav) เหมือน modal ทั่วไป เพราะไม่ต้องการให้ปุ่ม Back เผลอปิดได้
+var _authGateStarted = false;
+
+function showAuthGate() {
+  var overlay = document.getElementById('login-modal-overlay');
+  overlay.classList.add('login-forced');
+  overlay.style.display = 'flex';
+  document.getElementById('login-close').style.display = 'none';
+  var sub = document.querySelector('#login-box p.sub');
+  if (sub) sub.textContent = 'กรุณาเข้าสู่ระบบเพื่อเข้าใช้งาน C2 Calendar';
+  document.getElementById('login-error-text').style.display = 'none';
+  setTimeout(function () {
+    var el = document.getElementById('username');
+    if (el) el.focus();
+  }, 50);
+}
+
+function hideAuthGate() {
+  var overlay = document.getElementById('login-modal-overlay');
+  overlay.classList.remove('login-forced');
+  overlay.style.display = 'none';
+  document.getElementById('login-close').style.display = '';
+  var sub = document.querySelector('#login-box p.sub');
+  if (sub) sub.textContent = 'สำหรับจัดการงานต่างๆ';
+}
+
+// เริ่มโหลดข้อมูล/แสดงแอปจริง - เรียกได้ก็ต่อเมื่อยืนยันแล้วว่า login สำเร็จ (ทั้ง session ของแอปเอง และ
+// Firebase Auth) เท่านั้น กันเรียกซ้ำถ้ามีหลาย path เรียกเข้ามาพร้อมกัน (checkExistingSession + doLogin)
+function startAuthenticatedApp(name, role) {
+  if (_authGateStarted) return;
+  _authGateStarted = true;
+  hideAuthGate();
+  enterAdminMode(name, role);
+  _unsubHolidays = setupHolidaysRealtimeListener();
+  _unsubTasks = setupTasksRealtimeListener();
+  loadMemberSidebar();
+  loadTodoList();
+}
+
+// ปิด listener/ข้อมูลทั้งหมดที่โหลดไว้ตอน login (เรียกตอน logout) - กันไม่ให้ข้อมูลงาน/วันหยุดเก่าที่เคย
+// โหลดไว้ค้างอยู่ในปฏิทินให้เห็นหลัง logout ไปแล้ว
+function teardownAuthenticatedListeners() {
+  if (_unsubTasks) { _unsubTasks(); _unsubTasks = null; }
+  if (_unsubHolidays) { _unsubHolidays(); _unsubHolidays = null; }
+  if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
+  lastTaskDocs = [];
+  lastRenderedEvents = [];
+  holidaysCache = [];
+  _authGateStarted = false;
 }
 
 function openLoginModal() {
@@ -654,7 +736,10 @@ function openLoginModal() {
   _pushModalNav('login-modal-overlay');
 }
 function closeLoginModal() {
-  document.getElementById('login-modal-overlay').style.display = 'none';
+  var overlay = document.getElementById('login-modal-overlay');
+  // บังคับ login ค้างอยู่ (auth gate) - ห้ามปิดจนกว่าจะ login สำเร็จ ไม่ว่าจะเรียกมาจากทางไหนก็ตาม
+  if (overlay.classList.contains('login-forced')) return;
+  overlay.style.display = 'none';
   document.getElementById('login-error-text').style.display = 'none';
 }
 
@@ -692,9 +777,7 @@ function doLogin() {
         localStorage.setItem(NAME_KEY, result.fullName);
         localStorage.setItem(ROLE_KEY, result.role);
         localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
-        closeLoginModal();
-        enterAdminMode(result.fullName, result.role);
-        loadAdminEvents(result.token);
+        startAuthenticatedApp(result.fullName, result.role);
         Toast.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ' + result.fullName });
       });
     } else {
@@ -714,7 +797,8 @@ function doLogout() {
   localStorage.removeItem(ACCOUNT_ID_KEY);
   fbAuth.signOut();
   exitAdminMode();
-  loadPublicEvents();
+  teardownAuthenticatedListeners();
+  showAuthGate();
   Toast.fire({ icon: 'info', title: 'ออกจากระบบแล้ว' });
 }
 
