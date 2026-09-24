@@ -34,15 +34,30 @@ messaging.onBackgroundMessage(function (payload) {
   // ไม่ต้องทำอะไร - SDK โชว์ notification ให้อัตโนมัติแล้วจาก payload.notification ที่ backend ส่งมา
 });
 
-// กดที่ตัว notification แล้วโฟกัสแท็บที่เปิดอยู่ (ถ้ามี) หรือเปิดแท็บใหม่ไปหน้าแรกของแอป
+// กดที่ตัว notification แล้วโฟกัสแท็บที่เปิดอยู่ (ถ้ามี) หรือเปิดแท็บใหม่เข้าแอป
+//
+// แก้บั๊ก: เดิมโค้ดตรงนี้เรียก clients.openWindow('/') ซึ่งเป็น path แบบ absolute จาก root ของโดเมน
+// (เช่น theastro29.github.io/) แต่แอปนี้ deploy อยู่ใต้ subpath ของ GitHub Pages (เช่น
+// theastro29.github.io/C2-Calendar/ - ดูได้จาก manifest.json ที่ตั้ง start_url เป็น "./index.html"
+// แบบ relative) เลยกลายเป็นกดแจ้งเตือนแล้วเด้งไปหน้า root เปล่าๆ ของ GitHub Pages แทนที่จะเข้าแอปจริง
+// (เกิดเฉพาะตอนไม่มีแท็บแอปเปิดอยู่เบื้องหลังอยู่แล้ว - ถ้ามีแท็บเปิดอยู่ โค้ด focus() ด้านบนจะทำงานก่อน
+// เลยไม่เจอบั๊กนี้)
+//
+// แก้โดยคำนวณ URL ของแอปจาก self.registration.scope แทนการ hardcode '/' - scope ของ service worker
+// จะเท่ากับ path ของโฟลเดอร์ที่ตัวไฟล์นี้เองถูกลงทะเบียนอยู่เสมอ (ดูคอมเมนต์บนสุดของไฟล์ - ไฟล์นี้ต้องอยู่
+// โฟลเดอร์เดียวกับ index.html) ดังนั้นไม่ว่าแอปจะ deploy อยู่ที่ root หรือ subpath ไหนก็ตาม ค่านี้จะถูกต้อง
+// เสมอโดยไม่ต้องมาแก้โค้ดซ้ำถ้าวันหลังย้าย repo/domain
 self.addEventListener('notificationclick', function (event) {
   event.notification.close();
+
+  var appUrl = new URL('index.html', self.registration.scope).href;
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (clientList) {
       for (var i = 0; i < clientList.length; i++) {
         if ('focus' in clientList[i]) return clientList[i].focus();
       }
-      if (clients.openWindow) return clients.openWindow('/');
+      if (clients.openWindow) return clients.openWindow(appUrl);
     })
   );
 });
