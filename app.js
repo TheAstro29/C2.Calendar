@@ -816,8 +816,17 @@ function enterAdminMode(fullName, role) {
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
   document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'block'; // ทุก role ที่ login แล้วมี Task Board ของตัวเองได้
-  requestNotificationPermission();
-  setupPushNotifications();
+  // แก้บั๊ก: เจอ error ของ Firebase Messaging (ลงทะเบียน default service worker ไม่สำเร็จ) หลุดไปโผล่เป็น
+  // ข้อความ error ตอน login ทั้งที่ setupPushNotifications() ควร fail แบบเงียบๆ เท่านั้น (ตามคอมเมนต์ในฟังก์ชัน
+  // นั้น) ต้นเหตุคือ enterAdminMode() ถูกเรียกจากใน .then() ของ doLogin() ตรงๆ เลยมีโอกาสที่ error จากส่วนนี้
+  // ไหลย้อนกลับไปโดน .catch() ของ doLogin() ได้ (Firebase Messaging SDK เอง auto พยายามลงทะเบียน
+  // firebase-messaging-sw.js ที่ root ของโดเมนเป็นค่า default ภายใน แยกจาก path ที่เราลงทะเบียนเองด้วย) ย้าย
+  // มาเรียกผ่าน setTimeout(...,0) แทน ตัดขาดจาก call stack/promise chain ของ login โดยสิ้นเชิง ยังไงก็ไม่มีทาง
+  // ทำให้ login ดูเหมือนพังได้อีกต่อไป ไม่ว่า push notification จะลงทะเบียนสำเร็จหรือไม่ก็ตาม
+  setTimeout(function () {
+    requestNotificationPermission();
+    setupPushNotifications();
+  }, 0);
   setupNotificationsRealtimeListener();
   setupPersonalTasksListener();
   loadTodoList();
