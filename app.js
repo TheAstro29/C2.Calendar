@@ -412,7 +412,9 @@ function updateLegendCounts() {
     if (!ev.start || ev.start < start || ev.start >= end) return;
     counts[t]++;
   });
-  document.querySelectorAll('#type-legend .legend-item').forEach(function (el) {
+  // เติมเลขทั้งฝั่ง sidebar เดสก์ท็อป (#type-legend) และแถบชิปมือถือ (#type-legend-mobile) พร้อมกัน - เดิมอัปเดต
+  // แค่ฝั่ง PC ทำให้ชิปมือถือไม่มีตัวเลขกำกับเลย (ผู้ใช้แจ้งว่าอยากได้ตัวเลขบนชิปมือถือด้วย)
+  document.querySelectorAll('#type-legend .legend-item, #type-legend-mobile .legend-item').forEach(function (el) {
     var t = el.getAttribute('data-type');
     var countEl = el.querySelector('.legend-count');
     if (countEl) countEl.textContent = counts[t] || 0;
@@ -4391,6 +4393,33 @@ function updatePtbSummaryCard() {
   });
   var el = document.getElementById('ptb-summary-count');
   if (el) el.textContent = mine.length === 0 ? 'ไม่มีงานค้าง' : mine.length + ' งานที่ต้องทำ';
+  updateOrgTaskSummaryCard();
+}
+
+// การ์ด "สรุปงานภาพรวมขององค์กร" ในไซด์บาร์ "สรุป" (เฉพาะมือถือ - ดู style.css) - คำนวณจาก _personalTasksCache
+// ตรงๆ (แคชนี้มีงาน "ทั้งบริษัท" อยู่แล้ว ไม่ใช่แค่ของฉัน ดู setupPersonalTasksListener()) ไม่ต้องยิง API เพิ่ม
+// เรียกซ้ำทุกครั้งที่แคชอัปเดต (ดู updatePtbSummaryCard ด้านบนที่เรียกฟังก์ชันนี้ต่อ)
+function updateOrgTaskSummaryCard() {
+  var totalEl = document.getElementById('ots-total-n');
+  if (!totalEl) return; // การ์ดนี้อยู่ในไซด์บาร์ที่ยังไม่ถูก render (ยังไม่ login) - ข้ามไปเงียบๆ
+  if (!_personalTasksLoaded) return;
+  var all = _personalTasksCache;
+  var doneN = 0, peopleSet = {};
+  all.forEach(function (t) {
+    if (t.status === 'done') doneN++;
+    (t.assigneeIds || []).forEach(function (id) { peopleSet[id] = true; });
+  });
+  var overdueN = all.filter(isPtbOverdue).length;
+  document.getElementById('ots-total-n').textContent = all.length;
+  document.getElementById('ots-done-n').textContent = doneN;
+  document.getElementById('ots-overdue-n').textContent = overdueN;
+  document.getElementById('ots-people-n').textContent = Object.keys(peopleSet).length;
+}
+
+// เปิด Task Board ไปที่แท็บ "ภาพรวมทั้งบริษัท" ตรงๆ เลย - เรียกจากการ์ด #org-task-summary-card บนมือถือ
+function openOrgTaskDashboard() {
+  openTaskBoardModal();
+  switchTaskBoardView('admin');
 }
 
 function isPtbOverdue(t) {
@@ -4630,6 +4659,12 @@ function renderPtbOverviewSkeleton() {
       '<span class="skel" style="display:block;width:100%;height:6px;border-radius:5px;"></span></div></div>';
   }
   document.getElementById('ptb-workload-list').innerHTML = wlRows;
+
+  // เคลียร์ส่วนกราฟใหม่ (โดนัท/ความสำคัญ/แท็ก) ระหว่างโหลด กันโชว์ข้อมูลเก่าค้างจากครั้งก่อน
+  ['ptb-status-donut', 'ptb-priority-bars', 'ptb-tag-chips'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = '<div class="ptb-empty-hint">กำลังโหลด...</div>';
+  });
 }
 
 // ===== มุมมอง Admin/CEO — ภาพรวมทั้งบริษัท =====
@@ -4684,6 +4719,28 @@ function renderPtbAdminOverview() {
     }).join('');
     document.getElementById('ptb-workload-list').innerHTML = workloadHtml || '<div class="ptb-empty-hint">ยังไม่มีผู้ปฏิบัติงาน</div>';
 
+    // โดนัทสถานะงาน - รวม todo/doing/done จาก result.workload ของทุกคน (เชื่อถือได้เท่ากับตัวเลขที่ใช้ทำแท่ง
+    // ภาระงานรายคนด้านบนอยู่แล้ว) ไม่ต้องเพิ่ม field ใหม่จาก backend
+    var statusTotals = { todo: 0, doing: 0, done: 0 };
+    result.workload.forEach(function (s) {
+      statusTotals.todo += s.todo || 0;
+      statusTotals.doing += s.doing || 0;
+      statusTotals.done += s.done || 0;
+    });
+    renderPtbStatusDonut(statusTotals);
+
+    // ความสำคัญ + แท็ก - คำนวณจาก _personalTasksCache ตรงๆ (มีข้อมูลทั้งบริษัทอยู่แล้วในแคชนี้ ดูคอมเมนต์ที่
+    // setupPersonalTasksListener) ไม่นับงานที่ถูกลบเพราะแคชกรองออกให้แล้วตั้งแต่ onSnapshot
+    var priorityTotals = { high: 0, medium: 0, low: 0 };
+    var tagTotals = {};
+    _personalTasksCache.forEach(function (t) {
+      var p = t.priority === 'high' ? 'high' : (t.priority === 'low' ? 'low' : 'medium');
+      priorityTotals[p]++;
+      if (t.tag) tagTotals[t.tag] = (tagTotals[t.tag] || 0) + 1;
+    });
+    renderPtbPriorityBars(priorityTotals);
+    renderPtbTagChips(tagTotals);
+
     window._ptbLastSummary = result; // เก็บไว้ใช้ตอน export
   }).catch(function (err) {
     document.getElementById('ptb-stat-row').innerHTML = '';
@@ -4691,6 +4748,65 @@ function renderPtbAdminOverview() {
     document.getElementById('ptb-workload-list').innerHTML = '';
     Swal.fire({ icon: 'error', title: 'โหลดภาพรวมไม่สำเร็จ', text: err.message });
   });
+}
+
+// โดนัทสถานะงาน (SVG) - ใช้ pathLength="100" เพื่อคำนวณ stroke-dasharray เป็น % ตรงๆ ไม่ต้องคูณเส้นรอบวงเอง
+function renderPtbStatusDonut(totals) {
+  var el = document.getElementById('ptb-status-donut');
+  if (!el) return;
+  var total = totals.todo + totals.doing + totals.done;
+  if (total === 0) { el.innerHTML = '<div class="ptb-empty-hint">ยังไม่มีข้อมูล</div>'; return; }
+  var donePct = total ? (totals.done / total * 100) : 0;
+  var doingPct = total ? (totals.doing / total * 100) : 0;
+  var todoPct = total ? (totals.todo / total * 100) : 0;
+  var doneOffset = 0;
+  var doingOffset = -donePct;
+  var todoOffset = -(donePct + doingPct);
+  el.innerHTML =
+    '<div class="pdb-donut-row">' +
+      '<svg width="110" height="110" viewBox="0 0 120 120">' +
+        '<circle cx="60" cy="60" r="48" fill="none" stroke="var(--surface-alt)" stroke-width="16"/>' +
+        '<circle cx="60" cy="60" r="48" fill="none" stroke="#3F654D" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="' + donePct + ' 100" stroke-dashoffset="' + doneOffset + '" transform="rotate(-90 60 60)"/>' +
+        '<circle cx="60" cy="60" r="48" fill="none" stroke="#D97706" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="' + doingPct + ' 100" stroke-dashoffset="' + doingOffset + '" transform="rotate(-90 60 60)"/>' +
+        '<circle cx="60" cy="60" r="48" fill="none" stroke="#9AA6A0" stroke-width="16" stroke-linecap="round" pathLength="100" stroke-dasharray="' + todoPct + ' 100" stroke-dashoffset="' + todoOffset + '" transform="rotate(-90 60 60)"/>' +
+        '<text x="60" y="56" text-anchor="middle" font-size="20" font-weight="700" fill="var(--text)">' + Math.round(donePct) + '%</text>' +
+        '<text x="60" y="72" text-anchor="middle" font-size="10" fill="var(--text-muted)">เสร็จแล้ว</text>' +
+      '</svg>' +
+      '<div style="flex:1">' +
+        '<div class="pdb-leg-row"><span class="lbl"><span class="pdb-dot" style="background:#3F654D"></span>เสร็จแล้ว</span><b>' + totals.done + '</b></div>' +
+        '<div class="pdb-leg-row"><span class="lbl"><span class="pdb-dot" style="background:#D97706"></span>กำลังทำ</span><b>' + totals.doing + '</b></div>' +
+        '<div class="pdb-leg-row"><span class="lbl"><span class="pdb-dot" style="background:#9AA6A0"></span>ต้องทำ</span><b>' + totals.todo + '</b></div>' +
+      '</div>' +
+    '</div>';
+}
+
+function renderPtbPriorityBars(totals) {
+  var el = document.getElementById('ptb-priority-bars');
+  if (!el) return;
+  var total = totals.high + totals.medium + totals.low;
+  if (total === 0) { el.innerHTML = '<div class="ptb-empty-hint">ยังไม่มีข้อมูล</div>'; return; }
+  var rows = [
+    { label: 'สูง', n: totals.high, color: '#ef4444' },
+    { label: 'กลาง', n: totals.medium, color: '#f59e0b' },
+    { label: 'ต่ำ', n: totals.low, color: '#9ca3af' }
+  ];
+  el.innerHTML = rows.map(function (r) {
+    var pct = total ? (r.n / total * 100) : 0;
+    return '<div class="pdb-bar-row">' +
+      '<div class="pdb-bar-top"><span>' + r.label + '</span><span><b>' + r.n + '</b> งาน</span></div>' +
+      '<div class="pdb-bar-track"><div class="pdb-bar-fill" style="width:' + pct + '%;background:' + r.color + ';"></div></div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderPtbTagChips(tagTotals) {
+  var el = document.getElementById('ptb-tag-chips');
+  if (!el) return;
+  var tags = Object.keys(tagTotals).sort(function (a, b) { return tagTotals[b] - tagTotals[a]; }).slice(0, 10);
+  if (!tags.length) { el.innerHTML = '<div class="ptb-empty-hint">ยังไม่มีการติดแท็กงาน</div>'; return; }
+  el.innerHTML = tags.map(function (tag) {
+    return '<span class="pdb-tag-chip">' + escapeHtmlPtb(tag) + ' · ' + tagTotals[tag] + '</span>';
+  }).join('');
 }
 
 function viewPtbPersonBoard(staffId) {

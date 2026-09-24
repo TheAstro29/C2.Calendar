@@ -181,7 +181,31 @@ html[data-theme="dark"] .fc-holiday-cell { background: rgba(248, 113, 113, 0.14)
     border-color: #059669; color: #047857; background: #eefaf3; font-weight: 700;
   }
   #type-legend-mobile .legend-item.chip.dimmed { opacity: .45; }
+  /* ตัวเลขจำนวนงานท้ายชิป - เติมค่าด้วย updateLegendCounts() ใน app.js (แก้ให้อัปเดตชิปมือถือด้วยแล้ว) */
+  #type-legend-mobile .legend-count { font-weight: 700; margin-left: 2px; color: inherit; opacity: .8; }
+  #type-legend-mobile .legend-item.chip.active .legend-count { color: #059669; }
 }
+
+/* ===== การ์ด "ประเภทงาน" เดิมในไซด์บาร์ "สรุป" - ซ่อนเฉพาะบนมือถือ เพราะซ้ำกับแถบชิปด้านบนที่มีเลขกำกับแล้ว
+   ส่วน #org-task-summary-card (การ์ดใหม่) ทำตรงกันข้าม: ซ่อนเป็นค่าเริ่มต้น (PC) โชว์เฉพาะมือถือ ===== */
+#org-task-summary-card { display: none; }
+@media (max-width: 768px) {
+  #type-legend-card { display: none; }
+  #org-task-summary-card {
+    display: block; cursor: pointer; transition: box-shadow .15s ease, transform .1s ease;
+  }
+  #org-task-summary-card:active { transform: scale(0.99); }
+}
+#org-task-summary-card .ots-go { margin-left: auto; font-size: 11px; font-weight: 600; color: #059669; }
+#org-task-summary-card h3 { display: flex; align-items: center; }
+.ots-total-row { display: flex; align-items: baseline; gap: 7px; margin: 2px 0 12px; }
+.ots-total-n { font-size: 28px; font-weight: 700; color: #059669; line-height: 1; }
+.ots-total-l { font-size: 12px; color: var(--text-muted); }
+.ots-tiles { display: flex; gap: 8px; }
+.ots-tile { flex: 1; background: var(--surface-alt); border-radius: 10px; padding: 9px 6px; text-align: center; }
+.ots-tile .n { font-size: 16px; font-weight: 700; color: var(--text); }
+.ots-tile .n.danger { color: #ef4444; }
+.ots-tile .l { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
 
 /* ===== แถบสลับช่วงของมุมมอง List (วันนี้/สัปดาห์นี้/เดือนนี้) - โชว์เฉพาะตอนอยู่มุมมอง List บนมือถือ
    ควบคุม .show ด้วย JS (updateListRangeToggle ใน app.js) ===== */
@@ -1784,6 +1808,21 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptb-wl-bar { height: 6px; border-radius: 5px; background: var(--surface-alt); overflow: hidden; display: flex; gap: 1.5px; }
 .ptb-wl-bar span { height: 100%; }
 .ptb-wl-go { font-size: 10.5px; color: #047857; font-weight: 700; flex-shrink: 0; }
+
+/* ===== โดนัทสถานะงาน + ความสำคัญ + แท็ก ในแท็บ "ภาพรวมทั้งบริษัท" (เพิ่มใหม่) - render จาก JS ทั้งหมด
+   ดู renderPtbAdminOverview()/buildStatusDonutSvg() ใน app.js ===== */
+.pdb-donut-row { display: flex; align-items: center; gap: 16px; }
+.pdb-donut-row svg { flex-shrink: 0; }
+.pdb-leg-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; font-size: 12.5px; color: var(--text-soft); }
+.pdb-leg-row .lbl { display: flex; align-items: center; gap: 7px; }
+.pdb-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.pdb-bar-row { margin-bottom: 10px; }
+.pdb-bar-row:last-child { margin-bottom: 0; }
+.pdb-bar-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
+.pdb-bar-track { height: 7px; background: var(--surface-alt); border-radius: 5px; overflow: hidden; }
+.pdb-bar-fill { height: 100%; border-radius: 5px; }
+.pdb-tag-chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px; border-radius: 999px; background: var(--surface-alt); font-size: 11.5px; color: var(--text-soft); margin: 0 6px 6px 0; }
+.pdb-empty { font-size: 12px; color: var(--text-faint); padding: 6px 0; }
 
 /* Modal เพิ่ม/แก้ไข Task */
 #personal-task-modal-overlay {

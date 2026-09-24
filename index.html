@@ -135,10 +135,10 @@
       <!-- แถบชิปกรองประเภทงาน (เฉพาะมือถือ - ดู CSS @media max-width:768px) ให้กรองได้จากมุมมองปฏิทินเลย
            ไม่ต้องเปิดเมนู "สรุป" ก่อน - ใช้ data-type/onclick เดียวกับ #type-legend ฝั่ง PC เพื่อ sync สถานะร่วมกัน -->
       <div id="type-legend-mobile" class="mobile-type-chips">
-        <span class="legend-item chip" data-type="meeting" onclick="setTaskTypeFilter('meeting')"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม</span>
-        <span class="legend-item chip" data-type="onsite" onclick="setTaskTypeFilter('onsite')"><span class="legend-dot" style="background:#FFB48A"></span>นอกสถานที่</span>
-        <span class="legend-item chip" data-type="event" onclick="setTaskTypeFilter('event')"><span class="legend-dot" style="background:#C9A6FF"></span>กิจกรรม</span>
-        <span class="legend-item chip" data-type="leave" onclick="setTaskTypeFilter('leave')"><span class="legend-dot" style="background:#E5E7EB"></span>ลา</span>
+        <span class="legend-item chip" data-type="meeting" onclick="setTaskTypeFilter('meeting')"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม<span class="legend-count"></span></span>
+        <span class="legend-item chip" data-type="onsite" onclick="setTaskTypeFilter('onsite')"><span class="legend-dot" style="background:#FFB48A"></span>นอกสถานที่<span class="legend-count"></span></span>
+        <span class="legend-item chip" data-type="event" onclick="setTaskTypeFilter('event')"><span class="legend-dot" style="background:#C9A6FF"></span>กิจกรรม<span class="legend-count"></span></span>
+        <span class="legend-item chip" data-type="leave" onclick="setTaskTypeFilter('leave')"><span class="legend-dot" style="background:#E5E7EB"></span>ลา<span class="legend-count"></span></span>
       </div>
       <!-- แถบสลับช่วงเวลาของมุมมองรายการ (วันนี้/สัปดาห์นี้/เดือนนี้) - โชว์เฉพาะตอนอยู่มุมมอง List บนมือถือ
            ควบคุม show/hide ด้วย JS (updateListRangeToggle) ดู app.js -->
@@ -151,7 +151,10 @@
     </div>
 
     <aside id="legend-sidebar" class="side-panel">
-      <div class="sidebar-card">
+      <!-- การ์ด "ประเภทงาน" เดิม - ยังใช้บน PC เหมือนเดิม (PC ไม่มีแถบชิปกรองเหนือปฏิทินแบบมือถือ) แต่ซ่อนบน
+           มือถือด้วย CSS (ดู #type-legend-card ใน style.css @media max-width:768px) เพราะซ้ำกับแถบชิป
+           #type-legend-mobile ที่ตอนนี้มีตัวเลขกำกับแล้วเหมือนกัน แทนที่ด้วย #org-task-summary-card ด้านล่างแทน -->
+      <div class="sidebar-card" id="type-legend-card">
         <h3>🏷️ ประเภทงาน</h3>
         <div id="type-legend">
           <span class="legend-item" data-type="meeting" onclick="setTaskTypeFilter('meeting')"><span class="legend-dot" style="background:#FCE38A"></span>ประชุม<span class="legend-count"></span></span>
@@ -160,6 +163,21 @@
           <span class="legend-item" data-type="leave" onclick="setTaskTypeFilter('leave')"><span class="legend-dot" style="background:#E5E7EB"></span>ลา<span class="legend-count"></span></span>
         </div>
         <span id="type-filter-reset" onclick="setTaskTypeFilter(null)">✕ ล้างตัวกรอง — แสดงทั้งหมด</span>
+      </div>
+
+      <!-- การ์ดใหม่: สรุปงานภาพรวมขององค์กร (Personal Task) - โชว์เฉพาะมือถือ (ดู CSS) แทนที่การ์ด "ประเภทงาน"
+           ที่ซ้ำกับแถบชิปด้านบนแล้ว กดเพื่อเปิด Task Board แท็บ "ภาพรวมทั้งบริษัท" ที่อัปเกรดกราฟใหม่ -->
+      <div class="sidebar-card" id="org-task-summary-card" onclick="openOrgTaskDashboard()">
+        <h3>📊 สรุปงานภาพรวมขององค์กร <span class="ots-go">เดือนนี้ ›</span></h3>
+        <div class="ots-total-row">
+          <span class="ots-total-n" id="ots-total-n">–</span>
+          <span class="ots-total-l">งานทั้งหมดเดือนนี้</span>
+        </div>
+        <div class="ots-tiles">
+          <div class="ots-tile"><div class="n" id="ots-done-n">–</div><div class="l">เสร็จแล้ว</div></div>
+          <div class="ots-tile"><div class="n danger" id="ots-overdue-n">–</div><div class="l">เกินกำหนด</div></div>
+          <div class="ots-tile"><div class="n" id="ots-people-n">–</div><div class="l">คนมีงาน</div></div>
+        </div>
       </div>
 
       <div class="sidebar-card">
@@ -738,6 +756,25 @@
             <button class="btn-outline" id="ptb-export-btn" onclick="openTaskExportModal()">⭳ Export รายงาน</button>
           </div>
           <div class="ptb-stat-row" id="ptb-stat-row"></div>
+
+          <!-- โดนัทสถานะงาน + ความสำคัญ + แท็ก (เพิ่มใหม่) - คำนวณจาก workload/​_personalTasksCache ฝั่ง client
+               ไม่ต้องเรียก Cloud Function เพิ่ม ดู renderPtbAdminOverview() ใน app.js -->
+          <div class="ptb-grid2">
+            <div class="ptb-panel">
+              <h3>🟢 สถานะงาน</h3>
+              <div id="ptb-status-donut"></div>
+            </div>
+            <div class="ptb-panel">
+              <h3>🔺 ความสำคัญของงาน</h3>
+              <div id="ptb-priority-bars"></div>
+            </div>
+          </div>
+
+          <div class="ptb-panel" style="margin-bottom:14px;">
+            <h3>🏷️ งานตามแท็ก</h3>
+            <div id="ptb-tag-chips"></div>
+          </div>
+
           <div class="ptb-grid2">
             <div class="ptb-panel"><h3>งานใกล้ / เกินกำหนด</h3><div id="ptb-deadline-list"></div></div>
             <div class="ptb-panel"><h3>ภาระงานรายบุคคล</h3><div id="ptb-workload-list"></div></div>
