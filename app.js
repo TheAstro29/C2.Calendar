@@ -2427,9 +2427,20 @@ function execReportListRow(label, badge, badgeColor) {
     '<span style="font-size:11.5px;font-weight:700;color:' + badgeColor + ';flex-shrink:0;margin-left:10px;">' + escapeHtmlPtb(badge) + '</span></div>';
 }
 
+function execReportUpcomingRow(item, isLast) {
+  return '<tr style="' + (isLast ? '' : 'border-bottom:1px solid #F1F3F2;') + '">' +
+    '<td style="padding:11px 0;font-size:13px;color:#201E1D;">' + escapeHtmlPtb(item.title) + '</td>' +
+    '<td style="padding:11px 0;font-size:12.5px;color:#63816F;">' + escapeHtmlPtb(item.who || '-') + '</td>' +
+    '<td style="padding:11px 0;text-align:right;"><span style="font-size:11px;font-weight:700;color:' + (item.badgeTextColor || '#3F654D') + ';background:' + (item.badgeBg || '#EEF6F1') + ';padding:3px 10px;border-radius:999px;white-space:nowrap;">' + escapeHtmlPtb(item.badge) + '</span></td>' +
+  '</tr>';
+}
+
 // cfg = { periodLabel, dateRangeLabel, totalLabel, donutSegments:[{label,count,color}], donutSectionTitle,
 //   donutCenterPct, donutCenterSub, workload:[{name,count,color}], rightWarning:{headerText,items:[{label,badge}]}|null,
-//   rightListTitle, rightListItems:[{label,badge,badgeColor}], generatedAtLabel }
+//   upcomingTitle, upcomingItems:[{title,who,badge,badgeBg,badgeTextColor}], generatedAtLabel }
+// หมายเหตุ (รีดีไซน์ 20260924 - เพิ่มแถบสี header + ตาราง "งานที่ใกล้จะถึง" เต็มความกว้างแทนลิสต์แคบๆ เดิม
+// ฝั่งขวา): rightListTitle/rightListItems (ของเดิม) ถูกแทนที่ด้วย upcomingTitle/upcomingItems แล้ว - ผู้เรียก
+// ทั้งสองจุด (exportTaskReport ของ Task Board, printDashboardReport ของปฏิทิน) อัปเดตตามด้านล่างแล้ว
 function execReportHtml(cfg) {
   var total = cfg.donutSegments.reduce(function (s, x) { return s + x.count; }, 0);
   var donutSvg = execReportBuildDonut(cfg.donutSegments, total, 84, 28, 200);
@@ -2437,7 +2448,9 @@ function execReportHtml(cfg) {
   var maxWorkload = cfg.workload.reduce(function (m, x) { return Math.max(m, x.count); }, 0) || 1;
   var workloadHtml = cfg.workload.map(function (item) { return execReportWorkloadRow(item, maxWorkload); }).join('');
 
-  var warningHtml = '';
+  // กล่องขวา: มีแต่คำเตือนงานเกินกำหนดแล้ว (ตัดลิสต์ "ใกล้ครบกำหนด" แคบๆ ออก ย้ายไปทำเป็นตารางเต็มความกว้าง
+  // ด้านล่างแทน) ถ้าไม่มีงานเกินกำหนดเลย โชว์กล่องเขียวให้กำลังใจแทนกล่องแดงว่าง
+  var warningHtml;
   if (cfg.rightWarning && cfg.rightWarning.items.length) {
     warningHtml = '<div style="background:#FDF2F2;border:1.5px solid #F3C7C7;border-radius:12px;padding:18px 20px;">' +
       '<div style="display:flex;align-items:center;gap:9px;margin-bottom:10px;">' +
@@ -2447,21 +2460,25 @@ function execReportHtml(cfg) {
       '<div style="display:flex;flex-direction:column;gap:8px;">' +
       cfg.rightWarning.items.map(function (it) { return execReportListRow(it.label, it.badge, '#DC2626'); }).join('') +
       '</div></div>';
+  } else {
+    warningHtml = '<div style="background:#EEF6F1;border:1.5px solid #CFE3D6;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:9px;">' +
+      '<span style="font-size:16px;">🎉</span><span style="font-size:13.5px;font-weight:700;color:#3F654D;">ไม่มีงานเกินกำหนดในช่วงนี้</span></div>';
   }
 
-  var listHtml = '';
-  if (cfg.rightListItems && cfg.rightListItems.length) {
-    listHtml = '<div style="margin-top:' + (warningHtml ? '20px' : '0') + ';">' +
-      '<div style="font-size:11px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:12px;">' + escapeHtmlPtb(cfg.rightListTitle) + '</div>' +
-      '<div style="display:flex;flex-direction:column;gap:11px;">' +
-      cfg.rightListItems.map(function (it, idx) {
-        var sep = idx > 0 ? '<div style="height:1px;background:#F1F3F2;"></div>' : '';
-        return sep + execReportListRow(it.label, it.badge, it.badgeColor || '#63816F');
-      }).join('') +
-      '</div></div>';
+  var upcomingTableHtml;
+  if (cfg.upcomingItems && cfg.upcomingItems.length) {
+    upcomingTableHtml = '<table style="width:100%;border-collapse:collapse;">' +
+      '<thead><tr style="border-bottom:1.5px solid #D2DCD8;">' +
+        '<th style="text-align:left;font-size:10.5px;font-weight:600;color:#9AA1A8;text-transform:uppercase;letter-spacing:0.04em;padding:0 0 9px;">ชื่องาน</th>' +
+        '<th style="text-align:left;font-size:10.5px;font-weight:600;color:#9AA1A8;text-transform:uppercase;letter-spacing:0.04em;padding:0 0 9px;">ผู้รับผิดชอบ</th>' +
+        '<th style="text-align:right;font-size:10.5px;font-weight:600;color:#9AA1A8;text-transform:uppercase;letter-spacing:0.04em;padding:0 0 9px;">กำหนดส่ง</th>' +
+      '</tr></thead><tbody>' +
+      cfg.upcomingItems.map(function (it, idx) { return execReportUpcomingRow(it, idx === cfg.upcomingItems.length - 1); }).join('') +
+      '</tbody></table>';
+  } else {
+    upcomingTableHtml = '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีงานที่ใกล้ถึงกำหนดในช่วงนี้</div>';
   }
 
-  var rightColHtml = (warningHtml + listHtml) || '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีรายการ</div>';
   var iconUrl = new URL('icons/icon-192.png', window.location.href).href; // แก้บั๊ก: เดิมเดา origin+'/icons/...' ผิด ถ้าแอป host ไม่ได้อยู่ที่ domain root โลโก้เลยหาย
 
   return '<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtmlPtb(cfg.periodLabel) + '</title>' +
@@ -2470,22 +2487,28 @@ function execReportHtml(cfg) {
       '@page { size: A4; margin: 0; }' +
       'body{margin:0;background:#F4F5F4;font-family:"Chakra Petch","Noto Sans Thai","Sarabun",sans-serif;color:#201E1D;}' +
       '*{box-sizing:border-box;}' +
-      '.page{width:210mm;min-height:297mm;background:#fff;padding:16mm 15mm;margin:0 auto;position:relative;}' +
+      '.page{width:210mm;min-height:297mm;background:#fff;position:relative;}' +
       '@media print{ body{background:#fff;} .page{margin:0;} }' +
     '</style></head><body>' +
     '<div class="page">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
-        '<div style="display:flex;align-items:center;gap:10px;"><img src="' + iconUrl + '" alt="" style="height:32px;width:32px;border-radius:7px;">' +
-        '<span style="font-size:15px;font-weight:700;color:#3F654D;">C2TECH</span></div>' +
-        '<div style="text-align:right;font-size:11px;color:#63816F;letter-spacing:0.04em;">รายงานสรุปงาน</div>' +
+      // แถบสีเต็มความกว้าง header (เพิ่มใหม่ - เดิมเป็นพื้นขาวโล่งๆ) + เส้นไล่สีบางๆ ต่อท้ายกันดูตัดแข็ง
+      '<div style="background:#3F654D;padding:26px 40px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<div style="display:flex;align-items:center;gap:12px;">' +
+          '<img src="' + iconUrl + '" alt="" style="height:38px;width:38px;border-radius:9px;">' +
+          '<span style="font-size:17px;font-weight:700;color:#fff;">C2TECH</span>' +
+        '</div>' +
+        '<div style="text-align:right;font-size:11px;color:#D2DCD8;letter-spacing:0.08em;text-transform:uppercase;">รายงานสรุปงาน</div>' +
       '</div>' +
-      '<div style="margin-top:22px;display:flex;align-items:baseline;justify-content:space-between;">' +
+      '<div style="height:5px;background:linear-gradient(90deg,#63816F,#3F654D 60%,#2b4a37);"></div>' +
+      '<div style="padding:30px 40px 40px;">' +
+      '<div style="display:flex;align-items:baseline;justify-content:space-between;">' +
         '<div><div style="font-size:28px;font-weight:700;line-height:1.15;">' + escapeHtmlPtb(cfg.periodLabel) + '</div>' +
         '<div style="margin-top:6px;font-size:13px;color:#63816F;">' + escapeHtmlPtb(cfg.dateRangeLabel) + '</div></div>' +
-        '<div style="text-align:right;"><div style="font-size:32px;font-weight:700;color:#3F654D;line-height:1;">' + total + '</div>' +
-        '<div style="font-size:11.5px;color:#63816F;margin-top:2px;">' + escapeHtmlPtb(cfg.totalLabel || 'งานทั้งหมด') + '</div></div>' +
+        '<div style="text-align:right;background:#EEF6F1;border-radius:14px;padding:10px 20px;">' +
+        '<div style="font-size:30px;font-weight:700;color:#3F654D;line-height:1;">' + total + '</div>' +
+        '<div style="font-size:11px;color:#63816F;margin-top:3px;">' + escapeHtmlPtb(cfg.totalLabel || 'งานทั้งหมด') + '</div></div>' +
       '</div>' +
-      '<div style="height:1px;background:#D2DCD8;margin-top:20px;"></div>' +
+      '<div style="height:1px;background:#D2DCD8;margin-top:22px;"></div>' +
       '<div style="display:flex;gap:40px;align-items:center;margin-top:28px;">' +
         '<div style="position:relative;width:200px;height:200px;flex-shrink:0;">' + donutSvg +
           '<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;">' +
@@ -2502,12 +2525,18 @@ function execReportHtml(cfg) {
       '<div style="display:flex;gap:26px;margin-top:24px;">' +
         '<div style="width:310px;flex-shrink:0;">' +
           '<div style="font-size:11px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:15px;">ภาระงานรายคน</div>' +
-          '<div style="display:flex;flex-direction:column;gap:14px;">' + (workloadHtml || '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีข้อมูล</div>') + '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:13px;">' + (workloadHtml || '<div style="font-size:12.5px;color:#9AA1A8;">ไม่มีข้อมูล</div>') + '</div>' +
         '</div>' +
-        '<div style="flex:1;">' + rightColHtml + '</div>' +
+        '<div style="flex:1;">' + warningHtml + '</div>' +
       '</div>' +
-      '<div style="position:absolute;left:15mm;right:15mm;bottom:12mm;display:flex;justify-content:space-between;font-size:10.5px;color:#9AA1A8;border-top:1px solid #EEF0EE;padding-top:10px;">' +
+      '<div style="height:1px;background:#D2DCD8;margin-top:26px;"></div>' +
+      '<div style="margin-top:22px;">' +
+        '<div style="font-size:11px;font-weight:600;color:#9AA1A8;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:14px;">' + escapeHtmlPtb(cfg.upcomingTitle || '🗓️ งานที่ใกล้จะถึง — 7 วันข้างหน้า') + '</div>' +
+        upcomingTableHtml +
+      '</div>' +
+      '<div style="margin-top:26px;display:flex;justify-content:space-between;font-size:10.5px;color:#9AA1A8;border-top:1px solid #EEF0EE;padding-top:10px;">' +
         '<span>C2TECH — C2 Calendar</span><span>สร้างรายงานเมื่อ ' + escapeHtmlPtb(cfg.generatedAtLabel) + '</span>' +
+      '</div>' +
       '</div>' +
     '</div>' +
     '</body></html>';
@@ -3039,13 +3068,29 @@ function printDashboardReport() {
     return { name: s ? (s.firstName + ' ' + s.lastName) : id, count: d.workload[id], color: s ? s.colorHex : '#9AA1A8' };
   }).slice(0, 8);
 
-  // งานที่ใกล้ถึงเร็วๆ นี้ในช่วงที่เลือก - ปฏิทินหลักเป็นกำหนดการ ไม่ใช่ deadline จึงไม่มีแนวคิด "เกินกำหนด"
-  // แบบ Task Board โชว์เป็น "กำหนดการที่จะถึง" แทนกล่องเตือนสีแดง
-  var now = new Date();
-  var upcoming = d.curTasks.slice().filter(function (t) { return t.start >= now; })
-    .sort(function (a, b) { return a.start - b.start; }).slice(0, 6)
+  // งานที่ใกล้ถึงเร็วๆ นี้ในช่วงที่เลือก (จำกัด 7 วันข้างหน้า ให้สอดคล้องกับฝั่ง Task Board) - ปฏิทินหลักเป็น
+  // กำหนดการ ไม่ใช่ deadline จึงไม่มีแนวคิด "เกินกำหนด" แบบ Task Board จึง rightWarning เป็น null เสมอ (โชว์กล่อง
+  // เขียวแทนอัตโนมัติจาก execReportHtml) - เพิ่ม "who" จาก t.data.staffIds resolve ผ่าน staffMapCache
+  var todayOnly2 = new Date(); todayOnly2.setHours(0, 0, 0, 0);
+  var upcoming7d = d.curTasks.slice().filter(function (t) { return t.start >= todayOnly2; })
+    .sort(function (a, b) { return a.start - b.start; })
     .map(function (t) {
-      return { label: t.data.taskName, badge: t.start.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }), badgeColor: '#63816F' };
+      var due = new Date(t.start); due.setHours(0, 0, 0, 0);
+      var diffDays = Math.round((due - todayOnly2) / 86400000);
+      return { t: t, diffDays: diffDays };
+    })
+    .filter(function (x) { return x.diffDays <= 7; })
+    .slice(0, 6)
+    .map(function (x) {
+      var t = x.t;
+      var who = (t.data.staffIds || []).map(function (id) {
+        var s = staffMapCache[id];
+        return s ? (s.firstName + ' ' + s.lastName) : id;
+      }).join(', ');
+      var badge = x.diffDays === 0 ? 'วันนี้' : (x.diffDays === 1 ? 'พรุ่งนี้' : 'อีก ' + x.diffDays + ' วัน');
+      var badgeBg = x.diffDays <= 1 ? '#FEF0E1' : (x.diffDays <= 3 ? '#FEF3E0' : '#EEF6F1');
+      var badgeTextColor = x.diffDays <= 1 ? '#C2540A' : (x.diffDays <= 3 ? '#B45309' : '#3F654D');
+      return { title: t.data.taskName, who: who, badge: badge, badgeBg: badgeBg, badgeTextColor: badgeTextColor };
     });
 
   var html = execReportHtml({
@@ -3058,8 +3103,8 @@ function printDashboardReport() {
     donutCenterSub: topSeg.label,
     workload: workload,
     rightWarning: null,
-    rightListTitle: 'กำหนดการที่จะถึง',
-    rightListItems: upcoming,
+    upcomingTitle: '🗓️ งานที่ใกล้จะถึง — 7 วันข้างหน้า',
+    upcomingItems: upcoming7d,
     generatedAtLabel: fmtGeneratedAtLabel()
   });
 
@@ -5431,20 +5476,26 @@ function doTaskExport() {
         .map(function (id) { return { name: ptbStaffName(id), count: workloadCount[id], color: ptbStaffColor(id) }; });
 
       // งานเกินกำหนด/ใกล้ครบกำหนด (ไม่นับ Task ที่เสร็จแล้ว - ตามนิยามเดียวกับฝั่ง backend getCompanyTaskSummary)
+      // เพิ่ม "who" (ชื่อผู้รับผิดชอบ) เข้าไปด้วย สำหรับตาราง "งานที่ใกล้จะถึง" แบบเต็มความกว้างในรีพอร์ตใหม่
       var todayOnly = new Date(); todayOnly.setHours(0, 0, 0, 0);
       var dueRows = result.rows.filter(function (r) { return r.status !== 'done' && r.dueDate; }).map(function (r) {
         var due = new Date(r.dueDate); due.setHours(0, 0, 0, 0);
         var diffDays = Math.round((due - todayOnly) / 86400000);
-        return { title: r.title, diffDays: diffDays };
+        var who = (r.assigneeIds || []).map(function (id) { return ptbStaffName(id); }).join(', ');
+        return { title: r.title, diffDays: diffDays, who: who };
       });
       var overdueItems = dueRows.filter(function (r) { return r.diffDays < 0; })
         .sort(function (a, b) { return a.diffDays - b.diffDays; }).slice(0, 4)
         .map(function (r) { return { label: r.title, badge: 'เกิน ' + Math.abs(r.diffDays) + ' วัน' }; });
-      var upcomingItems = dueRows.filter(function (r) { return r.diffDays >= 0; })
-        .sort(function (a, b) { return a.diffDays - b.diffDays; }).slice(0, 4)
+      // จำกัดช่วง "ใกล้จะถึง" ไว้แค่ 7 วันข้างหน้า (0-7) ตามที่ผู้ใช้ขอ ("ในอีก 1 สัปดาห์") และแสดงสูงสุด 6 แถว
+      var upcoming7d = dueRows.filter(function (r) { return r.diffDays >= 0 && r.diffDays <= 7; })
+        .sort(function (a, b) { return a.diffDays - b.diffDays; }).slice(0, 6)
         .map(function (r) {
           var badge = r.diffDays === 0 ? 'วันนี้' : (r.diffDays === 1 ? 'พรุ่งนี้' : 'อีก ' + r.diffDays + ' วัน');
-          return { label: r.title, badge: badge, badgeColor: r.diffDays <= 1 ? '#B45309' : '#63816F' };
+          // สี badge ไล่ตามความเร่งด่วน: ส้ม = พรุ่งนี้/วันนี้, อำพัน = 2-3 วัน, เขียว = 4-7 วัน
+          var badgeBg = r.diffDays <= 1 ? '#FEF0E1' : (r.diffDays <= 3 ? '#FEF3E0' : '#EEF6F1');
+          var badgeTextColor = r.diffDays <= 1 ? '#C2540A' : (r.diffDays <= 3 ? '#B45309' : '#3F654D');
+          return { title: r.title, who: r.who, badge: badge, badgeBg: badgeBg, badgeTextColor: badgeTextColor };
         });
 
       var html = execReportHtml({
@@ -5457,8 +5508,8 @@ function doTaskExport() {
         donutCenterSub: 'เสร็จแล้ว',
         workload: workload,
         rightWarning: overdueItems.length ? { headerText: overdueItems.length + ' งานเกินกำหนดแล้ว ต้องติดตามด่วน', items: overdueItems } : null,
-        rightListTitle: 'ใกล้ครบกำหนด',
-        rightListItems: upcomingItems,
+        upcomingTitle: '🗓️ งานที่ใกล้จะถึง — 7 วันข้างหน้า',
+        upcomingItems: upcoming7d,
         generatedAtLabel: fmtGeneratedAtLabel()
       });
       openExecReportInNewTab(html, preOpenedTab);
