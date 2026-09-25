@@ -4735,8 +4735,19 @@ function openOrgTaskDashboard() {
   switchTaskBoardView('admin');
 }
 
+// แก้บั๊กที่ผู้ใช้แจ้ง: การ์ด "สรุปงานภาพรวมขององค์กร" (sidebar มือถือ, ใช้ฟังก์ชันนี้ผ่าน updateOrgTaskSummaryCard)
+// กับ Task Board "ภาพรวมทั้งบริษัท" (ดึงเลข overdueCount ตรงจาก backend getCompanyTaskSummary) นับจำนวน
+// "เกินกำหนด" ไม่ตรงกัน เพราะ 2 จุดนี้ใช้นิยาม "เกินกำหนด" คนละแบบ - เดิมฟังก์ชันนี้เทียบ timestamp ดิบ
+// (dueDate < เวลาปัจจุบันเป๊ะๆ) ทำให้งานที่ครบกำหนด "วันนี้" (เก็บเป็นเที่ยงคืนของวันนั้น) โดนตีว่าเกินกำหนด
+// ทันทีที่เลยเที่ยงคืนนั้นไปแค่เสี้ยววินาที ทั้งที่ยังไม่เลยวันจริงๆ ต่างจากฝั่ง backend (getCompanyTaskSummary
+// ใน functions/index.js) ที่แก้เป็นเทียบ "วันปฏิทิน" แล้วตั้งแต่ก่อนหน้านี้ - เปลี่ยนมาเทียบวันปฏิทิน (ตัดเวลา
+// ออกด้วย setHours(0,0,0,0) ก่อนเทียบ) แบบเดียวกับที่ใช้อยู่แล้วใน exportTaskReport ด้านล่าง (บรรทัดที่มี
+// "todayOnly") ให้ตรงกันทั้งแอป
 function isPtbOverdue(t) {
-  return t.status !== 'done' && t.dueDate && t.dueDate.getTime() < Date.now();
+  if (t.status === 'done' || !t.dueDate) return false;
+  var todayOnly = new Date(); todayOnly.setHours(0, 0, 0, 0);
+  var due = new Date(t.dueDate); due.setHours(0, 0, 0, 0);
+  return due.getTime() < todayOnly.getTime();
 }
 
 function fmtPtbDate(d) {
