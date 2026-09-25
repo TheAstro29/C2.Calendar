@@ -376,7 +376,13 @@ var _slowLoadingHintTimer = null;
 function startSlowLoadingHintTimer() {
   _slowLoadingHintTimer = setTimeout(function () {
     var hint = document.getElementById('page-loading-slow-hint');
-    if (hint) hint.classList.add('show');
+    if (hint) {
+      // 2 ขั้นตอนเหมือน openFabSpeedDial/showInAppBanner - เปิด display ก่อน บังคับ reflow แล้วค่อย fade-in
+      // ในเฟรมถัดไป ไม่งั้น fade-in จะไม่มี effect เลย (กระโดดไปทึบทันที) เพราะเพิ่งโผล่จาก display:none
+      hint.classList.add('open');
+      void hint.offsetHeight;
+      requestAnimationFrame(function () { hint.classList.add('show'); });
+    }
   }, SLOW_LOADING_HINT_MS);
 }
 function cancelSlowLoadingHint() {
@@ -385,7 +391,7 @@ function cancelSlowLoadingHint() {
     _slowLoadingHintTimer = null;
   }
   var hint = document.getElementById('page-loading-slow-hint');
-  if (hint) hint.classList.remove('show');
+  if (hint) { hint.classList.remove('show'); hint.classList.remove('open'); }
 }
 
 var holidaysCache = [];
@@ -3971,10 +3977,14 @@ function setupNotificationsRealtimeListener() {
 
   _unsubNotifications = fbDb.collection('notifications').where('recipientId', '==', myId)
     .onSnapshot(function (snapshot) {
-      // เล่นเสียงเฉพาะตอนมีรายการใหม่เข้ามาจริง (ไม่ใช่ตอนโหลดครั้งแรก)
+      // เล่นเสียงเฉพาะตอนมีรายการใหม่เข้ามาจริง (ไม่ใช่ตอนโหลดครั้งแรก) - เก็บ flag ไว้ด้วยว่ารอบนี้มีรายการ
+      // ใหม่จริงไหม สำหรับเด้ง pop badge กระดิ่งด้านล่าง (กันไม่ให้ badge เด้งทุกครั้งที่ snapshot ยิงมาเฉยๆ
+      // เช่นตอนแค่ mark อ่านแล้ว ซึ่งไม่ควรมี effect นี้)
+      var hasNewNotif = false;
       if (!isFirstNotifSnapshot) {
         snapshot.docChanges().forEach(function (change) {
           if (change.type === 'added') {
+            hasNewNotif = true;
             var d = change.doc.data();
             playNotificationSound(d.title || 'C2 Calendar', d.body || '');
             showInAppBanner(Object.assign({ id: change.doc.id }, d));
@@ -3996,6 +4006,14 @@ function setupNotificationsRealtimeListener() {
       if (badge) {
         if (unreadCount > 0) { badge.textContent = unreadCount; badge.style.display = 'flex'; }
         else { badge.style.display = 'none'; }
+        // เด้ง pop badge ทุกครั้งที่มีแจ้งเตือนใหม่จริงๆเข้ามา (ไม่ใช่แค่ re-render เฉยๆ) - ลบคลาสแล้วบังคับ
+        // reflow ก่อนใส่กลับ เพราะถ้าแจ้งเตือนเข้ามาถี่ๆ ต่อกัน คลาส 'pop' อาจยังค้างอยู่จากรอบก่อน ใส่ซ้ำเฉยๆ
+        // จะไม่ retrigger animation (ต้องเอาออกแล้วบังคับ reflow ก่อนใส่กลับเสมอ)
+        if (hasNewNotif && unreadCount > 0) {
+          badge.classList.remove('pop');
+          void badge.offsetWidth;
+          badge.classList.add('pop');
+        }
       }
 
       // ถ้า modal เปิดอยู่ ให้ render รายการใหม่ทันที
@@ -4064,7 +4082,15 @@ function _inAppBannerProcessQueue() {
   var track = document.getElementById('inapp-banner-progress-track');
   track.innerHTML = '<div id="inapp-banner-progress-bar"></div>';
 
-  el.classList.add('show');
+  // ขั้นที่ 1: เปิด display:flex ก่อน (ยังอยู่ตำแหน่งซ่อน translate(-50%,-120%) ตาม default)
+  el.classList.add('open');
+  // บังคับ reflow ให้ browser paint เฟรม "ซ่อนอยู่" นี้จริงก่อน ไม่งั้น step ถัดไปจะโดนรวบเป็นเฟรมเดียวกัน
+  // แล้ว animation จะไม่เกิดขึ้นเลย (จุดสำคัญของ fix - ดูรายละเอียดใน style.css ที่ #inapp-banner.open)
+  void el.offsetHeight;
+  // ขั้นที่ 2: ค่อยเพิ่ม .show ในเฟรมถัดไปเพื่อให้ transition มีจังหวะ animate เลื่อนลงจริง
+  requestAnimationFrame(function () {
+    el.classList.add('show');
+  });
 
   clearTimeout(_inAppBannerTimer);
   _inAppBannerTimer = setTimeout(_inAppBannerDismiss, 5000);
@@ -4075,8 +4101,12 @@ function _inAppBannerDismiss() {
   var el = document.getElementById('inapp-banner');
   el.classList.remove('show');
   _inAppBannerShowing = false;
-  // เว้นจังหวะเล็กน้อยให้อนิเมชันเลื่อนขึ้นจบก่อน ค่อยโชว์อันถัดไปในคิว (ถ้ามี)
-  setTimeout(_inAppBannerProcessQueue, 350);
+  // เว้นจังหวะเล็กน้อยให้อนิเมชันเลื่อนขึ้นจบก่อน (0.35s = 350ms ให้ตรงกับ transition ใน style.css) ค่อยเอา
+  // display ออกจริง (.open) แล้วค่อยโชว์อันถัดไปในคิว (ถ้ามี)
+  setTimeout(function () {
+    el.classList.remove('open');
+    _inAppBannerProcessQueue();
+  }, 350);
 }
 
 function inAppBannerClose(evt) {

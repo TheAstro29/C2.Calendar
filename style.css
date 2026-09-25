@@ -212,7 +212,7 @@ html[data-theme="dark"] .fc-holiday-cell { background: rgba(248, 113, 113, 0.14)
 .list-range-toggle {
   display: none; gap: 6px; padding: 4px 10px 8px;
 }
-.list-range-toggle.show { display: flex; }
+.list-range-toggle.show { display: flex; animation: fieldFadeIn 0.18s ease; }
 .list-range-toggle button {
   flex: 1; border: none; background: var(--surface-alt); color: var(--text-muted);
   font-size: 12px; font-weight: 700; padding: 7px 4px; border-radius: 8px; cursor: pointer;
@@ -398,7 +398,13 @@ body.body-scroll-locked {
   transition: transform 0.35s cubic-bezier(.2,.8,.3,1);
   overflow: hidden;
 }
-#inapp-banner.show { display: flex; transform: translate(-50%, 0); }
+/* แก้บั๊กแบบเดียวกับที่เจอใน speed-dial ปุ่มเพิ่มงาน (มือถือ): เดิมคลาส .show ตัวเดียวคุมทั้ง display:none->flex
+   และ transform ปลายทางพร้อมกันในจังหวะเดียว - พอเพิ่งโผล่จาก display:none เบราว์เซอร์ยังไม่เคย paint สถานะ
+   "ซ่อนอยู่" ออกมาเป็นเฟรมจริงเลย transition เลยไม่มีจุดเริ่มให้ animate จาก กระโดดไปสถานะสุดท้ายทันทีไม่มี
+   เอฟเฟกต์เลื่อนลงให้เห็นเลย - แก้โดยแยกเป็น 2 คลาส: .open คุมแค่ display (เพิ่มก่อน), แล้วค่อยเพิ่ม .show ใน
+   เฟรมถัดไป (ผ่าน requestAnimationFrame ใน showInAppBanner()) เพื่อให้ transition มีจังหวะ animate จริง */
+#inapp-banner.open { display: flex; }
+#inapp-banner.open.show { transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) {
   #inapp-banner { transition: none; }
 }
@@ -521,7 +527,11 @@ body.body-scroll-locked {
   display: none; font-size: 13px; color: #fde68a; margin: 14px 0 0;
   opacity: 0; transition: opacity 0.5s ease;
 }
-#page-loading-slow-hint.show { display: block; opacity: 1; }
+/* แก้บั๊กแบบเดียวกับ speed-dial/#inapp-banner: เดิมคลาส .show ตัวเดียวคุมทั้ง display:none->block และ opacity
+   ปลายทางพร้อมกัน ทำให้ fade-in ไม่มี effect เลย - แยกเป็น .open (display) + .show (opacity ปลายทาง เพิ่มใน
+   เฟรมถัดไปผ่าน requestAnimationFrame ใน showSlowLoadingHint() ของ app.js) */
+#page-loading-slow-hint.open { display: block; }
+#page-loading-slow-hint.open.show { opacity: 1; }
 
 /* Spinner ทั่วไป */
 .spinner {
@@ -540,6 +550,9 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .swal2-container { z-index: 3000 !important; }
 
 /* Animation ตอนเปิด modal ทุกตัว ให้ดูมีชีวิตชีวาขึ้น ไม่โผล่มาดิบๆทันที */
+/* ใช้ร่วมกันสำหรับ element เล็กๆที่โผล่/หายแบบ toggle (ปุ่ม, แถบตัวเลือก, ฟิลด์ฟอร์ม) - fade เข้าพร้อมเลื่อนลง
+   เบาๆ ไม่หวือหวา ใช้ animation (ไม่ใช่ transition) ด้วยเหตุผลเดียวกับ modalFadeIn/modalScaleIn ด้านล่าง */
+@keyframes fieldFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modalScaleIn { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 #login-modal-overlay, #staff-modal-overlay, #holiday-modal-overlay, #task-modal-overlay,
@@ -550,6 +563,19 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #login-box, #staff-box, #holiday-box, #task-box, #profile-card-box,
 #reschedule-box, #edit-request-box, #pending-requests-box, #my-requests-box, #todo-board-box, #notif-settings-box {
   animation: modalScaleIn 0.22s ease;
+}
+/* เมนู "More" มือถือ + ฉากหลังมืดตอนเปิด drawer sidebar - เดิมโผล่มาทันทีไม่มี effect เลย (ไม่ใช่บั๊กแบบ
+   transition ที่เจอก่อนหน้า แค่ยังไม่เคยใส่ animation ไว้) ใช้ animation (ไม่ใช่ transition) แบบเดียวกับ modal
+   อื่นๆ ด้านบน เพราะ animation เล่นได้ปกติทุกครั้งที่ element เพิ่งโผล่จาก display:none (ต่างจาก transition ที่
+   ต้องมีเฟรม "ก่อนหน้า" มาก่อนถึงจะมีอะไรให้ animate จาก) - ใช้ตัวคุม .show/.drawer-open เดิมที่มีอยู่แล้วได้เลย
+   ไม่ต้องเปลี่ยน JS ใดๆ */
+#more-menu-overlay.show, #drawer-backdrop.show { animation: modalFadeIn 0.18s ease; }
+#more-menu-sheet { animation: modalScaleIn 0.2s ease; }
+@media (prefers-reduced-motion: reduce) {
+  #more-menu-overlay.show, #drawer-backdrop.show, #more-menu-sheet,
+  .list-range-toggle.show, #type-filter-reset.show, .ptm-event-combo.show, .ptm-date-field.show, .ptm-combo-list.open {
+    animation: none;
+  }
 }
 
 /* Hover effect ให้การ์ดต่างๆบน PC ดูตอบสนอง (มือถือแทะ touch ไม่มีผลกระทบ) */
@@ -750,7 +776,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 #type-filter-reset {
   display: none; margin-top: 8px; font-size: 11.5px; color: #059669; text-decoration: underline; cursor: pointer;
 }
-#type-filter-reset.show { display: inline-block; }
+#type-filter-reset.show { display: inline-block; animation: fieldFadeIn 0.18s ease; }
 /* งานที่ถูกกรองออกบนปฏิทินจริง (FullCalendar) */
 .fc-type-filtered { display: none !important; }
 
@@ -1108,6 +1134,18 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   position: absolute; top: -4px; right: -4px; background: #ef4444; color: #fff;
   font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
+}
+/* เด้ง pop ทุกครั้งที่มีแจ้งเตือนใหม่เข้ามาจริง (คุมจังหวะเล่นจาก setupNotificationsRealtimeListener() ใน
+   app.js - ลบ/ใส่คลาสนี้ใหม่ทุกครั้งเพื่อ retrigger เพราะ CSS animation จะไม่เล่นซ้ำถ้าใส่คลาสเดิมที่ยังอยู่แล้ว) */
+@keyframes notifBadgePop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.45); }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+#notif-badge.pop { animation: notifBadgePop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (prefers-reduced-motion: reduce) {
+  #notif-badge.pop { animation: none; }
 }
 #my-requests-top-badge {
   position: absolute; top: -5px; right: -5px; background: #ef4444; color: #fff;
@@ -1954,7 +1992,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-nodate-chk { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-muted); font-weight: 700; cursor: pointer; user-select: none; }
 .ptm-nodate-chk input { accent-color: #059669; width: 13px; height: 13px; cursor: pointer; }
 .ptm-event-combo, .ptm-date-field { display: none; }
-.ptm-event-combo.show, .ptm-date-field.show { display: block; }
+.ptm-event-combo.show, .ptm-date-field.show { display: block; animation: fieldFadeIn 0.18s ease; }
 .ptm-field { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 8px 11px; font-size: 12.5px; font-family: inherit; background: var(--surface-alt); color: var(--text); }
 .ptm-field:focus { outline: none; border-color: #10b981; background: var(--surface); }
 .ptm-prio-row { display: flex; gap: 7px; }
@@ -1964,7 +2002,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-prio-btn[data-p="high"].active { background: #fee2e2; border-color: #b91c1c; color: #b91c1c; }
 .ptm-combo-wrap { position: relative; }
 .ptm-combo-list { position: absolute; top: calc(100% + 5px); left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 26px -12px rgba(0,0,0,.22); max-height: 150px; overflow-y: auto; padding: 5px; z-index: 5; display: none; }
-.ptm-combo-list.open { display: block; }
+.ptm-combo-list.open { display: block; animation: fieldFadeIn 0.15s ease; }
 .ptm-combo-opt { padding: 6px 9px; border-radius: 7px; font-size: 11.5px; cursor: pointer; }
 .ptm-combo-opt:hover { background: var(--surface-alt); }
 .ptm-combo-opt.add-new { color: #047857; font-weight: 700; }
@@ -1976,6 +2014,9 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ptm-check-items { display: flex; flex-direction: column; gap: 6px; margin-top: 9px; }
 .ptm-check-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
 .ptm-check-item input[type=checkbox] { width: 15px; height: 15px; accent-color: #059669; }
+/* เดิมติ๊กเสร็จแล้วสีตัวหนังสือเปลี่ยนเป็นจางทันที (text-decoration เองไม่มี animation ให้ใส่ได้ แต่สีค่อยๆ
+   จางไปได้ ช่วยให้รู้สึกว่า "กำลังเสร็จ" นุ่มนวลขึ้นแทนการกระตุกเปลี่ยนทันที) */
+.ptm-check-item span { transition: color 0.2s ease; }
 .ptm-check-item.done span { text-decoration: line-through; color: var(--text-faint); }
 .ptm-check-item .rm { margin-left: auto; border: none; background: none; color: var(--text-faint); cursor: pointer; font-size: 11px; }
 .ptm-drop-zone { border: 1.5px dashed var(--border); border-radius: 12px; padding: 13px; text-align: center; font-size: 11.5px; color: var(--text-muted); cursor: pointer; background: var(--surface-alt); }
