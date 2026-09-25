@@ -293,11 +293,17 @@ body { margin: 0; background: var(--surface-alt); color: var(--text); overflow-x
    ด้านล่างโผล่ทะลุออกมา (เพราะ body ไม่เคยถูกล็อคไว้เลย) - แก้ 2 ชั้น: (1) ใส่ overscroll-behavior:contain
    ตรงที่ element ที่ scroll ได้จริงด้วย กัน scroll chaining ไม่ให้ทะลุออกจาก modal ตั้งแต่ต้น (2) ล็อค body
    จริงจังด้วย .body-scroll-locked (ควบคุมเปิด/ปิดจาก _refreshBodyScrollLock() ใน app.js) เป็นเกราะชั้นสุดท้าย
-   กันไว้อีกชั้นเผื่อ browser บางตัวยังปล่อยให้ scroll ทะลุอยู่ดี */
+   กันไว้อีกชั้นเผื่อ browser บางตัวยังปล่อยให้ scroll ทะลุอยู่ดี
+   แก้บั๊กรอบ 2 ที่ผู้ใช้แจ้งเพิ่ม (กดเลือกผู้ปฏิบัติงานในฟอร์มแก้ไขงานแล้ว modal เพี้ยน เห็นปฏิทินโผล่ทะลุด้านบน
+   + มีพื้นที่ว่างเปล่าด้านล่างเยอะผิดปกติ): สาเหตุคือ .body-scroll-locked เดิมใช้ position:fixed ล็อค body (เทคนิค
+   มาตรฐานสำหรับกัน rubber-band ของ iOS Safari) แต่การกด/แตะ checkbox ผู้ปฏิบัติงาน (ซึ่งเป็น input ที่ถูกซ่อนไว้
+   ในทุก label - ดู .staff-checklist input ด้านล่าง) ทำให้ browser พยายาม auto-scroll หน้าเว็บให้ element ที่เพิ่ง
+   ได้ focus นั้น "มองเห็นได้" ตามพฤติกรรมมาตรฐาน ซึ่งไปชนกับ body ที่ถูกตรึงด้วย position:fixed อยู่แล้ว ทำให้
+   เลย์เอาต์เพี้ยนแบบในภาพที่ผู้ใช้ส่งมา - ผู้ใช้แอปนี้ใช้ Android Chrome เป็นหลัก (ไม่ใช่ iOS Safari) ซึ่งจริงๆ
+   แค่ overflow:hidden เฉยๆ (ไม่ต้องพึ่ง position:fixed) ก็กันการ scroll ทะลุของ body ได้ดีอยู่แล้วโดยไม่มีผลข้างเคียง
+   นี้ - เปลี่ยนมาใช้แบบนี้แทน (เบากว่า ปลอดภัยกว่าสำหรับกลุ่มผู้ใช้จริงของแอปนี้) */
 #task-box, .tb-body { overscroll-behavior: contain; }
-body.body-scroll-locked {
-  position: fixed; left: 0; right: 0; width: 100%; overflow: hidden;
-}
+body.body-scroll-locked { overflow: hidden; }
 
 /* ===== แก้บั๊ก FullCalendar List View ที่ table-layout สับสน (แถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน)
    ใช้ได้ทุกขนาดจอ (ไม่ผูก breakpoint) เพราะ List view เปิดดูได้ทุกขนาดจอ (มือถือ, Tablet ที่สลับมาดู, PC ที่ resize ทดสอบ) ===== */

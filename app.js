@@ -94,10 +94,13 @@ window.addEventListener("popstate", function () {
 // ใดๆ) - ใช้ MutationObserver เฝ้าดู attribute "style" ของทุก overlay element (id ลงท้ายด้วย -overlay) แทนการ
 // ไปแก้ทีละฟังก์ชัน open/close (มีเกือบ 20 modal ในแอป) เพื่อให้ครอบคลุมทุก modal โดยอัตโนมัติ ไม่ต้องมาคอย
 // เพิ่ม/แก้ทุกครั้งที่มี modal ใหม่เพิ่มเข้ามาทีหลังด้วย
-// เทคนิคล็อคใช้ position:fixed แทน overflow:hidden เฉยๆ เพราะ overflow:hidden อย่างเดียวไม่กันการ rubber-band
-// scroll ของหน้าเว็บบน iOS Safari ได้จริง (ยังลากขยับได้อยู่ดี) ต้องจำตำแหน่ง scroll เดิมไว้ก่อนล็อค แล้ว
-// restore กลับตอนปลดล็อคด้วย ไม่งั้นหน้าเว็บจะกระโดดกลับ scroll ไปบนสุดทุกครั้งที่ปิด modal =====
-var _bodyScrollLockY = 0;
+// รอบแรกลองใช้ position:fixed ล็อค body (เทคนิคมาตรฐานกัน rubber-band ของ iOS Safari) แต่ผู้ใช้แจ้งบั๊กใหม่ว่า
+// พอแตะ checkbox เลือกผู้ปฏิบัติงานในฟอร์มแก้ไขงานแล้ว modal เพี้ยน (เห็นปฏิทินโผล่ทะลุด้านบน+มีพื้นที่ว่างเยอะ
+// ผิดปกติด้านล่าง) - สาเหตุคือ browser พยายาม auto-scroll ให้ element ที่เพิ่งได้ focus (checkbox ที่ซ่อนอยู่ใน
+// label ของ .staff-checklist) มองเห็นได้ ไปชนกับ body ที่ถูกตรึงด้วย position:fixed อยู่ ทำให้เลย์เอาต์เพี้ยน -
+// ผู้ใช้แอปนี้ใช้ Android Chrome เป็นหลัก ซึ่ง overflow:hidden เฉยๆ (ไม่ต้องใช้ position:fixed) ก็กันการ scroll
+// ทะลุของ body ได้ดีอยู่แล้วโดยไม่ชนกับพฤติกรรม focus-scroll แบบนี้ เลยตัดกลไก position:fixed/จำ-คืนตำแหน่ง
+// scroll ทิ้งไป เหลือแค่ toggle คลาสเฉยๆ (ดู .body-scroll-locked ใน style.css) =====
 function _isAnyModalOpen() {
   var overlays = document.querySelectorAll('[id$="-overlay"]');
   for (var i = 0; i < overlays.length; i++) {
@@ -106,17 +109,7 @@ function _isAnyModalOpen() {
   return false;
 }
 function _refreshBodyScrollLock() {
-  var shouldLock = _isAnyModalOpen();
-  var isLocked = document.body.classList.contains('body-scroll-locked');
-  if (shouldLock && !isLocked) {
-    _bodyScrollLockY = window.scrollY || window.pageYOffset || 0;
-    document.body.classList.add('body-scroll-locked');
-    document.body.style.top = (-_bodyScrollLockY) + 'px';
-  } else if (!shouldLock && isLocked) {
-    document.body.classList.remove('body-scroll-locked');
-    document.body.style.top = '';
-    window.scrollTo(0, _bodyScrollLockY);
-  }
+  document.body.classList.toggle('body-scroll-locked', _isAnyModalOpen());
 }
 function _initBodyScrollLockObserver() {
   var overlays = document.querySelectorAll('[id$="-overlay"]');
