@@ -87,6 +87,46 @@ window.addEventListener("popstate", function () {
   _navRestoringCal = false;
 });
 
+// ===== ล็อค scroll ของหน้าเว็บเบื้องหลังตอนมี modal เปิดอยู่ (แก้บั๊กที่ผู้ใช้แจ้ง: บนมือถือ ลาก swipe ใน
+// เนื้อหา modal (เช่นฟอร์มเพิ่มงาน) จนเลื่อนสุดด้านล่างแล้ว ลากต่ออีก (overscroll) กลายเป็นลาก "หน้าเว็บ
+// เบื้องหลัง" ที่ปกติควรถูกปิดทับด้วย modal (position:fixed) ให้เลื่อนตามไปด้วย ทำให้เห็นแถบเมนูด้านล่าง/
+// พื้นที่ว่างของหน้าเว็บโผล่ทะลุออกมาให้เห็นแทน เพราะเดิมไม่เคยมีการล็อค scroll ของ body ไว้เลยตอนเปิด modal
+// ใดๆ) - ใช้ MutationObserver เฝ้าดู attribute "style" ของทุก overlay element (id ลงท้ายด้วย -overlay) แทนการ
+// ไปแก้ทีละฟังก์ชัน open/close (มีเกือบ 20 modal ในแอป) เพื่อให้ครอบคลุมทุก modal โดยอัตโนมัติ ไม่ต้องมาคอย
+// เพิ่ม/แก้ทุกครั้งที่มี modal ใหม่เพิ่มเข้ามาทีหลังด้วย
+// เทคนิคล็อคใช้ position:fixed แทน overflow:hidden เฉยๆ เพราะ overflow:hidden อย่างเดียวไม่กันการ rubber-band
+// scroll ของหน้าเว็บบน iOS Safari ได้จริง (ยังลากขยับได้อยู่ดี) ต้องจำตำแหน่ง scroll เดิมไว้ก่อนล็อค แล้ว
+// restore กลับตอนปลดล็อคด้วย ไม่งั้นหน้าเว็บจะกระโดดกลับ scroll ไปบนสุดทุกครั้งที่ปิด modal =====
+var _bodyScrollLockY = 0;
+function _isAnyModalOpen() {
+  var overlays = document.querySelectorAll('[id$="-overlay"]');
+  for (var i = 0; i < overlays.length; i++) {
+    if (getComputedStyle(overlays[i]).display !== 'none') return true;
+  }
+  return false;
+}
+function _refreshBodyScrollLock() {
+  var shouldLock = _isAnyModalOpen();
+  var isLocked = document.body.classList.contains('body-scroll-locked');
+  if (shouldLock && !isLocked) {
+    _bodyScrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.classList.add('body-scroll-locked');
+    document.body.style.top = (-_bodyScrollLockY) + 'px';
+  } else if (!shouldLock && isLocked) {
+    document.body.classList.remove('body-scroll-locked');
+    document.body.style.top = '';
+    window.scrollTo(0, _bodyScrollLockY);
+  }
+}
+function _initBodyScrollLockObserver() {
+  var overlays = document.querySelectorAll('[id$="-overlay"]');
+  if (!window.MutationObserver || !overlays.length) return;
+  var observer = new MutationObserver(function () { _refreshBodyScrollLock(); });
+  overlays.forEach(function (el) {
+    observer.observe(el, { attributes: true, attributeFilter: ['style'] });
+  });
+}
+
 var TOKEN_KEY = 'c2tech_token';
 var NAME_KEY = 'c2tech_admin_name';
 var ROLE_KEY = 'c2tech_role';
@@ -542,6 +582,7 @@ window.onload = function () {
   applyThemePref(getThemePref());
   startSlowLoadingHintTimer();
   checkExistingSession();
+  _initBodyScrollLockObserver();
 
   ['username', 'password'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -2430,20 +2471,44 @@ function toggleFabSpeedDial() {
   if (dial.classList.contains('show')) { closeFabSpeedDial(); }
   else { openFabSpeedDial(); }
 }
+// ตัวจับ timer ตอนปิด (เก็บ .open ไว้รอ animation ปิดจบก่อนค่อยเอา display ออกจริง - ดูเหตุผลใน closeFabSpeedDial)
+// เก็บเป็นตัวแปร module-level เพื่อยกเลิก timer เก่าได้ถ้าผู้ใช้กดเปิด-ปิดรัวๆ กันปุ่มถูกซ่อนผิดจังหวะ
+var _fabSpeedDialCloseTimer = null;
+
 function openFabSpeedDial() {
   closeAllDrawers();
   var dial = document.getElementById('mfn-speed-dial');
   var backdrop = document.getElementById('mfn-speed-dial-backdrop');
   var btn = document.getElementById('mfn-add-btn');
-  if (dial) dial.classList.add('show');
+  if (_fabSpeedDialCloseTimer) { clearTimeout(_fabSpeedDialCloseTimer); _fabSpeedDialCloseTimer = null; }
   if (backdrop) backdrop.classList.add('show');
   if (btn) btn.classList.add('mfn-add-open');
+  if (dial) {
+    // ขั้นที่ 1: เปิด display:flex ก่อน (ปุ่มยังอยู่สถานะ opacity:0/scale เล็กตาม default ของ .mfn-speed-dial-item)
+    dial.classList.add('open');
+    // บังคับให้ browser reflow/paint เฟรม "ซ่อนอยู่" นี้จริงๆ ก่อน ไม่งั้น step ถัดไปจะโดนรวบเป็นเฟรมเดียวกัน
+    // แล้ว animation จะไม่เกิดขึ้นเลยเหมือนบั๊กเดิม (นี่คือจุดสำคัญของ fix)
+    void dial.offsetHeight;
+    // ขั้นที่ 2: ค่อยเพิ่ม .show ในเฟรมถัดไป เพื่อให้ transition มีจังหวะ animate จากสถานะซ่อนไปสถานะเปิดจริง
+    requestAnimationFrame(function () {
+      dial.classList.add('show');
+    });
+  }
 }
 function closeFabSpeedDial() {
   var dial = document.getElementById('mfn-speed-dial');
   var backdrop = document.getElementById('mfn-speed-dial-backdrop');
   var btn = document.getElementById('mfn-add-btn');
-  if (dial) dial.classList.remove('show');
+  if (_fabSpeedDialCloseTimer) { clearTimeout(_fabSpeedDialCloseTimer); _fabSpeedDialCloseTimer = null; }
+  if (dial) {
+    dial.classList.remove('show');
+    // รอให้ transition fade/scale ออกของแต่ละปุ่ม (0.28s ใน style.css) เล่นจบก่อน ค่อยเอาคลาส .open ออก (ตัด
+    // display:flex) จริง ไม่งั้นปุ่มจะหายวับทันทีไม่มี fade out ให้เห็นเลย (ตัด transition ทิ้งเหมือนบั๊กเดิม)
+    _fabSpeedDialCloseTimer = setTimeout(function () {
+      dial.classList.remove('open');
+      _fabSpeedDialCloseTimer = null;
+    }, 280);
+  }
   if (backdrop) backdrop.classList.remove('show');
   if (btn) btn.classList.remove('mfn-add-open');
 }

@@ -277,6 +277,19 @@ body { margin: 0; background: var(--surface-alt); color: var(--text); overflow-x
    เลย์เอาต์ใดๆ (แค่กันการทะลุ ไม่ได้เปลี่ยนพฤติกรรม scroll ปกติภายใน modal เอง) */
 [id$="-overlay"] { overscroll-behavior: contain; }
 
+/* แก้บั๊กที่ผู้ใช้แจ้ง: บนมือถือ swipe เนื้อหาใน modal (เช่นฟอร์มเพิ่มงาน) จนเลื่อนสุดด้านล่างแล้วลากต่ออีก
+   (overscroll) - ค้นพบว่า overscroll-behavior:contain ด้านบนใส่ไว้ที่ "#...-overlay" ซึ่งตัวมันเองไม่ใช่
+   element ที่ scroll ได้จริง (แค่กรอบเต็มจอ position:fixed) จึงไม่ช่วยกันการทะลุจาก element ที่ scroll ได้จริง
+   ข้างใน (.tb-body / #task-box) ไปถึง <body> เบื้องหลัง ทำให้หน้าเว็บเบื้องหลัง scroll ตามไปด้วยจนเห็นแถบเมนู
+   ด้านล่างโผล่ทะลุออกมา (เพราะ body ไม่เคยถูกล็อคไว้เลย) - แก้ 2 ชั้น: (1) ใส่ overscroll-behavior:contain
+   ตรงที่ element ที่ scroll ได้จริงด้วย กัน scroll chaining ไม่ให้ทะลุออกจาก modal ตั้งแต่ต้น (2) ล็อค body
+   จริงจังด้วย .body-scroll-locked (ควบคุมเปิด/ปิดจาก _refreshBodyScrollLock() ใน app.js) เป็นเกราะชั้นสุดท้าย
+   กันไว้อีกชั้นเผื่อ browser บางตัวยังปล่อยให้ scroll ทะลุอยู่ดี */
+#task-box, .tb-body { overscroll-behavior: contain; }
+body.body-scroll-locked {
+  position: fixed; left: 0; right: 0; width: 100%; overflow: hidden;
+}
+
 /* ===== แก้บั๊ก FullCalendar List View ที่ table-layout สับสน (แถวหัววันกับแถวงานโครงสร้างคอลัมน์ไม่เหมือนกัน)
    ใช้ได้ทุกขนาดจอ (ไม่ผูก breakpoint) เพราะ List view เปิดดูได้ทุกขนาดจอ (มือถือ, Tablet ที่สลับมาดู, PC ที่ resize ทดสอบ) ===== */
 .fc-list-day-cushion {
@@ -1642,7 +1655,13 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
     bottom: calc(14px + env(safe-area-inset-bottom) + 66px);
     pointer-events: none;
   }
-  #mfn-speed-dial.show { display: flex; pointer-events: auto; }
+  /* แก้บั๊ก: เดิมใช้คลาส .show ตัวเดียวคุมทั้ง display:none->flex และ end-state ของ animation (opacity/transform
+     ของแต่ละปุ่ม) พร้อมกันในจังหวะเดียว - พอ element เพิ่งโผล่จาก display:none ตอนนั้น browser ยังไม่เคย paint
+     สถานะ "ซ่อนอยู่" (opacity:0) ออกมาเป็นเฟรมจริงเลย transition เลยไม่มีอะไรให้ animate จาก จึง "กระโดด" ไปสถานะ
+     สุดท้ายทันทีไม่มี effect ให้เห็นเลย (ตามที่ผู้ใช้แจ้ง) - แก้โดยแยกเป็น 2 คลาส: .open คุมแค่ display/pointer-
+     events (เพิ่มก่อน), แล้วค่อยเพิ่ม .show ในเฟรมถัดไป (ผ่าน requestAnimationFrame ใน app.js) เพื่อให้ browser มี
+     จังหวะ paint สถานะเริ่มต้นก่อนแล้วค่อย animate ไปสถานะเปิดจริงๆ */
+  #mfn-speed-dial.open { display: flex; pointer-events: auto; }
   .mfn-speed-dial-item {
     pointer-events: auto;
     display: flex; align-items: center; gap: 8px;
