@@ -261,7 +261,16 @@ html[data-theme="dark"] .fc-holiday-cell { background: rgba(248, 113, 113, 0.14)
 .day-sheet-empty { font-size: 12.5px; color: var(--text-muted); text-align: center; padding: 20px 0; }
 
 
-* { box-sizing: border-box; font-family: 'Noto Sans Thai', 'Segoe UI', Tahoma, sans-serif; }
+* {
+  box-sizing: border-box; font-family: 'Noto Sans Thai', 'Segoe UI', Tahoma, sans-serif;
+  /* เอากรอบ/แสงสีฟ้าที่เบราว์เซอร์มือถือ (ส่วนใหญ่ Chrome/Safari บน Android/iOS) ใส่ให้อัตโนมัติทุกครั้งที่แตะ
+     ปุ่ม/ลิงก์ - เรียกว่า "tap highlight" (ชื่อ property คือ -webkit-tap-highlight-color) เป็นค่า default ของ
+     เบราว์เซอร์ที่ปกติมีไว้บอกผู้ใช้ว่า "แตะโดนแล้วนะ" แต่แอปนี้ทุกปุ่ม/องค์ประกอบมี hover/active state ของ
+     ตัวเองอยู่แล้ว (เช่น .mfn-add:active { filter: brightness(0.95) }) เลยไม่จำเป็นต้องมีกรอบนี้ซ้อนทับอีกชั้น -
+     ปิดทั้งเว็บทีเดียวที่ตัวเลือก * แทนการไล่ปิดทีละปุ่ม ไม่กระทบ focus outline ตอนกดผ่านคีย์บอร์ด (คนละ
+     property กัน จึงยังคง accessibility ไว้ได้ปกติ) */
+  -webkit-tap-highlight-color: transparent;
+}
 /* สำคัญ: ใช้ "clip" แทน "hidden" — overflow-x: hidden บน html/body ทำให้ browser คำนวณ overflow-y เป็น "auto"
    ให้อัตโนมัติ (ตามสเปก CSS) ซึ่งเปลี่ยน body ให้กลายเป็น scroll container ของตัวเอง และไปทำลาย
    position: sticky ของ #topbar (ทำให้ header เลื่อนหายไปพร้อมเนื้อหาแทนที่จะค้างอยู่บนสุด) — "clip" กันเนื้อหา
