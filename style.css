@@ -521,12 +521,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes modalScaleIn { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
 #login-modal-overlay, #staff-modal-overlay, #holiday-modal-overlay, #task-modal-overlay,
-#profile-modal-overlay, #reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay,
+#profile-modal-overlay, #reschedule-modal-overlay, #edit-request-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay,
 #todo-board-modal-overlay, #notif-settings-modal-overlay {
   animation: modalFadeIn 0.18s ease;
 }
 #login-box, #staff-box, #holiday-box, #task-box, #profile-card-box,
-#reschedule-box, #pending-requests-box, #my-requests-box, #todo-board-box, #notif-settings-box {
+#reschedule-box, #edit-request-box, #pending-requests-box, #my-requests-box, #todo-board-box, #notif-settings-box {
   animation: modalScaleIn 0.22s ease;
 }
 
@@ -1098,12 +1098,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   display: flex; align-items: center; justify-content: center; padding: 0 3px;
 }
 
-/* Modal ขอเปลี่ยนวัน / รายการคำขอ / ตั้งค่าการแจ้งเตือน - ใช้ style ร่วมกันแบบ modal ทั่วไป */
-#reschedule-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay, #notif-settings-modal-overlay {
+/* Modal ขอเปลี่ยนวัน / ขอแก้ไขงาน / รายการคำขอ / ตั้งค่าการแจ้งเตือน - ใช้ style ร่วมกันแบบ modal ทั่วไป */
+#reschedule-modal-overlay, #edit-request-modal-overlay, #pending-requests-modal-overlay, #my-requests-modal-overlay, #notif-settings-modal-overlay {
   display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
   align-items: center; justify-content: center; z-index: 2050;
 }
-#reschedule-box, #pending-requests-box, #my-requests-box {
+#reschedule-box, #edit-request-box, #pending-requests-box, #my-requests-box {
   background: var(--surface); border-radius: 14px; padding: 0; width: 420px; max-width: 92vw;
   max-height: 85vh; overflow-y: hidden; position: relative;
   display: flex; flex-direction: column;
@@ -1123,13 +1123,14 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 .tb-head .modal-close-btn { position: static; color: rgba(255,255,255,0.75); }
 .tb-head .modal-close-btn:hover { color: #fff; }
-#reschedule-box .field-label { font-size: 12px; color: var(--text-muted); display: block; margin: 8px 0 6px; }
-#reschedule-box input, #reschedule-box textarea {
+#reschedule-box .field-label, #edit-request-box .field-label { font-size: 12px; color: var(--text-muted); display: block; margin: 8px 0 6px; }
+#reschedule-box input, #reschedule-box textarea,
+#edit-request-box input, #edit-request-box textarea {
   width: 100%; padding: 9px 10px; font-size: 13px;
   border: 1px solid var(--border); border-radius: 8px;
 }
-#reschedule-box textarea { min-height: 60px; }
-#reschedule-submit-btn {
+#reschedule-box textarea, #edit-request-box textarea { min-height: 60px; }
+#reschedule-submit-btn, #edit-request-submit-btn {
   width: 100%; background: #059669; color: #fff; border: none;
 }
 
@@ -1512,10 +1513,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   #profile-password-btn { font-size: 16px; }
   #profile-logout-link { font-size: 16px; }
 
-  /* ขอเปลี่ยนวัน / รายการคำขอ */
-  #reschedule-box .field-label { font-size: 15px; }
-  #reschedule-box input, #reschedule-box textarea { font-size: 16px; }
-  #reschedule-submit-btn { font-size: 16px; }
+  /* ขอเปลี่ยนวัน / ขอแก้ไขงาน / รายการคำขอ */
+  #reschedule-box .field-label, #edit-request-box .field-label { font-size: 15px; }
+  #reschedule-box input, #reschedule-box textarea,
+  #edit-request-box input, #edit-request-box textarea { font-size: 16px; }
+  #reschedule-submit-btn, #edit-request-submit-btn { font-size: 16px; }
   .request-card .rc-task { font-size: 16px; }
   .request-card .rc-meta { font-size: 15px; }
   .request-card .rc-actions button { font-size: 15px; }

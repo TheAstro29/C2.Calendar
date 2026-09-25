@@ -55,6 +55,7 @@ var _MODAL_CLOSE_FN = {
   "dashboard-modal-overlay": function () { closeDashboardModal(); },
   "profile-modal-overlay": function () { closeProfileModal(); },
   "reschedule-modal-overlay": function () { closeRescheduleModal(); },
+  "edit-request-modal-overlay": function () { closeEditRequestModal(); },
   "my-requests-modal-overlay": function () { closeMyRequestsModal(); },
   "notif-settings-modal-overlay": function () { closeNotifSettingsModal(); },
   "task-detail-modal-overlay": function () { closeTaskDetailModal(); },
@@ -1445,20 +1446,22 @@ function applyTaskReminderValue(mins) {
   customRow.style.display = 'flex';
 }
 
-function loadTaskStaffChecklist(selectedIds) {
+function loadTaskStaffChecklist(selectedIds, containerId) {
   selectedIds = selectedIds || [];
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('getStaffList', { token: token }).then(function (result) {
-    renderTaskStaffChecklist(result, selectedIds);
+    renderTaskStaffChecklist(result, selectedIds, containerId);
   });
 }
 
-function renderTaskStaffChecklist(result, selectedIds) {
+// containerId เป็นพารามิเตอร์เสริม (ไม่ใส่ = ใช้ 'task-staff-list' เดิม สำหรับฟอร์มสร้าง/แก้ไขงานของ Admin) เพิ่มเข้ามา
+// เพื่อให้ modal "ขอแก้ไขงาน" ของ staff ใช้ container คนละตัว ('edit-request-staff-list') ได้โดยไม่ชนกัน
+function renderTaskStaffChecklist(result, selectedIds, containerId) {
   selectedIds = selectedIds || [];
   var myRole = localStorage.getItem(ROLE_KEY);
   var myAccountId = localStorage.getItem(ACCOUNT_ID_KEY);
 
-  var container = document.getElementById('task-staff-list');
+  var container = document.getElementById(containerId || 'task-staff-list');
   if (!result.success) {
     container.innerHTML = '<p style="font-size:12px;color:var(--danger-text)">' + result.message + '</p>';
     return;
@@ -3629,6 +3632,7 @@ function openTaskDetailModal(event) {
     if (isOwner) {
       addBtn('ขอลบงาน', 'td-btn-danger', function () { closeTaskDetailModal(); requestDeleteTaskConfirm(taskId); });
       addBtn('ขอเปลี่ยนวัน', 'td-btn-primary', function () { closeTaskDetailModal(); openRescheduleModal(taskId); });
+      addBtn('ขอแก้ไขงาน', 'td-btn-primary', function () { closeTaskDetailModal(); openEditRequestModal(taskId, props); });
     }
   }
 
@@ -3711,8 +3715,73 @@ function submitRescheduleRequest() {
   });
 }
 
+// ===== Staff: ขอแก้ไขงาน (แยกจาก "ขอเปลี่ยนวัน" - ไม่รวมวันที่/เวลา ตามที่ผู้ใช้ระบุไว้) =====
+var editRequestTaskId = null;
+
+function setEditRequestType(value) {
+  document.getElementById('edit-request-type').value = value;
+  var buttons = document.querySelectorAll('#edit-request-type-segmented button');
+  for (var i = 0; i < buttons.length; i++) {
+    buttons[i].classList.toggle('active', buttons[i].getAttribute('data-value') === value);
+  }
+}
+
+function openEditRequestModal(taskId, props) {
+  editRequestTaskId = taskId;
+  props = props || {};
+  document.getElementById('edit-request-task-name').value = props.taskName || document.getElementById('td-title').textContent || '';
+  setEditRequestType(props.taskType || 'meeting');
+  document.getElementById('edit-request-location').value = props.location || '';
+  document.getElementById('edit-request-detail').value = stripHtmlToText(props.detail || '');
+  document.getElementById('edit-request-reason').value = '';
+  loadTaskStaffChecklist(props.staffIds || [], 'edit-request-staff-list');
+  document.getElementById('edit-request-modal-overlay').style.display = 'flex';
+  _pushModalNav('edit-request-modal-overlay');
+}
+
+function closeEditRequestModal() {
+  document.getElementById('edit-request-modal-overlay').style.display = 'none';
+}
+
+function submitEditRequest() {
+  var taskName = document.getElementById('edit-request-task-name').value.trim();
+  var btn = document.getElementById('edit-request-submit-btn');
+
+  if (!taskName) {
+    Swal.fire({ icon: 'warning', title: 'กรอกข้อมูลไม่ครบ', text: 'กรุณากรอกชื่องาน' });
+    return;
+  }
+
+  var staffIds = Array.prototype.slice.call(
+    document.querySelectorAll('#edit-request-staff-list input[type="checkbox"]:checked')
+  ).map(function (el) { return el.value; });
+  var taskType = document.getElementById('edit-request-type').value;
+  var locationName = document.getElementById('edit-request-location').value.trim();
+  var detail = document.getElementById('edit-request-detail').value.trim();
+  var reason = document.getElementById('edit-request-reason').value.trim();
+  var token = localStorage.getItem(TOKEN_KEY);
+
+  setButtonLoading(btn, true, 'กำลังส่งคำขอ...');
+  callApi('requestEditTask', {
+    token: token, taskId: editRequestTaskId,
+    taskName: taskName, taskType: taskType, locationName: locationName, detail: detail,
+    staffIds: staffIds, reason: reason
+  }).then(function (result) {
+    if (result.success) {
+      closeEditRequestModal();
+      Toast.fire({ icon: 'success', title: 'ส่งคำขอแก้ไขงานแล้ว รออนุมัติจาก Admin' });
+    } else {
+      Swal.fire({ icon: 'error', title: 'ส่งคำขอไม่สำเร็จ', text: result.message });
+    }
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
+  }).finally(function () {
+    setButtonLoading(btn, false);
+  });
+}
+
 // ===== แจ้งเตือนกระดิ่ง (Admin) =====
-var REQUEST_TYPE_LABELS = { delete: 'ขอลบงาน', reschedule: 'ขอเปลี่ยนวัน' };
+var REQUEST_TYPE_LABELS = { delete: 'ขอลบงาน', reschedule: 'ขอเปลี่ยนวัน', edit: 'ขอแก้ไขงาน' };
 
 // ===== เสียงแจ้งเตือน: ลองใช้เสียงพูดก่อน (ไม่ต้องมีไฟล์เสียง) ถ้าเบราว์เซอร์ไม่รองรับใช้เสียง beep แทนอัตโนมัติ =====
 // ===== เลือกเสียงพูดภาษาไทยที่มีในเครื่อง พร้อมเดาเพศจากชื่อเสียง =====

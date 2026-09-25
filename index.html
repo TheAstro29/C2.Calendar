@@ -701,6 +701,52 @@
     </div>
   </div>
 
+  <!-- ===== Staff: ขอแก้ไขงาน (แยกจาก "ขอเปลี่ยนวัน" - ไม่มีฟิลด์วันที่/เวลา ตามที่ผู้ใช้ระบุ)
+       ใช้โครงสร้างคล้าย reschedule-modal-overlay ด้านบน แต่แก้ ชื่องาน/ประเภทงาน/สถานที่/รายละเอียด/ผู้ปฏิบัติงาน
+       แทน ต้องรอ Admin อนุมัติก่อนถึงจะมีผลจริงกับงานจริง (ดู submitEditRequest/openEditRequestModal ใน app.js) -->
+  <div id="edit-request-modal-overlay">
+    <div id="edit-request-box">
+      <div class="tb-head">
+        <h2>✏️ ขอแก้ไขงาน</h2>
+        <button class="modal-close-btn" onclick="closeEditRequestModal()">✕</button>
+      </div>
+      <div class="tb-info-banner">ส่งคำขอให้ Admin อนุมัติ งานจะยังไม่เปลี่ยนจนกว่าจะได้รับการอนุมัติ (คำขอนี้ไม่รวมการเปลี่ยนวัน/เวลา - ใช้ปุ่ม "ขอเปลี่ยนวัน" แยกต่างหาก)</div>
+      <div class="tb-body">
+        <label class="field-label">ชื่องาน</label>
+        <input type="text" id="edit-request-task-name" placeholder="ชื่องาน">
+
+        <label class="field-label">ประเภทงาน</label>
+        <select id="edit-request-type" style="display:none">
+          <option value="meeting">ประชุม (Meeting)</option>
+          <option value="onsite">นอกสถานที่ (On-site)</option>
+          <option value="event">กิจกรรม (Event)</option>
+          <option value="leave">ลา (Leave)</option>
+        </select>
+        <div class="segmented" id="edit-request-type-segmented">
+          <button type="button" data-value="meeting" title="ประชุม (Meeting)" onclick="setEditRequestType('meeting')">ประชุม</button>
+          <button type="button" data-value="onsite" title="นอกสถานที่ (On-site)" onclick="setEditRequestType('onsite')">นอกสถานที่</button>
+          <button type="button" data-value="event" title="กิจกรรม (Event)" onclick="setEditRequestType('event')">กิจกรรม</button>
+          <button type="button" data-value="leave" title="ลา (Leave)" onclick="setEditRequestType('leave')">ลา</button>
+        </div>
+
+        <label class="field-label">สถานที่</label>
+        <input type="text" id="edit-request-location" placeholder="สถานที่">
+
+        <label class="field-label">รายละเอียดงาน</label>
+        <textarea id="edit-request-detail" placeholder="รายละเอียดงาน (ไม่บังคับ)"></textarea>
+
+        <label class="field-label">ผู้ปฏิบัติงาน</label>
+        <div id="edit-request-staff-list" class="staff-checklist"></div>
+
+        <label class="field-label">เหตุผล (ไม่บังคับ)</label>
+        <textarea id="edit-request-reason" placeholder="เช่น รายละเอียดงานเปลี่ยนไปจากที่คุยกับลูกค้า"></textarea>
+      </div>
+      <div class="tb-footer">
+        <button id="edit-request-submit-btn" onclick="submitEditRequest()">ส่งคำขอ</button>
+      </div>
+    </div>
+  </div>
+
   <div id="my-requests-modal-overlay">
     <div id="my-requests-box">
       <div class="tb-head">
