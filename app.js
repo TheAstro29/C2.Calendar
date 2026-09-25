@@ -1268,6 +1268,10 @@ document.addEventListener('selectionchange', function () {
 // ===== ฟอร์มสร้างงานใหม่ / แก้ไขงาน =====
 var mapsLoaded = false;
 var taskMap = null;
+// แผนที่ (ดูอย่างเดียว ไม่แก้ไข) ในหน้าดูรายละเอียดงาน - แยกตัวแปรจาก taskMap/taskMarker ของฟอร์มสร้าง/แก้ไข
+// เพราะเป็นแผนที่คนละอันกัน เปิดพร้อมกันไม่ได้อยู่แล้ว (ต้องปิด modal นี้ก่อนถึงจะเปิดฟอร์มแก้ไขได้) แต่แยกไว้กันสับสน
+var taskDetailMap = null;
+var taskDetailMarker = null;
 var taskMarker = null;
 var editingTaskId = null;
 // ค่าแจ้งเตือนล่วงหน้าที่เลือกไว้ตอนสร้าง/แก้ไขงาน (นาที) - เก็บไว้ฝั่ง frontend เท่านั้นตอนนี้ (ดู TODO ที่ submitAddTask)
@@ -1515,7 +1519,7 @@ function initTaskMap() {
     var geocoder = new google.maps.Geocoder();
     geocoder.geocode({ location: e.latLng }, function (results, status) {
       if (status === 'OK' && results[0]) {
-        locationInput.value = results[0].formatted_address;
+        locationInput.value = stripGooglePlusCode(results[0].formatted_address);
       }
     });
   });
@@ -1578,12 +1582,30 @@ async function fetchLocationSuggestions(text, dropdown, inputEl) {
   }
 }
 
+// ===== ตัด Google Plus Code ออกจากที่อยู่ (เช่น "73HW+FHF ตำบล..." -> "ตำบล...") - รูปแบบ Plus Code คือ
+// ตัวอักษร/เลข 4-8 ตัว + เครื่องหมาย + ตามด้วยตัวอักษร/เลข 2-3 ตัว (ใช้ชุดอักขระเฉพาะของ Open Location Code
+// ไม่มี I, L, O, U กันสับสนกับตัวเลข) ตัดช่องว่าง/จุลภาคที่เหลือค้างหลังตัดออกด้วย =====
+function stripGooglePlusCode(text) {
+  if (!text) return text;
+  return text
+    .replace(/\b[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b\s*/gi, '')
+    .replace(/^,\s*/, '')
+    .trim();
+}
+
 async function selectLocationSuggestion(placePrediction, inputEl, dropdown) {
   dropdown.style.display = 'none';
   try {
     var place = placePrediction.toPlace();
-    await place.fetchFields({ fields: ['formattedAddress', 'location'] });
-    inputEl.value = place.formattedAddress || placePrediction.text.text;
+    // ขอ displayName (ชื่อสถานที่) เพิ่มด้วย - เดิมขอแค่ formattedAddress (ที่อยู่ล้วน) เลยได้แค่ที่อยู่
+    // ไม่มีชื่อร้าน/บริษัทติดมา ทั้งที่ตัวเลือกในดรอปดาวน์โชว์ชื่อ+ที่อยู่รวมกันอยู่แล้ว
+    await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location'] });
+    var name = place.displayName || '';
+    // ตัด Google Plus Code ออกก่อน (เช่น "73HW+FHF") - formattedAddress บางที่มีพิกัดแบบนี้ติดมาด้วย
+    // ผู้ใช้ไม่ต้องการเห็น เอาแค่ชื่อสถานที่กับที่อยู่ปกติพอ
+    var addr = stripGooglePlusCode(place.formattedAddress) || placePrediction.text.text || '';
+    // กันชื่อซ้ำกรณี formattedAddress มีชื่อสถานที่ปนอยู่แล้ว (บาง place type ของ Google เป็นแบบนี้)
+    inputEl.value = (name && addr.indexOf(name) === -1) ? (name + ' ' + addr) : (addr || name);
     if (place.location && taskMap) {
       placeMarker(place.location);
       taskMap.setCenter(place.location);
@@ -3291,6 +3313,7 @@ var _tdCurrentTaskId = null;
 
 function closeTaskDetailModal() {
   document.getElementById('task-detail-modal-overlay').style.display = 'none';
+  document.getElementById('td-map').style.display = 'none';
   if (_tdCommentsUnsub) { _tdCommentsUnsub(); _tdCommentsUnsub = null; }
   _tdCurrentTaskId = null;
   closeGlobalKebabMenu();
@@ -3611,6 +3634,34 @@ function openTaskDetailModal(event) {
 
   document.getElementById('task-detail-modal-overlay').style.display = 'flex';
   _pushModalNav('task-detail-modal-overlay');
+  // ต้องเรียกหลังจากที่ modal โชว์แล้วเท่านั้น (ไม่ใช่ก่อนหน้า) เพราะ Google Maps ต้องการให้ container
+  // มีขนาดจริงตอนสร้างแผนที่ - ถ้าเรียกตอน modal ยังซ่อนอยู่ (display:none) จะได้แผนที่ขนาด 0x0 มาแทน
+  setupTaskDetailMap(props.lat, props.lng);
+}
+
+// ===== แผนที่ (ดูอย่างเดียว) ในหน้าดูรายละเอียดงาน - โชว์เฉพาะงานที่มีพิกัด lat/lng บันทึกไว้เท่านั้น
+// (งานเก่าที่พิมพ์สถานที่เองก่อนมีฟีเจอร์แผนที่ หรือไม่ได้เลือกจาก autocomplete/คลิกแผนที่ จะไม่มีพิกัด) =====
+function setupTaskDetailMap(lat, lng) {
+  var mapEl = document.getElementById('td-map');
+  if (!lat || !lng || !GOOGLE_MAPS_API_KEY) {
+    mapEl.style.display = 'none';
+    return;
+  }
+  mapEl.style.display = 'block';
+  var latLng = { lat: Number(lat), lng: Number(lng) };
+  loadGoogleMapsScript(function () {
+    if (!taskDetailMap) {
+      taskDetailMap = new google.maps.Map(mapEl, {
+        center: latLng, zoom: 16, disableDefaultUI: true, gestureHandling: 'cooperative'
+      });
+    } else {
+      // resize ก่อนเสมอ กันกรณี container เพิ่งเปลี่ยนจาก display:none เป็น block (แผนที่เดิมอาจจำขนาดเก่าค้างไว้)
+      google.maps.event.trigger(taskDetailMap, 'resize');
+      taskDetailMap.setCenter(latLng);
+    }
+    if (taskDetailMarker) taskDetailMarker.setMap(null);
+    taskDetailMarker = new google.maps.Marker({ position: latLng, map: taskDetailMap });
+  });
 }
 
 // ===== Staff: ขอเปลี่ยนวัน =====
