@@ -199,7 +199,8 @@ async function firestoreGetTaskDetail(params) {
         detail: row.detail,
         taskType: row.taskType,
         isUndated: row.isUndated,
-        staffIds: row.staffIds || []
+        staffIds: row.staffIds || [],
+        reminderMinutes: (typeof row.reminderMinutes === 'number') ? row.reminderMinutes : null
       }
     };
   } catch (err) {
@@ -1269,6 +1270,9 @@ var mapsLoaded = false;
 var taskMap = null;
 var taskMarker = null;
 var editingTaskId = null;
+// ค่าแจ้งเตือนล่วงหน้าที่เลือกไว้ตอนสร้าง/แก้ไขงาน (นาที) - เก็บไว้ฝั่ง frontend เท่านั้นตอนนี้ (ดู TODO ที่ submitAddTask)
+var _taskReminderMinutes = 60;
+var TASK_REMINDER_PRESETS = [0, 15, 60, 180, 1440];
 
 function openTaskModal() {
   editingTaskId = null;
@@ -1325,6 +1329,7 @@ function openTaskModalForEdit(taskId) {
     }
     document.getElementById('task-location').value = task.locationName || '';
     document.getElementById('task-detail').innerHTML = sanitizeRichText(task.detail || '');
+    applyTaskReminderValue(task.reminderMinutes);
 
     document.getElementById('task-modal-overlay').style.display = 'flex';
     renderTaskStaffChecklist(staffListResult, task.staffIds || []);
@@ -1355,6 +1360,7 @@ function resetTaskForm() {
   document.getElementById('task-detail').innerHTML = '';
   toggleAllDayFields();
   toggleUndatedFields();
+  applyTaskReminderValue(60); // ค่าเริ่มต้นตอนสร้างงานใหม่
   if (taskMarker) taskMarker.setMap(null);
   taskMarker = null;
 }
@@ -1377,6 +1383,62 @@ function setTaskType(value) {
   for (var i = 0; i < buttons.length; i++) {
     buttons[i].classList.toggle('active', buttons[i].getAttribute('data-value') === value);
   }
+}
+
+// ===== แจ้งเตือนล่วงหน้า (ชิปเลือกไว + กำหนดเอง) =====
+// เรียกตอนผู้ใช้กดปุ่มชิปโดยตรง (mins = ตัวเลขนาทีของปุ่มนั้น หรือ 'custom')
+function setTaskReminder(mins) {
+  var customRow = document.getElementById('task-reminder-custom-row');
+  if (mins === 'custom') {
+    _taskReminderMinutes = computeCustomReminderMinutes();
+    highlightReminderChip('custom');
+    customRow.style.display = 'flex';
+  } else {
+    _taskReminderMinutes = mins;
+    highlightReminderChip(mins);
+    customRow.style.display = 'none';
+  }
+}
+
+function highlightReminderChip(mins) {
+  var chips = document.querySelectorAll('#task-reminder-chips .r-chip');
+  for (var i = 0; i < chips.length; i++) {
+    chips[i].classList.toggle('active', chips[i].getAttribute('data-mins') === String(mins));
+  }
+}
+
+function computeCustomReminderMinutes() {
+  var n = parseInt(document.getElementById('task-reminder-custom-n').value, 10) || 1;
+  var unit = parseInt(document.getElementById('task-reminder-custom-unit').value, 10) || 1;
+  return n * unit;
+}
+
+// ผูกกับ oninput/onchange ของช่องตัวเลข/หน่วยในแถว "กำหนดเอง" (อัปเดตค่าไว้เฉยๆ ไม่ยุ่งกับการไฮไลท์ชิป เพราะ
+// อยู่ในโหมดกำหนดเองอยู่แล้วตอนแถวนี้แสดงผล)
+function updateCustomReminderMinutes() {
+  _taskReminderMinutes = computeCustomReminderMinutes();
+}
+
+// ตั้งค่าเริ่มต้น/ค่าที่โหลดมาจากงานเดิม (ต่างจาก setTaskReminder เพราะต้องรองรับค่าที่ไม่ตรงกับชิปสำเร็จรูปเลย
+// โดยเด้งไปโหมด "กำหนดเอง" พร้อมเติมตัวเลข/หน่วยที่หารลงตัวสวยที่สุดให้อัตโนมัติ)
+function applyTaskReminderValue(mins) {
+  if (mins === null || mins === undefined) mins = 60; // ยังไม่มีข้อมูลจริงจาก backend (ฟีเจอร์นี้รอ deploy) - ใช้ค่าเริ่มต้นเดียวกับตอนสร้างใหม่ไปก่อน
+  var customRow = document.getElementById('task-reminder-custom-row');
+  if (TASK_REMINDER_PRESETS.indexOf(mins) !== -1) {
+    _taskReminderMinutes = mins;
+    highlightReminderChip(mins);
+    customRow.style.display = 'none';
+    return;
+  }
+  var n, unit;
+  if (mins % 1440 === 0) { n = mins / 1440; unit = 1440; }
+  else if (mins % 60 === 0) { n = mins / 60; unit = 60; }
+  else { n = mins; unit = 1; }
+  document.getElementById('task-reminder-custom-n').value = n;
+  document.getElementById('task-reminder-custom-unit').value = String(unit);
+  _taskReminderMinutes = mins;
+  highlightReminderChip('custom');
+  customRow.style.display = 'flex';
 }
 
 function loadTaskStaffChecklist(selectedIds) {
@@ -1593,7 +1655,8 @@ function submitAddTask() {
   var payload = {
     token: token, taskName: taskName, taskType: document.getElementById('task-type').value,
     isUndated: isUndated, startDateTime: startDateTime, endDateTime: endDateTime,
-    isAllDay: isAllDay, staffIds: staffIds, locationName: locationName, lat: lat, lng: lng, detail: detail
+    isAllDay: isAllDay, staffIds: staffIds, locationName: locationName, lat: lat, lng: lng, detail: detail,
+    reminderMinutes: _taskReminderMinutes
   };
 
   if (!isUndated) {

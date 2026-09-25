@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260925a">
 </head>
 <body>
 
@@ -439,6 +439,30 @@
               </div>
             </div>
           </div>
+        </div>
+
+        <hr class="tb-divider">
+
+        <!-- ===== แจ้งเตือนล่วงหน้า (แบบที่ 2 ที่ผู้ใช้เลือก - ชิปเลือกไว + กำหนดเอง) =====
+             ค่าที่เลือกส่งไปเป็น reminderMinutes ใน addTask/updateTask (functions/index.js) และมีฟังก์ชัน
+             taskUpcomingReminders (onSchedule ทุก 5 นาที) คอยเช็คแล้วส่งแจ้งเตือนจริงเมื่อถึงเวลา -->
+        <label class="field-label">🔔 แจ้งเตือนล่วงหน้า</label>
+        <div class="reminder-chips" id="task-reminder-chips">
+          <button type="button" class="r-chip" data-mins="0" onclick="setTaskReminder(0)">ไม่เตือน</button>
+          <button type="button" class="r-chip" data-mins="15" onclick="setTaskReminder(15)">15 นาที</button>
+          <button type="button" class="r-chip active" data-mins="60" onclick="setTaskReminder(60)">1 ชั่วโมง</button>
+          <button type="button" class="r-chip" data-mins="180" onclick="setTaskReminder(180)">3 ชั่วโมง</button>
+          <button type="button" class="r-chip" data-mins="1440" onclick="setTaskReminder(1440)">1 วัน</button>
+          <button type="button" class="r-chip" data-mins="custom" onclick="setTaskReminder('custom')">กำหนดเอง</button>
+        </div>
+        <div class="reminder-custom-row" id="task-reminder-custom-row" style="display:none">
+          <span class="lbl">เตือนก่อน</span>
+          <input type="number" id="task-reminder-custom-n" value="2" min="1" oninput="updateCustomReminderMinutes()">
+          <select id="task-reminder-custom-unit" onchange="updateCustomReminderMinutes()">
+            <option value="1">นาที</option>
+            <option value="60" selected>ชั่วโมง</option>
+            <option value="1440">วัน</option>
+          </select>
         </div>
 
         <hr class="tb-divider">
@@ -1005,6 +1029,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
-  <script src="app.js"></script>
+  <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
+  <script src="app.js?v=20260925a"></script>
 </body>
 </html>

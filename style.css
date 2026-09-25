@@ -1440,6 +1440,23 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .staff-checklist label:has(input:checked) { background: #f0fdf9; border-color: #059669; color: #047857; font-weight: 600; }
 .staff-checklist input[type="checkbox"] { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .staff-checklist .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+/* ===== แจ้งเตือนล่วงหน้าตอนสร้าง/แก้ไขงาน (แบบที่ 2 - ชิปเลือกไว + กำหนดเอง) ===== */
+.reminder-chips { display: flex; gap: 7px; flex-wrap: wrap; }
+.r-chip {
+  padding: 7px 13px; border-radius: 20px; font-size: 12.5px; font-weight: 600;
+  border: 1px solid var(--border); color: var(--text-muted); cursor: pointer; background: transparent;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.r-chip.active { background: #059669; border-color: #059669; color: #fff; }
+.reminder-custom-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 10px; padding: 10px 12px;
+  background: var(--surface-alt); border-radius: 8px; border: 1px dashed var(--border);
+}
+.reminder-custom-row input[type="number"] { width: 64px; padding: 6px 8px; text-align: center; }
+.reminder-custom-row select { width: auto; flex: 1; padding: 6px 8px; }
+.reminder-custom-row .lbl { font-size: 12.5px; color: var(--text-muted); white-space: nowrap; }
+
 #task-map { height: 180px; border-radius: 6px; margin-top: 8px; border: 1px solid var(--border); }
 .tb-footer {
   background: var(--surface-alt); border-top: 1px solid var(--border-soft); padding: 14px 22px;
@@ -1511,6 +1528,8 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .segmented button { font-size: 14px; }
   .staff-checklist label { font-size: 14px; }
   .tb-footer button { font-size: 15px; }
+  .r-chip { font-size: 14px; }
+  .reminder-custom-row { font-size: 15px; }
 }
 
 /* ========================================================= */
@@ -1590,6 +1609,9 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
     box-shadow: 0 4px 12px rgba(5,150,105,0.4), inset 0 1px 0 rgba(255,255,255,0.35);
   }
   .mfn-add:active { filter: brightness(0.95); }
+  .mfn-add {
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
   .mfn-add.mfn-add-open { transform: rotate(45deg); }
 
   /* Speed-dial ของปุ่ม "+" (Approach B) - โผล่ขึ้นเหนือปุ่มพอดี ไม่ใช่ modal เต็มจอ */
@@ -1619,16 +1641,24 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
     backdrop-filter: blur(18px) saturate(160%);
     box-shadow: var(--glass-shadow);
     text-shadow: var(--glass-text-shadow);
-    opacity: 0; transform: translateY(8px); transition: opacity 0.18s ease, transform 0.18s ease;
+    /* ===== Animation "Staggered Pop" (แบบที่ 2 ที่ผู้ใช้เลือกจากตัวอย่าง) - เดิมเป็น fade+slide ธรรมดา
+       (opacity 0->1 + translateY(8px)->0 พร้อมกันทั้งคู่) เปลี่ยนเป็นเด้งขึ้นทีละปุ่มแบบมีสปริงเด้งปลายทาง โดย
+       ปุ่มแต่ละอันหน่วงเวลาต่างกันผ่าน transition-delay ที่ nth-child ด้านล่าง (ตอนปิดต้องรีเซ็ต delay กลับเป็น 0
+       ทันที กันปุ่มค้างช้าตอนกดปิดเมนู) ===== */
+    opacity: 0; transform: translateY(10px) scale(0.55); transform-origin: bottom right;
+    transition: opacity 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .mfn-sd-ic {
     flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center; font-size: 13px;
     background: rgba(5,150,105,0.18);
   }
-  #mfn-speed-dial.show .mfn-speed-dial-item { opacity: 1; transform: translateY(0); }
+  #mfn-speed-dial.show .mfn-speed-dial-item { opacity: 1; transform: translateY(0) scale(1); }
+  #mfn-speed-dial.show .mfn-speed-dial-item:nth-child(1) { transition-delay: 0ms; }
+  #mfn-speed-dial.show .mfn-speed-dial-item:nth-child(2) { transition-delay: 55ms; }
+  #mfn-speed-dial:not(.show) .mfn-speed-dial-item { transition-delay: 0ms !important; }
   @media (prefers-reduced-motion: reduce) {
-    .mfn-speed-dial-item { transition: none; }
+    .mfn-speed-dial-item, .mfn-add { transition: none; }
   }
 
   /* More menu (bottom sheet) */
