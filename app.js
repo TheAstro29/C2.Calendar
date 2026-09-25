@@ -1471,6 +1471,9 @@ function renderTaskStaffChecklist(result, selectedIds, containerId) {
     .filter(function (s) { return s.active; })
     // เดิมซ่อน Admin ออกจากตัวเลือกมอบหมายงาน - ผู้ใช้แจ้งว่าต้องเลือก Admin เป็นผู้ปฏิบัติงานได้ด้วย จึงเอาการ
     // ซ่อนออก ให้ Admin ที่ยัง active โชว์ในรายชื่อเหมือนพนักงานคนอื่นๆ ปกติ
+    // ยกเว้นบัญชี "ผู้ดูแลระบบ" ตัวจริงบัญชีเดียว (accountId "A001") - ไม่ใช่ staff/ผู้ใช้งานจริงที่จะถูกมอบหมาย
+    // งานได้ ซ่อนออกจากตัวเลือกมอบหมายงานเช่นเดียวกับที่ getPublicStaffList/personalTask ฝั่ง backend ทำอยู่แล้ว
+    .filter(function (s) { return s.staffId !== 'A001'; })
     .forEach(function (s) {
       // ล็อคชื่อตัวเองเสมอตอนลงนัดงาน ทั้ง staff และ ceo (เดิมล็อคแค่ staff) มีแค่ admin เท่านั้นที่ไม่ถูกล็อค
       var isSelf = (myRole === 'staff' || myRole === 'ceo') && s.staffId === myAccountId;
@@ -1483,6 +1486,22 @@ function renderTaskStaffChecklist(result, selectedIds, containerId) {
         s.firstName + ' ' + s.lastName + (isSelf ? ' (คุณ)' : '');
         container.appendChild(label);
       });
+}
+
+// ===== ปุ่ม "ทุกคน" เหนือรายชื่อผู้ปฏิบัติงาน - สลับ (toggle) เลือกทุกคน/เคลียร์ทุกคนในปุ่มเดียว แทนการต้องกด
+// ทีละคน: ถ้ายังไม่ได้ติ๊กครบทุกคน (ในกลุ่มที่ติ๊กได้) กดแล้วติ๊กให้ครบทุกคน แต่ถ้าติ๊กครบทุกคนอยู่แล้ว กดซ้ำอีก
+// ครั้งจะเคลียร์ (untick) ออกทั้งหมดทันที ไม่เกี่ยวกับช่องที่ disabled (ชื่อตัวเองที่ถูกล็อคติ๊กไว้เสมอ) เลย
+// ทั้งไม่นับรวมตอนเช็คว่า "ครบทุกคน" หรือยัง และไม่แตะต้อง/ไม่มีผลใดๆกับช่องนั้นทั้งตอนติ๊กและตอนเคลียร์ =====
+function selectAllTaskStaff(containerId) {
+  var checkboxes = document.querySelectorAll('#' + containerId + ' input[type="checkbox"]:not(:disabled)');
+  var allChecked = true;
+  for (var i = 0; i < checkboxes.length; i++) {
+    if (!checkboxes[i].checked) { allChecked = false; break; }
+  }
+  var newState = !allChecked;
+  for (var j = 0; j < checkboxes.length; j++) {
+    checkboxes[j].checked = newState;
+  }
 }
 
 // ===== จัดการแผนที่: เตรียมพร้อมสำหรับอนาคต ถ้ายังไม่มี API key จะไม่ทำอะไรเลย (เงียบ ไม่มีข้อความโชว์) =====

@@ -467,7 +467,10 @@
 
         <hr class="tb-divider">
 
-        <label class="field-label">ผู้ปฏิบัติงาน</label>
+        <div class="field-label-row">
+          <label class="field-label">ผู้ปฏิบัติงาน</label>
+          <button type="button" class="select-all-staff-btn" onclick="selectAllTaskStaff('task-staff-list')">ทุกคน</button>
+        </div>
         <div id="task-staff-list" class="staff-checklist"></div>
 
         <label class="field-label">สถานที่</label>
@@ -735,7 +738,10 @@
         <label class="field-label">รายละเอียดงาน</label>
         <textarea id="edit-request-detail" placeholder="รายละเอียดงาน (ไม่บังคับ)"></textarea>
 
-        <label class="field-label">ผู้ปฏิบัติงาน</label>
+        <div class="field-label-row">
+          <label class="field-label">ผู้ปฏิบัติงาน</label>
+          <button type="button" class="select-all-staff-btn" onclick="selectAllTaskStaff('edit-request-staff-list')">ทุกคน</button>
+        </div>
         <div id="edit-request-staff-list" class="staff-checklist"></div>
 
         <label class="field-label">เหตุผล (ไม่บังคับ)</label>

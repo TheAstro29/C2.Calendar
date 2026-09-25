@@ -1431,6 +1431,15 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .row2 { display: flex; gap: 10px; margin-top: 4px; }
 .row2 > div { flex: 1; }
 .row2 input { margin-bottom: 6px; }
+/* แถวหัวข้อ "ผู้ปฏิบัติงาน" + ปุ่ม "ทุกคน" (เลือกทุกคนในครั้งเดียวแทนการกดทีละคน) - ใช้ margin เดียวกับ
+   .field-label เดิมแล้วปิด margin ของ label ด้านในเอง กันเผื่อ margin ซ้อนกัน 2 ชั้น */
+.field-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 6px; }
+.field-label-row .field-label { margin: 0; }
+.select-all-staff-btn {
+  font-size: 12px; padding: 3px 10px; border-radius: 20px; border: 1px solid #059669;
+  background: transparent; color: #059669; cursor: pointer; flex-shrink: 0; font-weight: 600;
+}
+.select-all-staff-btn:hover { background: #f0fdf9; }
 .staff-checklist {
   display: flex; flex-wrap: wrap; gap: 8px; max-height: 140px; overflow-y: auto; padding: 2px;
 }
@@ -1534,6 +1543,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .radio-row { font-size: 16px; }
   .segmented button { font-size: 14px; }
   .staff-checklist label { font-size: 14px; }
+  .select-all-staff-btn { font-size: 14px; padding: 4px 12px; }
   .tb-footer button { font-size: 15px; }
   .r-chip { font-size: 14px; }
   .reminder-custom-row { font-size: 15px; }
