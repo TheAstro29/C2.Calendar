@@ -4207,6 +4207,12 @@ function approveFromNotification(btn, requestId, notificationId) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: 'อนุมัติแล้ว' });
       markNotificationReadAndRefresh(notificationId);
+    } else if (result.message === 'คำขอนี้ถูกดำเนินการไปแล้ว') {
+      // เคสมี Admin หลายคน: อีกคนอนุมัติ/ไม่อนุมัติไปก่อนแล้ว (ปกติปุ่มนี้ควรหายไปเองผ่าน realtime อยู่แล้ว - ดู
+      // markSiblingRequestNotificationsRead ฝั่ง backend แต่เผื่อ sync ช้า/พลาดจังหวะ) แจ้งเบาๆแบบ info แทน error
+      // dialog แล้ว mark อ่าน+รีเฟรชทันทีให้ปุ่มที่ค้างอยู่หายไปเลย ไม่ปล่อยให้กดซ้ำแล้วเจอข้อความเดิมวนไป
+      Toast.fire({ icon: 'info', title: result.message });
+      markNotificationReadAndRefresh(notificationId);
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
       setButtonLoading(btn, false);
@@ -4223,6 +4229,10 @@ function rejectFromNotification(btn, requestId, notificationId) {
   callApi('rejectChangeRequest', { token: token, requestId: requestId }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: 'ไม่อนุมัติคำขอนี้แล้ว' });
+      markNotificationReadAndRefresh(notificationId);
+    } else if (result.message === 'คำขอนี้ถูกดำเนินการไปแล้ว') {
+      // ดูคอมเมนต์เดียวกันใน approveFromNotification ด้านบน - Admin อีกคนดำเนินการไปก่อนแล้ว
+      Toast.fire({ icon: 'info', title: result.message });
       markNotificationReadAndRefresh(notificationId);
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
