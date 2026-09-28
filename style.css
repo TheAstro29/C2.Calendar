@@ -1407,20 +1407,21 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #task-box {
   background: var(--surface); border-radius: 10px; width: 460px;
-  max-height: 85vh; overflow-y: auto; position: relative; padding: 0;
+  max-height: 85vh; overflow: hidden; position: relative; padding: 0;
   display: flex; flex-direction: column;
-  scrollbar-width: none; /* Firefox: ซ่อนแค่แถบ scrollbar แต่ยัง scroll ได้ */
-  /* แก้บั๊ก scrollbar 2 เส้นซ้อนกัน: #task-box มี overflow เหลื่อมอยู่จริงอีก ~24px เสมอ (Chrome คำนวณ
-     scrollHeight ของ flex container คลาดเคลื่อนจากผลรวมความสูงจริงของลูกอยู่เสมอ แม้ .tb-body จะมี
-     overflow-y:auto ดูดซับ scroll หลักไปแล้ว) เดิมลองเปลี่ยนเป็น overflow:hidden เพื่อตัด scrollbar เส้นที่ 2
-     ทิ้งไปเลย แต่กลับทำให้เกิดบั๊กใหม่: modal แสดงผลยืด/หัวโมดัลหายไปตอนติ๊ก checkbox เลือกผู้ปฏิบัติงาน
-     (เพราะ browser ยัง auto-scroll container ที่ overflow:hidden ได้เวลา element ข้างในถูก focus แต่ไม่มี
-     scrollbar ให้เห็น เนื้อหาเลยเลื่อนแบบมองไม่เห็นจนหัวโมดัลหลุดจอ) จึงเปลี่ยนวิธีแก้เป็นคง overflow-y:auto
-     ไว้ตามเดิม (ให้ browser ยัง auto-scroll ไปยัง element ที่ focus ได้ปกติ ไม่มีบั๊กใหม่) แต่ซ่อนแค่ "แถบ
-     scrollbar ที่มองเห็น" ด้วย scrollbar-width/::-webkit-scrollbar แทน ผู้ใช้จะไม่เห็น scrollbar เส้นที่ 2
-     ซ้อนกับของ .tb-body อีกต่อไป */
+  /* แก้บั๊ก scrollbar 2 เส้น + modal ยืดออก (2 รอบ): #task-box มี overflow เหลื่อมอยู่จริงอีก ~24px เสมอ
+     (Chrome คำนวณ scrollHeight ของ flex container คลาดเคลื่อนจากผลรวมความสูงจริงของลูกเสมอ) ลองมาแล้ว 2 วิธี
+     ที่ผิดพลาด: (1) overflow:hidden เฉยๆ โดยไม่แก้ .tb-body -> browser ยัง auto-scroll กรอบนี้แบบมองไม่เห็นได้
+     เวลา element ข้างในถูก focus (เช่น ติ๊ก checkbox) ทำให้หัว modal หลุดจอ (2) เปลี่ยนกลับเป็น overflow-y:auto
+     แล้วซ่อนแค่แถบ scrollbar ด้วย scrollbar-width/::-webkit-scrollbar -> กลับเปิดช่องให้ "wheel scroll เมาส์"
+     มาเลื่อนกรอบนี้แบบมองไม่เห็นได้อีกทาง (เวลาเลื่อนเมาส์ค้างอยู่แถวปุ่มยกเลิก/หัว modal ที่ไม่ได้ scroll เอง)
+     สาเหตุที่แท้จริงคือ .tb-body (ลูกที่ควรเป็นตัวเดียวที่ scroll ได้) ไม่มี min-height:0 flex item เลยปฏิเสธ
+     ไม่ยอมหดตัวให้พอดีพื้นที่ที่เหลือจริง ทำให้ #task-box ต้องรับ overflow เกินมาเองด้วย แก้ที่ต้นตอโดยเพิ่ม
+     min-height:0 ให้ .tb-body (ดูด้านล่าง) แล้ว #task-box ก็ overflow:hidden ได้อย่างปลอดภัยจริง ๆ (กัน wheel
+     scroll ได้ 100% เพราะ hidden ไม่ตอบสนอง wheel เลย และการ scrollIntoView ตอน focus checkbox ก็จะไปเลื่อนที่
+     .tb-body เพียงตัวเดียวเพราะตอนนี้มันรับพื้นที่ scroll ได้ครบจริงแล้ว ทดสอบแล้วด้วยรายชื่อ 30 คนที่ต้องเลื่อน
+     ไกลจริง ๆ ก่อนส่ง ยืนยันว่า #task-box นิ่งสนิทไม่ขยับเลยไม่ว่าจะ wheel หรือ focus */
 }
-#task-box::-webkit-scrollbar { display: none; } /* Chrome/Edge/Safari */
 .tb-head {
   background: #059669; color: #fff; padding: 18px 22px;
   display: flex; align-items: center; justify-content: space-between;
