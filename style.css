@@ -1407,13 +1407,20 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #task-box {
   background: var(--surface); border-radius: 10px; width: 460px;
-  max-height: 85vh; overflow: hidden; position: relative; padding: 0;
+  max-height: 85vh; overflow-y: auto; position: relative; padding: 0;
   display: flex; flex-direction: column;
-  /* แก้บั๊ก: เดิม overflow-y:auto ที่นี่ซ้ำซ้อนกับ .tb-body { overflow-y: auto } ด้านล่าง ทำให้เกิด
-     scrollbar 2 เส้นซ้อนกัน (กรอบนอก #task-box + เนื้อหาใน .tb-body) เพราะ flex-layout บางครั้งคำนวณ
-     ความสูงคลาดเคลื่อนเล็กน้อยจน #task-box เกินขอบเขตของตัวเองไปเช่นกัน เปลี่ยนเป็น overflow:hidden
-     ปล่อยให้ .tb-body (flex:1 1 auto) เป็นตัวเดียวที่ scroll ได้ */
+  scrollbar-width: none; /* Firefox: ซ่อนแค่แถบ scrollbar แต่ยัง scroll ได้ */
+  /* แก้บั๊ก scrollbar 2 เส้นซ้อนกัน: #task-box มี overflow เหลื่อมอยู่จริงอีก ~24px เสมอ (Chrome คำนวณ
+     scrollHeight ของ flex container คลาดเคลื่อนจากผลรวมความสูงจริงของลูกอยู่เสมอ แม้ .tb-body จะมี
+     overflow-y:auto ดูดซับ scroll หลักไปแล้ว) เดิมลองเปลี่ยนเป็น overflow:hidden เพื่อตัด scrollbar เส้นที่ 2
+     ทิ้งไปเลย แต่กลับทำให้เกิดบั๊กใหม่: modal แสดงผลยืด/หัวโมดัลหายไปตอนติ๊ก checkbox เลือกผู้ปฏิบัติงาน
+     (เพราะ browser ยัง auto-scroll container ที่ overflow:hidden ได้เวลา element ข้างในถูก focus แต่ไม่มี
+     scrollbar ให้เห็น เนื้อหาเลยเลื่อนแบบมองไม่เห็นจนหัวโมดัลหลุดจอ) จึงเปลี่ยนวิธีแก้เป็นคง overflow-y:auto
+     ไว้ตามเดิม (ให้ browser ยัง auto-scroll ไปยัง element ที่ focus ได้ปกติ ไม่มีบั๊กใหม่) แต่ซ่อนแค่ "แถบ
+     scrollbar ที่มองเห็น" ด้วย scrollbar-width/::-webkit-scrollbar แทน ผู้ใช้จะไม่เห็น scrollbar เส้นที่ 2
+     ซ้อนกับของ .tb-body อีกต่อไป */
 }
+#task-box::-webkit-scrollbar { display: none; } /* Chrome/Edge/Safari */
 .tb-head {
   background: #059669; color: #fff; padding: 18px 22px;
   display: flex; align-items: center; justify-content: space-between;
@@ -1428,7 +1435,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .tb-info-banner {
   background: #eef0fb; color: #374151; font-size: 12px; padding: 10px 22px; flex: 0 0 auto;
 }
-.tb-body { padding: 18px 22px 6px; overflow-y: auto; flex: 1 1 auto; }
+.tb-body { padding: 18px 22px 6px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
 .tb-divider { border: none; border-top: 1px solid #e5e7eb; margin: 16px 0; }
 .tb-indent { padding-left: 24px; }
 .tb-subhead { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 10px; }
