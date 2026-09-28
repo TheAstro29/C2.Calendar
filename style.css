@@ -1407,8 +1407,12 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 }
 #task-box {
   background: var(--surface); border-radius: 10px; width: 460px;
-  max-height: 85vh; overflow-y: auto; position: relative; padding: 0;
+  max-height: 85vh; overflow: hidden; position: relative; padding: 0;
   display: flex; flex-direction: column;
+  /* แก้บั๊ก: เดิม overflow-y:auto ที่นี่ซ้ำซ้อนกับ .tb-body { overflow-y: auto } ด้านล่าง ทำให้เกิด
+     scrollbar 2 เส้นซ้อนกัน (กรอบนอก #task-box + เนื้อหาใน .tb-body) เพราะ flex-layout บางครั้งคำนวณ
+     ความสูงคลาดเคลื่อนเล็กน้อยจน #task-box เกินขอบเขตของตัวเองไปเช่นกัน เปลี่ยนเป็น overflow:hidden
+     ปล่อยให้ .tb-body (flex:1 1 auto) เป็นตัวเดียวที่ scroll ได้ */
 }
 .tb-head {
   background: #059669; color: #fff; padding: 18px 22px;
