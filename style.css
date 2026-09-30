@@ -1524,6 +1524,17 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .staff-checklist label {
   display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 8px; font-size: 12px; cursor: pointer;
   border: 1px solid var(--border); border-radius: 20px; transition: border-color 0.12s ease, background 0.12s ease;
+  /* แก้บั๊กที่ผู้ใช้แจ้ง (2569-09-30): กด checkbox เลือกผู้ปฏิบัติงานแล้ว modal/หน้าจอเพี้ยน เลย์เอาต์กระโดด
+     ทุกครั้ง ทั้งมือถือและคอมพิวเตอร์ - สาเหตุคือ label นี้ไม่เคยมี position:relative เลย ทำให้ input[type=checkbox]
+     ด้านล่าง (position:absolute; ซ่อนไว้ opacity:0) ไม่ได้ยึดตำแหน่งกับ label ของตัวเอง แต่ไปยึดกับ ancestor
+     ที่มี position:relative/absolute ตัวถัดขึ้นไปแทน (เช่นกล่อง modal เอง) ทำให้ checkbox จริงๆ ไปอยู่ผิดที่ (มุมบน
+     ของ modal ไม่ใช่ตรงตำแหน่งชิปที่เห็น) พอผู้ใช้คลิกที่ label เพื่อติ๊ก checkbox จะได้ focus ตามพฤติกรรมมาตรฐาน
+     เบราว์เซอร์จะพยายาม auto-scroll ให้ element ที่ focus "มองเห็นได้" แต่เพราะ checkbox ไปโผล่ผิดตำแหน่งไกลจาก
+     ชิปที่เห็น เบราว์เซอร์เลยเลื่อน scroll ของ modal กระโดดไปที่ตำแหน่งผิดๆ นั้นแทน - เคยเจอบั๊กรูปแบบเดียวกันนี้มา
+     แล้วที่ .modal-close-btn (ดูคอมเมนต์จุดนั้น) แก้ด้วยการเติม position:relative ให้ label เป็นจุดอ้างอิงของตัวเอง
+     ก็พอ - หลังแก้ checkbox จะยังคงซ่อนอยู่ในตำแหน่งเดิม (มุมบนซ้ายของ label ตัวเอง) เหมือนเดิมทุกอย่าง แค่ตอน
+     โฟกัส/scroll-into-view จะไม่กระโดดออกนอกจุดที่เห็นอีกต่อไป */
+  position: relative;
 }
 .staff-checklist label:has(input:checked) { background: #f0fdf9; border-color: #059669; color: #047857; font-weight: 600; }
 .staff-checklist input[type="checkbox"] { position: absolute; opacity: 0; width: 1px; height: 1px; }

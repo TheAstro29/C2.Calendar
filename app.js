@@ -1531,16 +1531,43 @@ function renderTaskStaffChecklist(result, selectedIds, containerId) {
 // ===== ปุ่ม "ทุกคน" เหนือรายชื่อผู้ปฏิบัติงาน - สลับ (toggle) เลือกทุกคน/เคลียร์ทุกคนในปุ่มเดียว แทนการต้องกด
 // ทีละคน: ถ้ายังไม่ได้ติ๊กครบทุกคน (ในกลุ่มที่ติ๊กได้) กดแล้วติ๊กให้ครบทุกคน แต่ถ้าติ๊กครบทุกคนอยู่แล้ว กดซ้ำอีก
 // ครั้งจะเคลียร์ (untick) ออกทั้งหมดทันที ไม่เกี่ยวกับช่องที่ disabled (ชื่อตัวเองที่ถูกล็อคติ๊กไว้เสมอ) เลย
-// ทั้งไม่นับรวมตอนเช็คว่า "ครบทุกคน" หรือยัง และไม่แตะต้อง/ไม่มีผลใดๆกับช่องนั้นทั้งตอนติ๊กและตอนเคลียร์ =====
+// ทั้งไม่นับรวมตอนเช็คว่า "ครบทุกคน" หรือยัง และไม่แตะต้อง/ไม่มีผลใดๆกับช่องนั้นทั้งตอนติ๊กและตอนเคลียร์
+//
+// ===== แก้บั๊กที่ผู้ใช้แจ้ง (2569-09-28): ตอนแก้ไขงาน เลือก "ทุกคน" แล้วค่อยกดเอาบางคนออก ปรากฏว่าคนที่เหลือ
+// หายไปหมดทั้งบอร์ด (เหมือนโดนกด "ทุกคน" ซ้ำเป็นการเคลียร์ทั้งหมด) - จุดที่เสี่ยงที่สุดคือ "การกดเคลียร์ทั้งหมด"
+// (newState = false) เป็นการกระทำที่ทำลายข้อมูลแบบย้อนกลับไม่ได้ในตาเดียว ต่างจาก "เลือกทั้งหมด" ที่ไม่เสียหายอะไร
+// ถ้าเกิดกดโดนปุ่มนี้ซ้ำโดยไม่ตั้งใจ (เช่น มือลั่น/แตะซ้ำบนมือถือ) หรือระหว่างเลย์เอาต์ขยับตอนโหลด ก็ล้างรายชื่อที่
+// เลือกไว้ทั้งหมดทันทีโดยไม่มีการยืนยัน จึงเพิ่มการถามยืนยันเฉพาะทิศทาง "เคลียร์ทั้งหมด" (ทิศทาง "เลือกทั้งหมด" ยัง
+// ทำทันทีเหมือนเดิม เพราะไม่ทำลายข้อมูลเดิม) กันเผื่อเป็นการกดพลาด =====
 function selectAllTaskStaff(containerId) {
   var checkboxes = document.querySelectorAll('#' + containerId + ' input[type="checkbox"]:not(:disabled)');
+  if (!checkboxes.length) return;
   var allChecked = true;
+  var anyChecked = false;
   for (var i = 0; i < checkboxes.length; i++) {
-    if (!checkboxes[i].checked) { allChecked = false; break; }
+    if (checkboxes[i].checked) { anyChecked = true; } else { allChecked = false; }
   }
   var newState = !allChecked;
-  for (var j = 0; j < checkboxes.length; j++) {
-    checkboxes[j].checked = newState;
+
+  if (!newState && anyChecked) {
+    // ทิศทาง "เคลียร์ทั้งหมด" - ถามยืนยันก่อน กันกดพลาดแล้วรายชื่อที่เลือกไว้หายหมดโดยไม่ตั้งใจ
+    Swal.fire({
+      icon: 'warning',
+      title: 'ยกเลิกผู้ปฏิบัติงานทั้งหมด?',
+      text: 'จะเอาผู้ปฏิบัติงานที่เลือกไว้ออกทั้งหมด ต้องการดำเนินการต่อหรือไม่?',
+      showCancelButton: true,
+      confirmButtonText: 'เคลียร์ทั้งหมด',
+      cancelButtonText: 'ยกเลิก',
+      confirmButtonColor: '#dc2626'
+    }).then(function (res) {
+      if (!res.isConfirmed) return;
+      for (var j = 0; j < checkboxes.length; j++) { checkboxes[j].checked = false; }
+    });
+    return;
+  }
+
+  for (var k = 0; k < checkboxes.length; k++) {
+    checkboxes[k].checked = newState;
   }
 }
 
