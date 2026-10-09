@@ -1560,7 +1560,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* แผนที่ดูอย่างเดียวในหน้าดูรายละเอียดงาน (ดู setupTaskDetailMap ใน app.js) - display:none ค่าเริ่มต้น
    โชว์เฉพาะงานที่มีพิกัดบันทึกไว้ */
-#td-map { height: 160px; border-radius: 6px; margin-top: 4px; margin-bottom: 4px; border: 1px solid var(--border); }
+#td-map { cursor: pointer; height: 160px; border-radius: 6px; margin-top: 4px; margin-bottom: 4px; border: 1px solid var(--border); }
 
 .tb-footer {
   background: var(--surface-alt); border-top: 1px solid var(--border-soft); padding: 14px 22px;
@@ -2157,3 +2157,6 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   .ptb-stat-row { grid-template-columns: 1fr; }
   .ptm-two-col { grid-template-columns: 1fr; }
 }
+/* ปุ่มนำทางใต้แผนที่ในหน้าดูรายละเอียดงาน (แตะแผนที่เองก็นำทางได้) */
+.td-map-nav { align-items: center; gap: 6px; margin: 2px 0 8px; padding: 8px 14px; border-radius: 8px; background: var(--primary, #2563eb); color: #fff !important; font-size: 13px; font-weight: 500; text-decoration: none; min-height: 40px; }
+.td-map-nav:hover { filter: brightness(.93); }

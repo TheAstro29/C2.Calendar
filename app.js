@@ -1314,6 +1314,8 @@ var taskMap = null;
 var taskDetailMap = null;
 var taskDetailMarker = null;
 var taskMarker = null;
+// พิกัดหมุดเดิมของงานที่กำลังแก้ไข — ใช้วางหมุดกลับบนแผนที่ตอนเปิด modal แก้ไข (เดิมหมุดหายทุกครั้งที่กดแก้ไข เพราะไม่ได้โหลดกลับมา แล้วบันทึกทับเป็นพิกัดว่าง)
+var _pendingTaskPin = null;
 var editingTaskId = null;
 // ค่าแจ้งเตือนล่วงหน้าที่เลือกไว้ตอนสร้าง/แก้ไขงาน (นาที) - เก็บไว้ฝั่ง frontend เท่านั้นตอนนี้ (ดู TODO ที่ submitAddTask)
 var _taskReminderMinutes = 60;
@@ -1376,6 +1378,10 @@ function openTaskModalForEdit(taskId) {
     document.getElementById('task-detail').innerHTML = sanitizeRichText(task.detail || '');
     applyTaskReminderValue(task.reminderMinutes);
 
+    // จำหมุดเดิมไว้ให้ initTaskMap วางกลับให้ (ถ้างานนี้เคยปักหมุดไว้)
+    var pinLat = parseFloat(task.lat), pinLng = parseFloat(task.lng);
+    _pendingTaskPin = (isFinite(pinLat) && isFinite(pinLng) && (pinLat !== 0 || pinLng !== 0)) ? { lat: pinLat, lng: pinLng } : null;
+
     document.getElementById('task-modal-overlay').style.display = 'flex';
     renderTaskStaffChecklist(staffListResult, task.staffIds || []);
     setupTaskMap();
@@ -1408,6 +1414,7 @@ function resetTaskForm() {
   applyTaskReminderValue(60); // ค่าเริ่มต้นตอนสร้างงานใหม่
   if (taskMarker) taskMarker.setMap(null);
   taskMarker = null;
+  _pendingTaskPin = null;
 }
 
 function toggleUndatedFields() {
@@ -1612,6 +1619,13 @@ function initTaskMap() {
       }
     });
   });
+
+  // โหมดแก้ไข: วางหมุดเดิมของงานกลับบนแผนที่ และเลื่อนกล้องไปที่หมุด (ไม่ยิง geocode ทับชื่อสถานที่ที่ผู้ใช้กรอกไว้)
+  if (_pendingTaskPin) {
+    placeMarker(_pendingTaskPin);
+    taskMap.setCenter(_pendingTaskPin);
+    taskMap.setZoom(16);
+  }
 }
 
 // ===== Phase 13: ค้นหาสถานที่แบบพิมพ์แล้วขึ้นตัวเลือก (Autocomplete) =====
@@ -3757,25 +3771,44 @@ function openTaskDetailModal(event) {
 // (งานเก่าที่พิมพ์สถานที่เองก่อนมีฟีเจอร์แผนที่ หรือไม่ได้เลือกจาก autocomplete/คลิกแผนที่ จะไม่มีพิกัด) =====
 function setupTaskDetailMap(lat, lng) {
   var mapEl = document.getElementById('td-map');
+  var navBtnEl = document.getElementById('td-map-nav');
   if (!lat || !lng || !GOOGLE_MAPS_API_KEY) {
     mapEl.style.display = 'none';
+    if (navBtnEl) navBtnEl.style.display = 'none';
+    taskDetailNavUrl = '';
     return;
   }
   mapEl.style.display = 'block';
   var latLng = { lat: Number(lat), lng: Number(lng) };
   loadGoogleMapsScript(function () {
+    taskDetailNavUrl = buildNavigationUrl(latLng);
+    var navBtn = document.getElementById('td-map-nav');
+    if (navBtn) { navBtn.href = taskDetailNavUrl; navBtn.style.display = 'inline-flex'; }
     if (!taskDetailMap) {
       taskDetailMap = new google.maps.Map(mapEl, {
         center: latLng, zoom: 16, disableDefaultUI: true, gestureHandling: 'cooperative'
       });
+      // แตะ/คลิกแผนที่ = เปิดนำทางทันที (เดิมกดแล้วไม่เกิดอะไรขึ้น) — คลิกแบบลากเลื่อนแผนที่ไม่นับ
+      taskDetailMap.addListener('click', openTaskDetailNavigation);
     } else {
       // resize ก่อนเสมอ กันกรณี container เพิ่งเปลี่ยนจาก display:none เป็น block (แผนที่เดิมอาจจำขนาดเก่าค้างไว้)
       google.maps.event.trigger(taskDetailMap, 'resize');
       taskDetailMap.setCenter(latLng);
     }
     if (taskDetailMarker) taskDetailMarker.setMap(null);
-    taskDetailMarker = new google.maps.Marker({ position: latLng, map: taskDetailMap });
+    taskDetailMarker = new google.maps.Marker({ position: latLng, map: taskDetailMap, cursor: 'pointer' });
+    taskDetailMarker.addListener('click', openTaskDetailNavigation);
   });
+}
+
+// ลิงก์นำทางของ Google Maps — บนมือถือจะเปิดแอป Google Maps พร้อมเส้นทางจากตำแหน่งปัจจุบันไปยังหมุด บนคอมเปิดแท็บใหม่
+var taskDetailNavUrl = '';
+function buildNavigationUrl(latLng) {
+  return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(latLng.lat + ',' + latLng.lng) + '&travelmode=driving';
+}
+function openTaskDetailNavigation() {
+  if (!taskDetailNavUrl) return;
+  window.open(taskDetailNavUrl, '_blank', 'noopener');
 }
 
 // ===== Staff: ขอเปลี่ยนวัน =====
