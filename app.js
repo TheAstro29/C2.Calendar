@@ -63,6 +63,7 @@ var _MODAL_CLOSE_FN = {
   "task-board-modal-overlay": function () { closeTaskBoardModal(); },
   "personal-task-modal-overlay": function () { closePersonalTaskModal(); },
   "task-export-modal-overlay": function () { closeTaskExportModal(); },
+  "lastseen-modal-overlay": function () { closeLastSeenModal(); },
 };
 
 function _pushModalNav(overlayId) {
@@ -183,7 +184,8 @@ var CLOUD_FUNCTION_ACTIONS = [
   'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
   'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
   'addTaskComment', 'addPersonalTaskComment',
-  'editTaskComment', 'deleteTaskComment', 'editPersonalTaskComment', 'deletePersonalTaskComment'
+  'editTaskComment', 'deleteTaskComment', 'editPersonalTaskComment', 'deletePersonalTaskComment',
+  'heartbeat', 'getLastSeenList'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -759,11 +761,13 @@ function startAuthenticatedApp(name, role) {
   _unsubTasks = setupTasksRealtimeListener();
   loadMemberSidebar();
   loadTodoList();
+  startPresenceHeartbeat();
 }
 
 // ปิด listener/ข้อมูลทั้งหมดที่โหลดไว้ตอน login (เรียกตอน logout) - กันไม่ให้ข้อมูลงาน/วันหยุดเก่าที่เคย
 // โหลดไว้ค้างอยู่ในปฏิทินให้เห็นหลัง logout ไปแล้ว
 function teardownAuthenticatedListeners() {
+  stopPresenceHeartbeat();
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null; }
   if (_unsubHolidays) { _unsubHolidays(); _unsubHolidays = null; }
   if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
@@ -812,7 +816,7 @@ function doLogin() {
   var btn = document.getElementById('login-submit-btn');
   setButtonLoading(btn, true, 'กำลังเข้าสู่ระบบ...');
 
-  callApi('login', { username: username, password: password }).then(function (result) {
+  callApi('login', { username: username, password: password, device: getDeviceInfo() }).then(function (result) {
     if (result.success) {
       // ขั้นตอนสำคัญ: เอา Firebase Custom Token ไปยื่นให้ Firebase Auth
       // เพื่อให้ Security Rules มองเห็นว่า "login อยู่แล้ว" ตอนอ่านข้อมูลแบบ real-time (Phase 6.2)
@@ -857,6 +861,7 @@ function enterAdminMode(fullName, role) {
   document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
   document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
+  document.getElementById('lastseen-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
   document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'block'; // ทุก role ที่ login แล้วมี Task Board ของตัวเองได้
@@ -3377,6 +3382,7 @@ function openMoreMenu() {
     }
     if (role === 'admin' || role === 'ceo') {
       group3 += mmItem('📊', 'Dashboard สรุปงาน', 'openDashboardModal();');
+      group3 += mmItem('🟢', 'การเข้าใช้งานของทีม', 'openLastSeenModal();');
       group3 += mmItem('📥', 'Export Excel (เดือนที่ดูอยู่)', 'exportMonthToExcel();');
     }
     if (group3) groups.push(group3);
@@ -5890,4 +5896,159 @@ function doTaskExport() {
     if (preOpenedTab) preOpenedTab.close();
     Swal.fire({ icon: 'error', title: 'Export ไม่สำเร็จ', text: err.message });
   });
+}
+
+// =====================================================================================
+// ===== การเข้าใช้งาน (presence) — บันทึกเวลาใช้งาน + หน้าต่าง "การเข้าใช้งานของทีม" (CEO/Admin) =====
+// =====================================================================================
+// "ใช้งานล่าสุด" บันทึกตอนเปิดแอป และทุก ~5 นาทีระหว่างที่แท็บเปิดอยู่ (ไม่ส่งตอนแท็บถูกซ่อน)
+// ใช้เป็นตัวหลักแทน "login ล่าสุด" เพราะ 1 session อยู่ได้ 30 วัน คนที่ใช้ทุกวันอาจไม่ได้ login ใหม่เป็นเดือน
+var PRESENCE_INTERVAL_MS = 5 * 60 * 1000;
+var _presenceTimer = null, _presenceLastSent = 0;
+
+function getDeviceInfo() {
+  var ua = navigator.userAgent || '';
+  var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
+  var os = /iPhone|iPod/.test(ua) ? 'iPhone' : /iPad/.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua)) ? 'iPad'
+    : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  var app = standalone ? 'แอป' : /Edg\//.test(ua) ? 'Edge' : /Line\//i.test(ua) ? 'LINE' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+  return { type: isMobile ? 'mobile' : 'desktop', label: [os, app].filter(Boolean).join(' · ') };
+}
+
+function sendPresenceHeartbeat(force) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  if (!token || document.hidden) return;
+  if (!force && Date.now() - _presenceLastSent < 60 * 1000) return;
+  _presenceLastSent = Date.now();
+  callApi('heartbeat', { token: token, device: getDeviceInfo() }).catch(function () { /* เงียบไว้ ไม่กระทบการใช้งาน */ });
+}
+function _presenceOnVisible() { if (!document.hidden) sendPresenceHeartbeat(false); }
+function startPresenceHeartbeat() {
+  stopPresenceHeartbeat();
+  sendPresenceHeartbeat(true);
+  _presenceTimer = setInterval(function () { sendPresenceHeartbeat(false); }, PRESENCE_INTERVAL_MS);
+  document.addEventListener('visibilitychange', _presenceOnVisible);
+}
+function stopPresenceHeartbeat() {
+  if (_presenceTimer) { clearInterval(_presenceTimer); _presenceTimer = null; }
+  document.removeEventListener('visibilitychange', _presenceOnVisible);
+}
+
+var _ls = { users: [], f: 'all', q: '', sort: 'recent', now: Date.now(), since: '', loading: false, error: '' };
+var LS_TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+function _lsDmy(d) { return d.getDate() + ' ' + LS_TH_MONTHS[d.getMonth()] + ' ' + String(d.getFullYear() + 543).slice(-2); }
+function _lsHm(d) { return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); }
+function _lsDayDiff(ms, now) {
+  var a = new Date(now), b = new Date(ms);
+  return Math.round((new Date(a.getFullYear(), a.getMonth(), a.getDate()) - new Date(b.getFullYear(), b.getMonth(), b.getDate())) / 864e5);
+}
+function _lsBucket(u, now) {
+  if (!u.lastSeenAt) return 'never';
+  var dd = _lsDayDiff(u.lastSeenAt, now);
+  return dd <= 0 ? 'today' : dd < 7 ? 'week' : 'old';
+}
+function _lsSeenText(u, now) {
+  if (!u.lastSeenAt) return { t: 'ยังไม่เคยเข้าใช้', c: 's-never', online: false };
+  var m = (now - u.lastSeenAt) / 60000, d = new Date(u.lastSeenAt), dd = _lsDayDiff(u.lastSeenAt, now);
+  if (m < 10) return { t: 'กำลังใช้งาน', c: 's-now', online: true };
+  if (m < 60) return { t: Math.max(1, Math.round(m)) + ' นาทีที่แล้ว', c: 's-today', online: false };
+  if (dd <= 0) return { t: 'วันนี้ ' + _lsHm(d) + ' น.', c: 's-today', online: false };
+  if (dd === 1) return { t: 'เมื่อวาน ' + _lsHm(d) + ' น.', c: 's-week', online: false };
+  return { t: dd + ' วันที่แล้ว', c: dd < 7 ? 's-week' : 's-old', online: false };
+}
+function _lsDevIcon(dev) { return !dev ? '' : dev.type === 'mobile' ? '📱' : '💻'; }
+function _lsLocalDay(ms) { var d = new Date(ms); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+
+function openLastSeenModal() {
+  var role = localStorage.getItem(ROLE_KEY);
+  if (role !== 'admin' && role !== 'ceo') return;
+  document.getElementById('lastseen-modal-overlay').style.display = 'flex';
+  _pushModalNav('lastseen-modal-overlay');
+  loadLastSeenData();
+}
+function closeLastSeenModal() {
+  document.getElementById('lastseen-modal-overlay').style.display = 'none';
+}
+function loadLastSeenData() {
+  _ls.loading = true; _ls.error = '';
+  renderLastSeen();
+  callApi('getLastSeenList', { token: localStorage.getItem(TOKEN_KEY) }).then(function (res) {
+    _ls.loading = false;
+    if (!res || !res.success) { _ls.error = (res && res.message) || 'โหลดข้อมูลไม่สำเร็จ'; renderLastSeen(); return; }
+    _ls.users = res.users || [];
+    _ls.now = Date.now();
+    _ls.since = res.trackingSince || '';
+    renderLastSeen();
+  }).catch(function (err) {
+    _ls.loading = false; _ls.error = err.message || 'โหลดข้อมูลไม่สำเร็จ'; renderLastSeen();
+  });
+}
+function setLastSeenFilter(f) { _ls.f = _ls.f === f ? 'all' : f; renderLastSeenList(); }
+
+function renderLastSeen() {
+  var body = document.getElementById('lastseen-body');
+  if (!body) return;
+  if (_ls.loading && !_ls.users.length) { body.innerHTML = '<div class="ls-empty">กำลังโหลดข้อมูลการเข้าใช้งาน...</div>'; return; }
+  if (_ls.error) { body.innerHTML = '<div class="ls-empty">' + escapeHtmlPtb(_ls.error) + '<br><button class="ls-retry" onclick="loadLastSeenData()">ลองใหม่</button></div>'; return; }
+  // ช่องค้นหาสร้างครั้งเดียว (กันคีย์บอร์ดมือถือปิดเองระหว่างพิมพ์) — วาดใหม่เฉพาะตัวเลขสรุป/รายชื่อ
+  if (!document.getElementById('ls-q')) {
+    body.innerHTML =
+      '<div class="ls-sub" id="ls-sub"></div>' +
+      '<div class="ls-kpis" id="ls-kpis"></div>' +
+      '<div class="ls-tools"><input id="ls-q" type="search" placeholder="ค้นหาชื่อ / ตำแหน่ง" autocomplete="off">' +
+      '<select id="ls-sort"><option value="recent">ใช้งานล่าสุดก่อน</option><option value="oldest">ไม่ได้เข้านานที่สุดก่อน</option><option value="name">เรียงตามชื่อ</option></select></div>' +
+      '<div class="ls-list" id="ls-list"></div>' +
+      '<div class="ls-legend"><span><i class="ls-sw y"></i>วันที่มีเปิดใช้งาน</span><span><i class="ls-sw"></i>ไม่ได้เปิด</span><span>🟢 กำลังใช้งาน (ภายใน 10 นาที)</span><span>📱 มือถือ · 💻 คอม</span></div>' +
+      '<p class="ls-note" id="ls-note"></p>';
+    document.getElementById('ls-q').addEventListener('input', function (e) { _ls.q = e.target.value; renderLastSeenList(); });
+    document.getElementById('ls-sort').addEventListener('change', function (e) { _ls.sort = e.target.value; renderLastSeenList(); });
+  }
+  var q = document.getElementById('ls-q'); if (q.value !== _ls.q) q.value = _ls.q;
+  document.getElementById('ls-sort').value = _ls.sort;
+  var since = _ls.since ? (function () { var p = _ls.since.split('-'); return _lsDmy(new Date(+p[0], +p[1] - 1, +p[2])); })() : '';
+  document.getElementById('ls-note').innerHTML = '“ใช้งานล่าสุด” = เปิดแอปครั้งล่าสุด (บันทึกตอนเปิด และทุก ~5 นาทีระหว่างเปิดค้าง) · “เข้าสู่ระบบ” = ใส่รหัสผ่านครั้งล่าสุด (1 ครั้งอยู่ได้ 30 วัน จึงไม่ได้เกิดทุกวัน) · กดที่ชื่อเพื่อดูประวัติเข้าสู่ระบบ 5 ครั้งล่าสุด' + (since ? ' · เริ่มเก็บข้อมูลตั้งแต่ ' + since : '');
+  renderLastSeenList();
+}
+
+function renderLastSeenList() {
+  var now = _ls.now, users = _ls.users.filter(function (u) { return u.active; });
+  var cnt = { today: 0, week: 0, old: 0, never: 0 };
+  users.forEach(function (u) { cnt[_lsBucket(u, now)]++; });
+  var nd = new Date(now);
+  document.getElementById('ls-sub').innerHTML = 'ข้อมูล ณ ' + _lsDmy(nd) + ' ' + _lsHm(nd) + ' น. · ทั้งหมด ' + users.length + ' คน <button class="ls-refresh" onclick="loadLastSeenData()" title="รีเฟรช">🔄 รีเฟรช</button>';
+  var K = [['today', 'ใช้งานวันนี้', '#10b981'], ['week', '1–6 วันก่อน', '#60a5fa'], ['old', 'ไม่ได้เข้า 7 วันขึ้นไป', '#f59e0b'], ['never', 'ยังไม่เคยเข้าใช้', '#9ca3af']];
+  document.getElementById('ls-kpis').innerHTML = K.map(function (k) {
+    return '<button class="ls-kpi' + (_ls.f === k[0] ? ' on' : '') + '" data-f="' + k[0] + '" onclick="setLastSeenFilter(\'' + k[0] + '\')"><b>' + cnt[k[0]] + '</b><small><span class="dot" style="background:' + k[2] + '"></span>' + k[1] + '</small></button>';
+  }).join('');
+  var qq = _ls.q.trim().toLowerCase();
+  var rows = users.filter(function (u) { return _ls.f === 'all' || _lsBucket(u, now) === _ls.f; })
+    .filter(function (u) { return !qq || (u.firstName + ' ' + u.lastName + ' ' + (u.position || '')).toLowerCase().indexOf(qq) !== -1; });
+  var t = function (u) { return u.lastSeenAt || 0; };
+  rows.sort(_ls.sort === 'name' ? function (a, b) { return (a.firstName + a.lastName).localeCompare(b.firstName + b.lastName, 'th'); }
+    : _ls.sort === 'oldest' ? function (a, b) { return t(a) - t(b); } : function (a, b) { return t(b) - t(a); });
+  // 14 วันล่าสุด (เวลาเครื่อง = เวลาไทยของผู้ใช้)
+  var days14 = [];
+  for (var i = 13; i >= 0; i--) { days14.push(_lsLocalDay(now - i * 864e5)); }
+  var openSet = {};
+  document.querySelectorAll('#ls-list .ls-row.open').forEach(function (r) { openSet[r.getAttribute('data-id')] = true; });
+  document.getElementById('ls-list').innerHTML = rows.map(function (u) {
+    var st = _lsSeenText(u, now), name = (u.firstName + ' ' + u.lastName).trim();
+    var act = {}; (u.activeDays || []).forEach(function (d) { act[d] = true; });
+    var nAct = days14.filter(function (d) { return act[d]; }).length;
+    var strip = days14.map(function (d, i) { return '<i class="' + (act[d] ? 'y' : '') + (i === 13 ? ' t' : '') + '"></i>'; }).join('');
+    var roleLbl = ROLE_LABELS[u.role] || u.role || '';
+    var hist = (u.loginHistory || []).length ? (u.loginHistory || []).map(function (h) {
+      var d = new Date(h.at);
+      return '<tr><td>' + _lsDmy(d) + ' ' + _lsHm(d) + ' น.</td><td>' + _lsDevIcon(h.device) + ' ' + escapeHtmlPtb((h.device && h.device.label) || (h.device && h.device.type === 'mobile' ? 'มือถือ' : 'คอม')) + '</td></tr>';
+    }).join('') : '<tr><td>ยังไม่มีประวัติเข้าสู่ระบบหลังเริ่มเก็บข้อมูล</td></tr>';
+    var initial = escapeHtmlPtb((u.firstName || '?').trim().charAt(0));
+    return '<div class="ls-row' + (openSet[u.staffId] ? ' open' : '') + '" data-id="' + escapeHtmlPtb(u.staffId) + '" onclick="this.classList.toggle(\'open\')">' +
+      '<div class="ls-av" style="background:' + escapeHtmlPtb(u.colorHex || '#64748b') + '">' + initial + (st.online ? '<span class="on"></span>' : '') + '</div>' +
+      '<div class="ls-name"><b>' + escapeHtmlPtb(name) + (roleLbl ? '<span class="ls-pill r-' + escapeHtmlPtb(u.role) + '">' + escapeHtmlPtb(roleLbl) + '</span>' : '') + '</b><small>' + escapeHtmlPtb(u.position || '-') + '</small></div>' +
+      '<div class="ls-seen"><b class="' + st.c + '">' + (st.online ? '🟢 ' : '') + st.t + '</b><small>' + (u.lastLoginAt ? 'เข้าสู่ระบบ ' + _lsDmy(new Date(u.lastLoginAt)) : 'เข้าสู่ระบบ —') + '</small></div>' +
+      '<div class="ls-stripwrap"><div class="ls-strip" title="14 วันล่าสุด">' + strip + '</div><div class="ls-strip-l">14 วันล่าสุด · เปิด ' + nAct + ' วัน</div></div>' +
+      '<div class="ls-dev" title="' + escapeHtmlPtb((u.lastSeenDevice && u.lastSeenDevice.label) || 'อุปกรณ์ล่าสุด') + '">' + _lsDevIcon(u.lastSeenDevice) + '</div>' +
+      '<div class="ls-det"><b>ประวัติเข้าสู่ระบบล่าสุด</b><table>' + hist + '</table></div></div>';
+  }).join('') || '<div class="ls-empty">ไม่พบรายชื่อ</div>';
 }
