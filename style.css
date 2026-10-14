@@ -2114,9 +2114,19 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   padding: 9px 13px; border-radius: 10px; font-size: 12px; font-weight: 700;
   background: var(--tint-amber-bg); color: var(--tint-amber-text); border: 1px solid #f5d98a;
 }
-#personal-task-box.ptm-readonly .ptm-body,
+/* แก้บั๊ก: เดิมใส่ pointer-events:none ที่ .ptm-body เอง ซึ่งเป็นกล่องที่ scroll (max-height + overflow-y) ทำให้
+   ผู้ดู (Viewer) เลื่อนดูรายละเอียดไม่ได้เลยทั้งล้อเมาส์และปัดบนมือถือ — ย้ายไปบล็อกที่ "ลูก" ทุกตัวแทน ตัว
+   .ptm-body ยังรับการเลื่อนได้ตามปกติ (แตะ/หมุนล้อบนลูกที่ถูกบล็อก เหตุการณ์จะตกไปที่ .ptm-body ซึ่งเลื่อนได้)
+   และเปิดให้กดลิงก์ได้ (ไฟล์แนบ / ลิงก์ในรายละเอียด) เพราะการเปิดดูไม่ใช่การแก้ไข */
+#personal-task-box.ptm-readonly .ptm-body *,
 #personal-task-box.ptm-readonly .ptm-title {
   pointer-events: none;
+}
+#personal-task-box.ptm-readonly .ptm-body a,
+#personal-task-box.ptm-readonly .ptm-body a *,
+#personal-task-box.ptm-readonly #ptm-desc,
+#personal-task-box.ptm-readonly #ptm-desc * {
+  pointer-events: auto; /* #ptm-desc เป็นกล่องเลื่อนของตัวเอง (max-height 240px) แก้ไขไม่ได้อยู่แล้ว (contentEditable=false) */
 }
 #personal-task-box.ptm-readonly .ptm-body button,
 #personal-task-box.ptm-readonly .ptm-body input,
