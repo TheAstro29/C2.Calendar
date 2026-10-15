@@ -5989,7 +5989,8 @@ function setLastSeenFilter(f) { _ls.f = _ls.f === f ? 'all' : f; renderLastSeenL
 function renderLastSeen() {
   var body = document.getElementById('lastseen-body');
   if (!body) return;
-  if (_ls.loading && !_ls.users.length) { body.innerHTML = '<div class="ls-empty">กำลังโหลดข้อมูลการเข้าใช้งาน...</div>'; return; }
+  // เปิดครั้งแรก (ยังไม่มีข้อมูล) → โครงหน้าจอ skeleton รูปร่างเดียวกับของจริง / เปิดซ้ำ → โชว์ข้อมูลเดิมไปก่อนพร้อมป้าย "กำลังอัปเดต"
+  if (_ls.loading && !_ls.users.length) { body.innerHTML = lastSeenSkeletonHtml(); return; }
   if (_ls.error) { body.innerHTML = '<div class="ls-empty">' + escapeHtmlPtb(_ls.error) + '<br><button class="ls-retry" onclick="loadLastSeenData()">ลองใหม่</button></div>'; return; }
   // ช่องค้นหาสร้างครั้งเดียว (กันคีย์บอร์ดมือถือปิดเองระหว่างพิมพ์) — วาดใหม่เฉพาะตัวเลขสรุป/รายชื่อ
   if (!document.getElementById('ls-q')) {
@@ -6011,12 +6012,37 @@ function renderLastSeen() {
   renderLastSeenList();
 }
 
+function lastSeenSkeletonHtml() {
+  var sk = function (w, h, extra) { return '<span class="skel" style="width:' + w + ';height:' + h + 'px;' + (extra || '') + '"></span>'; };
+  var kpis = '';
+  for (var i = 0; i < 4; i++) kpis += '<div class="ls-kpi ls-sk-kpi">' + sk('34px', 22, 'margin-bottom:7px') + sk('70%', 10) + '</div>';
+  var rows = '', nameW = ['46%', '58%', '40%', '52%', '62%', '44%'], subW = ['30%', '38%', '26%', '34%', '28%', '36%'];
+  for (var r = 0; r < 6; r++) {
+    var strip = '';
+    for (var d = 0; d < 14; d++) strip += '<i></i>';
+    rows += '<div class="ls-row ls-sk-row">' +
+      '<span class="skel ls-sk-av"></span>' +
+      '<div class="ls-name">' + sk(nameW[r], 13, 'margin-bottom:6px') + sk(subW[r], 10) + '</div>' +
+      '<div class="ls-seen">' + sk('62%', 12, 'margin-bottom:6px') + sk('48%', 10) + '</div>' +
+      '<div class="ls-stripwrap"><div class="ls-strip ls-sk-strip">' + strip + '</div>' + sk('55%', 8, 'margin-top:5px') + '</div>' +
+      '<div class="ls-dev">' + sk('16px', 16, 'border-radius:4px;margin:0 auto') + '</div></div>';
+  }
+  return '<div class="ls-skeleton" aria-busy="true" aria-label="กำลังโหลดข้อมูลการเข้าใช้งาน">' +
+    '<div class="ls-sub">' + sk('210px', 11) + '</div>' +
+    '<div class="ls-kpis">' + kpis + '</div>' +
+    '<div class="ls-tools">' + sk('100%', 40, 'flex:1;min-width:160px;border-radius:10px') + sk('150px', 40, 'border-radius:10px') + '</div>' +
+    '<div class="ls-list">' + rows + '</div></div>';
+}
+
 function renderLastSeenList() {
   var now = _ls.now, users = _ls.users.filter(function (u) { return u.active; });
   var cnt = { today: 0, week: 0, old: 0, never: 0 };
   users.forEach(function (u) { cnt[_lsBucket(u, now)]++; });
   var nd = new Date(now);
-  document.getElementById('ls-sub').innerHTML = 'ข้อมูล ณ ' + _lsDmy(nd) + ' ' + _lsHm(nd) + ' น. · ทั้งหมด ' + users.length + ' คน <button class="ls-refresh" onclick="loadLastSeenData()" title="รีเฟรช">🔄 รีเฟรช</button>';
+  document.getElementById('ls-sub').innerHTML = 'ข้อมูล ณ ' + _lsDmy(nd) + ' ' + _lsHm(nd) + ' น. · ทั้งหมด ' + users.length + ' คน ' +
+    (_ls.loading ? '<span class="ls-updating"><span class="ls-spin"></span>กำลังอัปเดต...</span>'
+      : '<button class="ls-refresh" onclick="loadLastSeenData()" title="รีเฟรช">🔄 รีเฟรช</button>');
+  document.getElementById('ls-list').classList.toggle('ls-stale', !!_ls.loading);
   var K = [['today', 'ใช้งานวันนี้', '#10b981'], ['week', '1–6 วันก่อน', '#60a5fa'], ['old', 'ไม่ได้เข้า 7 วันขึ้นไป', '#f59e0b'], ['never', 'ยังไม่เคยเข้าใช้', '#9ca3af']];
   document.getElementById('ls-kpis').innerHTML = K.map(function (k) {
     return '<button class="ls-kpi' + (_ls.f === k[0] ? ' on' : '') + '" data-f="' + k[0] + '" onclick="setLastSeenFilter(\'' + k[0] + '\')"><b>' + cnt[k[0]] + '</b><small><span class="dot" style="background:' + k[2] + '"></span>' + k[1] + '</small></button>';
