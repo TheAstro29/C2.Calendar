@@ -5075,7 +5075,7 @@ function safeColor(c, fallback) {
 }
 function safeImgUrl(u) {
   u = String(u || '');
-  return /^https:\/\/firebasestorage\.googleapis\.com\/[^"'<>\s]+$/.test(u) ? u : '';
+  return /^https:\/\/(firebasestorage|storage)\.googleapis\.com\/[^"'<>\s]+$/.test(u) ? u : ''; // รวมลิงก์ public ของรูปเก่าที่ย้ายมา
 }
 // วันที่ตามเวลาเครื่อง (yyyy-mm-dd) — ใช้แทน toISOString().slice(0,10) ซึ่งเป็นวันที่ UTC (เพี้ยนช่วง 00:00–06:59 น.)
 function localYmd(d) {
