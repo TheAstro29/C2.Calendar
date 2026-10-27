@@ -185,7 +185,7 @@ var CLOUD_FUNCTION_ACTIONS = [
   'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
   'addTaskComment', 'addPersonalTaskComment',
   'editTaskComment', 'deleteTaskComment', 'editPersonalTaskComment', 'deletePersonalTaskComment',
-  'heartbeat', 'getLastSeenList'
+  'heartbeat', 'getLastSeenList', 'logoutSession'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -259,7 +259,7 @@ async function firestoreGetUndatedTasks() {
       if (row.status === 'ยกเลิกงาน') return;
       var staff = (row.staffIds || []).map(function (id) {
         var s = staffMapCache[id];
-        return s ? { name: s.firstName + ' ' + s.lastName, color: s.colorHex } : null;
+        return s ? { name: s.firstName + ' ' + s.lastName, color: safeColor(s.colorHex) } : null;
       }).filter(function (s) { return s; });
       tasks.push({
         taskId: doc.id, taskName: row.taskName, detail: row.detail, taskType: row.taskType, staff: staff,
@@ -495,7 +495,7 @@ function buildEventsFromTaskDocs(docs) {
 
     var assignedStaff = (row.staffIds || []).map(function (id) {
       var s = staffMapCache[id];
-      return s ? { name: s.firstName + ' ' + s.lastName, color: s.colorHex } : null;
+      return s ? { name: s.firstName + ' ' + s.lastName, color: safeColor(s.colorHex) } : null;
     }).filter(function (s) { return s; });
 
     var start = firestoreDateToJs(row.startDateTime);
@@ -627,7 +627,7 @@ function renderMonthHolidayList(start, end) {
     row.className = 'month-holiday-item';
     row.innerHTML =
       '<span class="mh-date">' + d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + '</span>' +
-      '<span class="mh-name">' + h.name + '</span>';
+      '<span class="mh-name">' + escapeHtmlPtb(h.name) + '</span>';
     container.appendChild(row);
   });
 }
@@ -839,6 +839,16 @@ function doLogin() {
 }
 
 function doLogout() {
+  // v2: ลบ session ที่เซิร์ฟเวอร์ด้วย + ถอด push token ของเครื่องนี้ (เดิมลบแค่ในเครื่อง session ยังใช้ได้ต่อ 30 วัน)
+  var oldToken = localStorage.getItem(TOKEN_KEY);
+  var fcmToken = localStorage.getItem('c2cal_fcm_token');
+  if (oldToken) {
+    callApi('logoutSession', { token: oldToken, fcmToken: fcmToken || '' }).catch(function (err) { console.error('logoutSession', err); });
+  }
+  try {
+    if (fcmToken && firebase.messaging) firebase.messaging().deleteToken().catch(function () {});
+  } catch (e) { /* ไม่มี messaging ก็ข้าม */ }
+  localStorage.removeItem('c2cal_fcm_token');
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(NAME_KEY);
   localStorage.removeItem(ROLE_KEY);
@@ -930,30 +940,31 @@ function renderStaffList(result) {
   container.innerHTML = '';
   result.staff.forEach(function (s) {
     var color = s.colorHex || '#888780';
+    color = safeColor(color);
     var textColor = getContrastTextColor(color);
-    var initial = (s.firstName || '?').charAt(0);
-    var fullName = (s.firstName + ' ' + s.lastName).replace(/'/g, '');
+    var initial = escapeHtmlPtb((s.firstName || '?').charAt(0));
+    var fullName = escapeHtmlPtb((s.firstName + ' ' + s.lastName).replace(/['\\]/g, ''));
 
     var row = document.createElement('div');
     row.className = 'staff-row';
     row.innerHTML =
       '<div class="sr-avatar" style="background:' + color + '">' +
-        (s.photoURL
-          ? '<img src="' + s.photoURL + '" alt="">'
+        (safeImgUrl(s.photoURL)
+          ? '<img src="' + escapeHtmlPtb(safeImgUrl(s.photoURL)) + '" alt="">'
           : '<span style="color:' + textColor + '">' + initial + '</span>') +
       '</div>' +
       '<div class="staff-info">' +
         '<div class="name-line">' +
-          '<p class="name">' + s.firstName + ' ' + s.lastName + '</p>' +
-          '<span class="role-badge ' + s.role + '">' + (ROLE_LABELS[s.role] || s.role) + '</span>' +
+          '<p class="name">' + escapeHtmlPtb(s.firstName + ' ' + s.lastName) + '</p>' +
+          '<span class="role-badge ' + escapeHtmlPtb(s.role) + '">' + escapeHtmlPtb(ROLE_LABELS[s.role] || s.role) + '</span>' +
           (s.username ? '<span class="id-badge">ID: ' + escapeHtmlPtb(s.username) + '</span>' : '') +
         '</div>' +
-        '<p class="pos">' + (s.position || 'ไม่ระบุตำแหน่ง') + '</p>' +
-        '<p class="meta">' + (s.phone || 'ไม่ระบุเบอร์โทร') + '</p>' +
+        '<p class="pos">' + escapeHtmlPtb(s.position || 'ไม่ระบุตำแหน่ง') + '</p>' +
+        '<p class="meta">' + escapeHtmlPtb(s.phone || 'ไม่ระบุเบอร์โทร') + '</p>' +
       '</div>' +
       '<div class="sr-actions">' +
         '<div class="sr-icon-row">' +
-          '<button class="sr-icon-btn" title="แก้ไข" onclick=\'startEditStaff(' + JSON.stringify(s) + ')\'>' + ICON_EDIT + '</button>' +
+          '<button class="sr-icon-btn" title="แก้ไข" onclick=\'startEditStaff(' + escapeHtmlPtb(JSON.stringify(s)) + ')\'>' + ICON_EDIT + '</button>' +
           '<button class="sr-icon-btn" title="รีเซ็ตรหัส" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_KEY + '</button>' +
           '<button class="sr-icon-btn danger" title="ลบบัญชี" onclick="deleteStaffConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_TRASH + '</button>' +
         '</div>' +
@@ -1071,8 +1082,8 @@ function submitAddStaff() {
         Swal.fire({
           icon: 'success', title: 'เพิ่มผู้ปฏิบัติงานแล้ว',
           html: 'บัญชีเข้าสู่ระบบที่สร้างให้อัตโนมัติ:<br>' +
-            '<b>Username:</b> ' + result.username + '<br>' +
-            '<b>Password:</b> ' + result.generatedPassword + '<br><br>' +
+            '<b>Username:</b> ' + escapeHtmlPtb(result.username) + '<br>' +
+            '<b>Password:</b> ' + escapeHtmlPtb(result.generatedPassword) + '<br><br>' +
             '<span style="font-size:12px;color:#9a7b1f">กรุณาแจ้งให้ผู้ปฏิบัติงานคนนี้ทราบ และเปลี่ยนรหัสผ่านทันทีที่ login ครั้งแรก</span>',
           confirmButtonText: 'รับทราบแล้ว'
         });
@@ -1102,8 +1113,8 @@ function resetPasswordConfirm(btn, staffId, name) {
       if (result.success) {
         Swal.fire({
           icon: 'success', title: 'รีเซ็ตรหัสผ่านแล้ว',
-          html: 'รหัสผ่านใหม่ของ <b>' + result.username + '</b>:<br>' +
-            '<span style="font-size:18px;font-weight:600">' + result.newPassword + '</span><br><br>' +
+          html: 'รหัสผ่านใหม่ของ <b>' + escapeHtmlPtb(result.username) + '</b>:<br>' +
+            '<span style="font-size:18px;font-weight:600">' + escapeHtmlPtb(result.newPassword) + '</span><br><br>' +
             '<span style="font-size:12px;color:#9a7b1f">กรุณาแจ้งให้เจ้าของบัญชีทราบและเปลี่ยนรหัสผ่านทันทีที่ login ครั้งแรก</span>',
           confirmButtonText: 'รับทราบแล้ว'
         });
@@ -1372,9 +1383,10 @@ function openTaskModalForEdit(taskId) {
         document.getElementById('task-start-date').value = start.toISOString().slice(0, 10);
         document.getElementById('task-duration').value = days;
       } else {
-        document.getElementById('task-start-date-t').value = start.toISOString().slice(0, 10);
+        // v2: ใช้วันที่ตามเวลาไทย (เดิม toISOString = วันที่ UTC → งานช่วง 00:00–06:59 น. ขึ้นเป็นวันก่อนหน้า แล้วเลื่อนเองตอนบันทึก)
+        document.getElementById('task-start-date-t').value = localYmd(start);
         document.getElementById('task-start-time').value = start.toTimeString().slice(0, 5);
-        document.getElementById('task-end-date-t').value = end.toISOString().slice(0, 10);
+        document.getElementById('task-end-date-t').value = localYmd(end);
         document.getElementById('task-end-time').value = end.toTimeString().slice(0, 5);
       }
       toggleAllDayFields();
@@ -1534,8 +1546,8 @@ function renderTaskStaffChecklist(result, selectedIds, containerId) {
       label.innerHTML =
         '<input type="checkbox" value="' + s.staffId + '"' +
           (checked ? ' checked' : '') + (isSelf ? ' disabled' : '') + '>' +
-        '<span class="dot" style="background:' + s.colorHex + '"></span>' +
-        s.firstName + ' ' + s.lastName + (isSelf ? ' (คุณ)' : '');
+        '<span class="dot" style="background:' + safeColor(s.colorHex) + '"></span>' +
+        escapeHtmlPtb(s.firstName + ' ' + s.lastName) + (isSelf ? ' (คุณ)' : '');
         container.appendChild(label);
       });
 }
@@ -1969,7 +1981,7 @@ function renderKanbanBoard(tasks) {
         card.className = 'todo-item kanban-card';
         card.style.setProperty('--kc-color', TASK_TYPE_COLORS[typeKey] || '#ccc');
         card.innerHTML =
-          '<div class="ti-top"><span class="ti-name">' + t.taskName + '</span></div>' +
+          '<div class="ti-top"><span class="ti-name">' + escapeHtmlPtb(t.taskName) + '</span></div>' +
           (staffNames ? '<p class="ti-staff">ผู้ปฏิบัติงาน: ' + staffNames + '</p>' : '') +
           (isAdmin ?
             '<div class="ti-actions">' +
@@ -2246,10 +2258,12 @@ function submitChangePassword() {
   setButtonLoading(btn, true, 'กำลังเปลี่ยน...');
   callApi('changeOwnPassword', { token: token, oldPassword: oldPassword, newPassword: newPassword }).then(function (result) {
     if (result.success) {
+      // v2: เซิร์ฟเวอร์ออกจากระบบเครื่องอื่นให้แล้ว และส่ง token ใหม่มาให้เครื่องนี้ใช้ต่อได้ทันที
+      if (result.firebaseCustomToken) fbAuth.signInWithCustomToken(result.firebaseCustomToken).catch(function (e) { console.error('re-auth', e); });
       document.getElementById('profile-old-password').value = '';
       document.getElementById('profile-new-password').value = '';
       document.getElementById('profile-confirm-password').value = '';
-      Toast.fire({ icon: 'success', title: 'เปลี่ยนรหัสผ่านแล้ว' });
+      Toast.fire({ icon: 'success', title: 'เปลี่ยนรหัสผ่านแล้ว · ออกจากระบบเครื่องอื่นให้แล้ว' });
     } else {
       Swal.fire({ icon: 'error', title: 'ไม่สำเร็จ', text: result.message });
     }
@@ -2293,11 +2307,11 @@ function renderHolidayList() {
     row.className = 'holiday-row';
     var badge = h.type === 'weekly'
       ? '<span class="holiday-badge weekly">ทุกสัปดาห์</span>'
-      : '<span class="holiday-badge">' + h.value + '</span>';
+      : '<span class="holiday-badge">' + escapeHtmlPtb(h.value) + '</span>';
     var label = h.type === 'weekly' ? ('ทุกวัน' + WEEKDAY_NAMES[h.value]) : h.name;
     row.innerHTML =
       badge +
-      '<span class="hname">' + h.name + (h.type === 'weekly' ? ' (' + WEEKDAY_NAMES[h.value] + ')' : '') + '</span>' +
+      '<span class="hname">' + escapeHtmlPtb(h.name) + (h.type === 'weekly' ? ' (' + WEEKDAY_NAMES[h.value] + ')' : '') + '</span>' +
       '<button class="row-edit-btn" onclick="deleteHolidayConfirm(this, \'' + h.holidayId + '\')">ลบ</button>';
     container.appendChild(row);
   });
@@ -2404,7 +2418,7 @@ function loadMemberSidebar() {
   var cached = getLocalCache(STAFF_CACHE_KEY);
   if (cached) { renderMemberList(cached); } else { renderMemberListSkeleton(); }
 
-  callApi('getPublicStaffList', {}).then(function (result) {
+  callApi('getPublicStaffList', { token: localStorage.getItem(TOKEN_KEY) }).then(function (result) {
     if (!result.success) {
       if (!cached) {
         document.getElementById('member-list').innerHTML =
@@ -2422,6 +2436,8 @@ function loadMemberSidebar() {
 function renderMemberList(staff) {
   // อัปเดต staffMapCache ไว้ใช้จับคู่ชื่อ+สีตอนสร้าง event ปฏิทินจาก staffIds (แทนที่ server เคย join ให้ตอนอยู่บน Apps Script)
   staff.forEach(function (s) {
+    s.colorHex = safeColor(s.colorHex); // v2: กรองสี/ลิงก์รูปครั้งเดียวตรงนี้ ทุกจุดที่ใช้ staffMapCache ปลอดภัยไปด้วย
+    s.photoURL = safeImgUrl(s.photoURL);
     if (s.staffId) staffMapCache[s.staffId] = s;
   });
   refreshCalendarDayCells(); // ชื่อผู้ปฏิบัติงานอาจเพิ่ง resolve ได้ใหม่ (เช่น เพิ่งโหลดเสร็จ) ต้องรีเฟรช event ให้ตรง
@@ -2433,22 +2449,22 @@ function renderMemberList(staff) {
   }
   container.innerHTML = '';
   staff.forEach(function (s) {
-    var color = s.colorHex || '#888780';
+    var color = safeColor(s.colorHex);
     var textColor = getContrastTextColor(color);
-    var initial = (s.firstName || '?').charAt(0);
+    var initial = escapeHtmlPtb((s.firstName || '?').charAt(0));
 
     var card = document.createElement('div');
     card.className = 'member-card';
     card.style.background = color;
     card.innerHTML =
       '<div class="member-avatar-wrap">' +
-        (s.photoURL
-          ? '<img src="' + s.photoURL + '" alt="">'
+        (safeImgUrl(s.photoURL)
+          ? '<img src="' + escapeHtmlPtb(safeImgUrl(s.photoURL)) + '" alt="">'
           : '<span class="member-avatar-fallback" style="color:' + color + '">' + initial + '</span>') +
       '</div>' +
       '<div class="member-info">' +
-        '<p class="m-name" style="color:' + textColor + '">' + s.firstName + ' ' + s.lastName + '</p>' +
-        '<p class="m-pos" style="color:' + textColor + '">' + (s.position || '-') + '</p>' +
+        '<p class="m-name" style="color:' + textColor + '">' + escapeHtmlPtb(s.firstName + ' ' + s.lastName) + '</p>' +
+        '<p class="m-pos" style="color:' + textColor + '">' + escapeHtmlPtb(s.position || '-') + '</p>' +
       '</div>';
     container.appendChild(card);
   });
@@ -3256,7 +3272,7 @@ function loadDashboardData() {
   if (sorted.length === 0) tableHtml += '<tr><td colspan="2">ไม่มีข้อมูล</td></tr>';
   sorted.forEach(function (id) {
     var s = staffMapCache[id];
-    tableHtml += '<tr><td>' + s.firstName + ' ' + s.lastName + '</td><td>' + workload[id] + '</td></tr>';
+    tableHtml += '<tr><td>' + escapeHtmlPtb(s.firstName + ' ' + s.lastName) + '</td><td>' + workload[id] + '</td></tr>';
   });
   tableHtml += '</table>';
   document.getElementById('dashboard-workload-table').innerHTML = tableHtml;
@@ -3959,6 +3975,7 @@ function setupPushNotifications() {
           if (!currentToken) return;
           var token = localStorage.getItem(TOKEN_KEY);
           if (!token) return;
+          localStorage.setItem('c2cal_fcm_token', currentToken); // ใช้ถอดออกตอน logout
           callApi('registerPushToken', { token: token, fcmToken: currentToken }).catch(function (err) {
             console.error('registerPushToken error', err);
           });
@@ -5048,9 +5065,21 @@ function buildPtbCard(t) {
 }
 
 function escapeHtmlPtb(s) {
-  return (s || '').replace(/[&<>"']/g, function (c) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
   });
+}
+// v2 ความปลอดภัย: ค่าที่ไปอยู่ใน style/src ต้องผ่านตัวกรองนี้ก่อนเสมอ (กันฝังโค้ดผ่านสี/ลิงก์รูป)
+function safeColor(c, fallback) {
+  return /^#[0-9a-fA-F]{3,8}$/.test(String(c || '')) ? String(c) : (fallback || '#888780');
+}
+function safeImgUrl(u) {
+  u = String(u || '');
+  return /^https:\/\/firebasestorage\.googleapis\.com\/[^"'<>\s]+$/.test(u) ? u : '';
+}
+// วันที่ตามเวลาเครื่อง (yyyy-mm-dd) — ใช้แทน toISOString().slice(0,10) ซึ่งเป็นวันที่ UTC (เพี้ยนช่วง 00:00–06:59 น.)
+function localYmd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
 // ===== Skeleton หน้า "ภาพรวมทั้งบริษัท" - getCompanyTaskSummary เป็น Cloud Function ที่ทำ aggregation
@@ -5127,10 +5156,10 @@ function renderPtbAdminOverview() {
     var workloadHtml = result.workload.map(function (s) {
       var totalN = s.total || 1;
       return '<div class="ptb-wl-row" onclick="viewPtbPersonBoard(\'' + s.staffId + '\')">' +
-        '<div class="ptb-wl-avatar" style="background:' + (s.colorHex || '#888780') + '">' + (s.firstName || '?').charAt(0) +
+        '<div class="ptb-wl-avatar" style="background:' + safeColor(s.colorHex) + '">' + escapeHtmlPtb((s.firstName || '?').charAt(0)) +
           (s.hasOverdue ? '<span class="od-dot"></span>' : '') + '</div>' +
         '<div class="ptb-wl-body">' +
-          '<div class="ptb-wl-name-row"><span class="ptb-wl-name">' + s.firstName + ' ' + (s.lastName || '') + '</span><span class="ptb-wl-total">' + s.total + ' งาน</span></div>' +
+          '<div class="ptb-wl-name-row"><span class="ptb-wl-name">' + escapeHtmlPtb(s.firstName + ' ' + (s.lastName || '')) + '</span><span class="ptb-wl-total">' + s.total + ' งาน</span></div>' +
           '<div class="ptb-wl-bar">' +
             (s.todo ? '<span style="width:' + (s.todo / totalN * 100) + '%; background:#dfe3e6"></span>' : '') +
             (s.doing ? '<span style="width:' + (s.doing / totalN * 100) + '%; background:#fbbf24"></span>' : '') +
