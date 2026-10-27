@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css?v=20261015a">
+  <link rel="stylesheet" href="style.css?v=20261027c">
 </head>
 <body>
 
@@ -74,54 +74,61 @@
     <div id="topbar-brand">
       <img src="icons/icon-192.png" alt="" width="30" height="30">
       <h1><span class="accent">C2</span> Calendar</h1>
-      <button id="notif-bell-btn" class="icon-toggle-btn" title="การแจ้งเตือน" onclick="openMyRequestsModal()" style="display:none;position:relative;margin-left:6px">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-        </svg>
+      <button id="notif-bell-btn" class="icon-toggle-btn" title="การแจ้งเตือน" onclick="openMyRequestsModal()" style="display:none">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
         <span id="notif-badge" style="display:none">0</span>
       </button>
     </div>
     <div id="topbar-right">
-      <button id="theme-toggle-btn" class="icon-toggle-btn" title="ธีม (กดเพื่อเปลี่ยน)" onclick="cycleTheme()">🌓</button>
+      <!-- v3 เมนู PC: ปุ่มสร้างงาน (เด่นสุด) + Dashboard + เมนู "จัดการ" / กลุ่มไอคอน / ปุ่มผู้ใช้ (เมนูโปรไฟล์) -->
+      <div id="admin-chip">
+        <button class="tb-cta" onclick="openTaskModal()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>สร้างงานใหม่</button>
+        <button id="dashboard-btn" class="tb-btn" onclick="openDashboardModal()" style="display:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</button>
+        <div id="manage-menu-wrap" class="tb-dd" style="display:none">
+          <button id="manage-menu-btn" class="tb-btn" aria-haspopup="true" aria-expanded="false" onclick="toggleTopMenu('manage-menu', event)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>จัดการ<svg class="tb-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          <div id="manage-menu" class="tb-menu" role="menu">
+            <button id="staff-menu-btn" role="menuitem" onclick="closeTopMenus(); openStaffModal()" style="display:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>บัญชีผู้ใช้</button>
+            <button id="holiday-menu-btn" role="menuitem" onclick="closeTopMenus(); openHolidayModal()" style="display:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg>วันหยุด</button>
+            <button id="lastseen-btn" role="menuitem" onclick="closeTopMenus(); openLastSeenModal()" style="display:none"><span class="tb-ico"><span class="tb-online-dot"></span></span>การเข้าใช้งาน</button>
+            <div class="tb-menu-sep"></div>
+            <button id="export-excel-btn" role="menuitem" onclick="closeTopMenus(); exportMonthToExcel()" style="display:none"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l4 5M12 13l-4 5"/></svg>Export Excel (เดือนที่เปิดอยู่)</button>
+          </div>
+        </div>
+        <span class="tb-sep"></span>
+      </div>
+
       <button id="refresh-btn" class="icon-toggle-btn" title="รีเฟรชข้อมูล" onclick="manualRefresh()">
-        <svg id="refresh-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg id="refresh-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
         </svg>
       </button>
       <button id="toggle-members-btn" class="icon-toggle-btn active" title="ผู้ปฏิบัติงาน" onclick="toggleSidebar('member-sidebar')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"></path>
-          <circle cx="9" cy="7" r="4"></circle>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-        </svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>
       <button id="toggle-legend-btn" class="icon-toggle-btn active" title="สัญลักษณ์สี" onclick="toggleSidebar('legend-sidebar')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="13.5" cy="6.5" r=".5"></circle>
-          <circle cx="17.5" cy="10.5" r=".5"></circle>
-          <circle cx="8.5" cy="7.5" r=".5"></circle>
-          <circle cx="6.5" cy="12.5" r=".5"></circle>
-          <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-4.4-4-8-10-8z"></path>
-        </svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.5-.7 1.5-1.5 0-.4-.1-.7-.4-1-.2-.3-.4-.6-.4-1 0-.8.7-1.5 1.5-1.5H16c3.3 0 6-2.7 6-6 0-4.4-4-8-10-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="12" cy="7" r="1"/><circle cx="16.5" cy="10" r="1"/></svg>
       </button>
+      <button id="theme-toggle-btn" class="icon-toggle-btn" title="ธีม (กดเพื่อเปลี่ยน)" onclick="cycleTheme()"></button>
       <button id="login-icon-btn" title="เข้าสู่ระบบสำหรับแอดมิน" onclick="openLoginModal()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="12" cy="8" r="4"></circle>
           <path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"></path>
         </svg>
       </button>
-      <div id="admin-chip">
-        <span id="admin-name"></span>
-        <button onclick="openTaskModal()">+ สร้างงานใหม่</button>
-        <button id="staff-menu-btn" onclick="openStaffModal()">บัญชีผู้ใช้</button>
-        <button id="holiday-menu-btn" onclick="openHolidayModal()">วันหยุด</button>
-        <button id="export-excel-btn" onclick="exportMonthToExcel()" style="display:none">Export Excel</button>
-        <button id="dashboard-btn" onclick="openDashboardModal()" style="display:none">Dashboard</button>
-        <button id="lastseen-btn" onclick="openLastSeenModal()" style="display:none">🟢 การเข้าใช้งาน</button>
-        <button onclick="openProfileModal()">โปรไฟล์</button>
-        <button onclick="doLogout()">ออกจากระบบ</button>
+
+      <div id="user-chip-wrap" class="tb-dd" style="display:none">
+        <span class="tb-sep"></span>
+        <button id="user-chip" aria-haspopup="true" aria-expanded="false" onclick="toggleTopMenu('user-menu', event)">
+          <span id="user-chip-avatar" class="tb-avatar"></span>
+          <span class="tb-uname"><b id="admin-name"></b><span id="user-chip-role"></span></span>
+          <svg class="tb-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="user-menu" class="tb-menu tb-menu-right" role="menu">
+          <button role="menuitem" onclick="closeTopMenus(); openProfileModal()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"/></svg>โปรไฟล์ของฉัน</button>
+          <div class="tb-menu-sep"></div>
+          <button role="menuitem" class="tb-danger" onclick="closeTopMenus(); doLogout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>ออกจากระบบ</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1097,6 +1104,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
   <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
-  <script src="app.js?v=20261027a"></script>
+  <script src="app.js?v=20261027c"></script>
 </body>
 </html>

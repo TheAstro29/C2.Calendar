@@ -137,6 +137,14 @@ var THEME_META = {
   light: { icon: '☀️', label: 'ธีม: สว่าง' },
   dark: { icon: '🌙', label: 'ธีม: มืด' }
 };
+var THEME_SVG = (function () {
+  var o = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  return {
+    system: o + '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg>',
+    light: o + '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    dark: o + '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+  };
+})();
 function getThemePref() {
   var v = localStorage.getItem(THEME_PREF_KEY);
   return (v === 'light' || v === 'dark') ? v : 'system';
@@ -149,7 +157,7 @@ function applyThemePref(pref) {
   }
   var btn = document.getElementById('theme-toggle-btn');
   if (btn) {
-    btn.textContent = THEME_META[pref].icon;
+    btn.innerHTML = THEME_SVG[pref]; // v3: ไอคอนเส้นให้เข้าชุดกับไอคอนอื่นบนแถบ (เมนูมือถือยังใช้ emoji ใน THEME_META)
     btn.title = THEME_META[pref].label + ' (กดเพื่อเปลี่ยน)';
   }
 }
@@ -863,15 +871,20 @@ function doLogout() {
 function enterAdminMode(fullName, role) {
   document.getElementById('login-icon-btn').style.display = 'none';
   document.getElementById('admin-chip').style.display = 'flex';
+  document.getElementById('user-chip-wrap').style.display = 'inline-flex';
   document.getElementById('admin-name').textContent = fullName || 'แอดมิน';
+  document.getElementById('user-chip-role').textContent = ({ admin: 'Admin', ceo: 'CEO', staff: 'Staff' })[role] || '';
   var isAdmin = role === 'admin';
   var isStaff = role === 'staff';
   var isAdminOrCeo = role === 'admin' || role === 'ceo';
-  document.getElementById('staff-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
-  document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'inline-block' : 'none';
-  document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
-  document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
-  document.getElementById('lastseen-btn').style.display = isAdminOrCeo ? 'inline-block' : 'none';
+  // v3: บัญชีผู้ใช้/วันหยุด/การเข้าใช้งาน/Export อยู่ในเมนู "จัดการ" — staff ไม่มีรายการไหนเลยจึงซ่อนทั้งปุ่ม
+  document.getElementById('staff-menu-btn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('holiday-menu-btn').style.display = isAdmin ? 'flex' : 'none';
+  document.getElementById('export-excel-btn').style.display = isAdminOrCeo ? 'flex' : 'none';
+  document.getElementById('dashboard-btn').style.display = isAdminOrCeo ? 'inline-flex' : 'none';
+  document.getElementById('lastseen-btn').style.display = isAdminOrCeo ? 'flex' : 'none';
+  document.getElementById('manage-menu-wrap').style.display = isAdminOrCeo ? 'inline-flex' : 'none';
+  updateUserChipAvatar();
   document.getElementById('notif-bell-btn').style.display = 'inline-flex'; // ทุก role ที่ login แล้วเห็นกระดิ่งเดียวกันหมด
   document.getElementById('task-undated-row').style.display = (isAdmin || isStaff || role === 'ceo') ? 'flex' : 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'block'; // ทุก role ที่ login แล้วมี Task Board ของตัวเองได้
@@ -891,9 +904,44 @@ function enterAdminMode(fullName, role) {
   loadTodoList();
 }
 
+// ===== v3 เมนู dropdown บนแถบ PC ("จัดการ" และปุ่มผู้ใช้) — คลิกนอกเมนู/กด Esc เพื่อปิด =====
+function closeTopMenus() {
+  document.querySelectorAll('.tb-menu.open').forEach(function (m) { m.classList.remove('open'); });
+  document.querySelectorAll('#topbar [aria-expanded="true"]').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+}
+function toggleTopMenu(menuId, ev) {
+  if (ev) ev.stopPropagation();
+  var menu = document.getElementById(menuId);
+  var wasOpen = menu.classList.contains('open');
+  closeTopMenus();
+  if (!wasOpen) {
+    menu.classList.add('open');
+    var btn = ev && ev.currentTarget;
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  }
+}
+document.addEventListener('click', function (e) {
+  if (!e.target.closest || !e.target.closest('.tb-menu')) closeTopMenus();
+});
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeTopMenus(); });
+
+// รูปบนปุ่มผู้ใช้ — ใช้รูปจากรายชื่อผู้ปฏิบัติงาน (staffMapCache) ถ้าไม่มีรูปแสดงตัวอักษรแรกของชื่อแทน
+function updateUserChipAvatar(photoUrl) {
+  var el = document.getElementById('user-chip-avatar');
+  if (!el) return;
+  var me = staffMapCache[localStorage.getItem(ACCOUNT_ID_KEY)];
+  var url = safeImgUrl(photoUrl || (me && me.photoURL));
+  var name = document.getElementById('admin-name').textContent || '?';
+  el.style.background = (me && me.colorHex) ? safeColor(me.colorHex) : '';
+  el.style.color = (me && me.colorHex) ? getContrastTextColor(safeColor(me.colorHex)) : '';
+  el.innerHTML = url ? '<img src="' + escapeHtmlPtb(url) + '" alt="">' : escapeHtmlPtb(name.charAt(0));
+}
+
 function exitAdminMode() {
   document.getElementById('login-icon-btn').style.display = 'flex';
   document.getElementById('admin-chip').style.display = 'none';
+  document.getElementById('user-chip-wrap').style.display = 'none';
+  closeTopMenus();
   document.getElementById('task-undated-row').style.display = 'none';
   document.getElementById('notif-bell-btn').style.display = 'none';
   document.getElementById('export-excel-btn').style.display = 'none';
@@ -2110,6 +2158,7 @@ function openProfileModal() {
     document.getElementById('profile-avatar-skel').style.display = 'none';
 
     if (p.photoURL) {
+      updateUserChipAvatar(p.photoURL);
       photoEl.src = p.photoURL;
       photoEl.style.display = 'block';
       avatar.style.display = 'none';
@@ -2193,6 +2242,7 @@ document.getElementById('profile-photo-input').addEventListener('change', functi
         return callApi('updateOwnProfile', { token: token, photoURL: url }).then(function (result) {
           if (result.success) {
             document.getElementById('profile-photo').src = url;
+            updateUserChipAvatar(url);
             document.getElementById('profile-photo').style.display = 'block';
             document.getElementById('profile-avatar').style.display = 'none';
             Toast.fire({ icon: 'success', title: 'เปลี่ยนรูปโปรไฟล์แล้ว' });
@@ -2440,6 +2490,7 @@ function renderMemberList(staff) {
     s.photoURL = safeImgUrl(s.photoURL);
     if (s.staffId) staffMapCache[s.staffId] = s;
   });
+  updateUserChipAvatar();
   refreshCalendarDayCells(); // ชื่อผู้ปฏิบัติงานอาจเพิ่ง resolve ได้ใหม่ (เช่น เพิ่งโหลดเสร็จ) ต้องรีเฟรช event ให้ตรง
 
   var container = document.getElementById('member-list');
