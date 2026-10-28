@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css?v=20261028b">
+  <link rel="stylesheet" href="style.css?v=20261028d">
 </head>
 <body>
 
@@ -342,69 +342,91 @@
     <p id="login-footer">© C2 Tech Company Limited</p>
   </div>
 
+  <!-- v3 หน้าจัดการบัญชีผู้ใช้แบบใหม่ (PC: ตาราง + แผงแก้ไขด้านขวา / มือถือ: รายชื่อ ↔ หน้าแก้ไขเต็มจอ)
+       ดู renderStaffList()/startEditStaff()/sm2*() ใน app.js — ใช้ API เดิมทั้งหมด -->
   <div id="staff-modal-overlay">
-    <div id="staff-box">
-      <div class="tb-head">
-        <h2>👤 จัดการบัญชีผู้ใช้</h2>
-        <button id="staff-close" onclick="closeStaffModal()">✕</button>
+    <div id="staff-box" class="sm2">
+      <div class="sm2-head">
+        <button type="button" class="sm2-back" onclick="cancelEditStaff()" aria-label="กลับไปรายชื่อ"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>บัญชีผู้ใช้</span></button>
+        <div class="sm2-title"><h2>บัญชีผู้ใช้</h2><small id="sm2-summary">กำลังโหลด...</small></div>
+        <button type="button" id="staff-close" class="sm2-x" onclick="closeStaffModal()" aria-label="ปิด"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
-      <div class="tb-info-banner">การแก้ไข/ปิดใช้งานบัญชีมีผลทันที ประวัติงานเก่าจะยังเก็บไว้เหมือนเดิม</div>
-
-      <div class="tb-body">
-        <div id="staff-list"></div>
-
-        <button id="staff-form-toggle-btn" onclick="toggleStaffAddForm()">+ เพิ่มบัญชีผู้ใช้ใหม่</button>
-
-        <div id="staff-form" style="display:none">
-          <hr class="tb-divider">
-          <h3 id="staff-form-title" class="tb-subhead">เพิ่มบัญชีผู้ใช้ใหม่</h3>
-          <div id="staff-username-field">
-            <label class="field-label">Username สำหรับเข้าสู่ระบบ</label>
-            <input type="text" id="staff-username" placeholder="ตั้งเอง">
+      <div class="sm2-body">
+        <section class="sm2-list">
+          <div class="sm2-tool">
+            <label class="sm2-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="search" id="sm2-search" placeholder="ค้นหาชื่อ ตำแหน่ง หรือ username" oninput="sm2Render()" autocomplete="off"></label>
+            <button type="button" class="sm2-add" onclick="toggleStaffAddForm()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>เพิ่มบัญชี</span></button>
           </div>
-          <div class="row2">
-            <div><label class="field-label">ชื่อ</label><input type="text" id="staff-firstname"></div>
-            <div><label class="field-label">นามสกุล</label><input type="text" id="staff-lastname"></div>
-          </div>
-          <div class="row2">
-            <div><label class="field-label">ตำแหน่ง (ไม่บังคับ)</label><input type="text" id="staff-position"></div>
-            <div><label class="field-label">สีประจำตัว</label><input type="color" id="staff-color" value="#378ADD"></div>
-          </div>
-          <label class="field-label">เบอร์โทร (ไม่บังคับ)</label>
-          <input type="text" id="staff-phone">
+          <div class="sm2-chips" id="sm2-chips"></div>
+          <div class="sm2-thead"><span>ชื่อ</span><span>Username</span><span>สิทธิ์</span><span>เบอร์โทร</span><span>ใช้งาน</span><span></span></div>
+          <div id="staff-list" class="sm2-rows"></div>
+        </section>
 
-          <label class="field-label">สิทธิ์การใช้งาน</label>
-          <select id="staff-role" style="display:none">
-            <option value="staff">Staff</option>
-            <option value="ceo">CEO</option>
-            <option value="admin">Admin</option>
-          </select>
-          <div class="segmented" id="staff-role-segmented">
-            <button type="button" class="active" data-value="staff" onclick="setStaffRole('staff')">Staff</button>
-            <button type="button" data-value="ceo" onclick="setStaffRole('ceo')">CEO</button>
-            <button type="button" data-value="admin" onclick="setStaffRole('admin')">Admin</button>
+        <section class="sm2-side">
+          <div class="sm2-side-empty" id="sm2-side-empty"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg><b>เลือกบัญชีเพื่อแก้ไข</b><span>หรือกด "เพิ่มบัญชี" เพื่อสร้างบัญชีใหม่</span></div>
+          <div class="sm2-form" id="sm2-form">
+            <div class="sm2-sh">
+              <span class="sm2-av sm2-av-lg" id="sm2-prev-av">?</span>
+              <div><b id="sm2-prev-name">บัญชีใหม่</b><small id="staff-form-title">เพิ่มบัญชีผู้ใช้ใหม่</small></div>
+            </div>
+            <div class="sm2-sbody">
+              <div id="staff-username-field" class="sm2-card">
+                <div class="sm2-sec">เข้าสู่ระบบ</div>
+                <label class="sm2-f"><span>Username</span><input type="text" id="staff-username" class="sm2-in" placeholder="ภาษาอังกฤษ ตัวเลข . _ -" autocomplete="off" autocapitalize="off"></label>
+                <p class="sm2-hint">ระบบจะสุ่มรหัสผ่านให้หลังบันทึก แจ้งเจ้าของบัญชีให้เปลี่ยนรหัสเมื่อเข้าใช้ครั้งแรก</p>
+              </div>
+              <div class="sm2-card">
+                <div class="sm2-sec">ข้อมูลส่วนตัว</div>
+                <div class="sm2-g2">
+                  <label class="sm2-f"><span>ชื่อ</span><input type="text" id="staff-firstname" class="sm2-in" oninput="sm2UpdatePreview()"></label>
+                  <label class="sm2-f"><span>นามสกุล</span><input type="text" id="staff-lastname" class="sm2-in" oninput="sm2UpdatePreview()"></label>
+                </div>
+                <div class="sm2-g2">
+                  <label class="sm2-f"><span>ตำแหน่ง</span><input type="text" id="staff-position" class="sm2-in" placeholder="ไม่บังคับ"></label>
+                  <label class="sm2-f"><span>เบอร์โทร</span><input type="tel" id="staff-phone" class="sm2-in" placeholder="ไม่บังคับ"></label>
+                </div>
+                <div class="sm2-g2">
+                  <div class="sm2-f"><span>เพศ</span>
+                    <select id="staff-gender" style="display:none"><option value="">ไม่ระบุเพศ</option><option value="ชาย">ชาย</option><option value="หญิง">หญิง</option></select>
+                    <div class="sm2-seg" id="staff-gender-segmented">
+                      <button type="button" class="active" data-value="" onclick="setStaffGender('')">ไม่ระบุ</button>
+                      <button type="button" data-value="ชาย" onclick="setStaffGender('ชาย')">ชาย</button>
+                      <button type="button" data-value="หญิง" onclick="setStaffGender('หญิง')">หญิง</button>
+                    </div>
+                  </div>
+                  <label class="sm2-f"><span>วันเกิด</span><input type="date" id="staff-birthdate" class="sm2-in"></label>
+                </div>
+              </div>
+              <div class="sm2-card">
+                <div class="sm2-sec">สีประจำตัว <em>ใช้ในปฏิทินและรายชื่อ</em></div>
+                <div class="sm2-swatches" id="sm2-swatches"></div>
+                <input type="color" id="staff-color" value="#378ADD" class="sm2-color-input" oninput="sm2PickColor(this.value)" aria-label="เลือกสีเอง">
+              </div>
+              <div class="sm2-card">
+                <div class="sm2-sec">สิทธิ์การใช้งาน</div>
+                <select id="staff-role" style="display:none"><option value="staff">Staff</option><option value="ceo">CEO</option><option value="admin">Admin</option></select>
+                <div class="sm2-roles" id="staff-role-segmented">
+                  <button type="button" class="active" data-value="staff" onclick="setStaffRole('staff')"><b>Staff</b><span>งานของตัวเอง ขอเลื่อน/แก้งาน</span></button>
+                  <button type="button" data-value="ceo" onclick="setStaffRole('ceo')"><b>CEO</b><span>ดูทุกอย่าง Dashboard Export</span></button>
+                  <button type="button" data-value="admin" onclick="setStaffRole('admin')"><b>Admin</b><span>จัดการทุกอย่าง รวมบัญชีผู้ใช้</span></button>
+                </div>
+              </div>
+              <div class="sm2-card sm2-danger" id="sm2-danger">
+                <div class="sm2-sec">สถานะและความปลอดภัย</div>
+                <div class="sm2-active-row"><span><b>เปิดใช้งานบัญชี</b><small id="sm2-active-hint">ปิดแล้วเข้าสู่ระบบไม่ได้ ประวัติงานยังอยู่</small></span>
+                  <label class="sm2-switch"><input type="checkbox" id="sm2-active-sw" aria-label="เปิดใช้งานบัญชี" onchange="toggleStaffActive(this, editingStaffId, this.checked)"><i></i></label></div>
+                <button type="button" id="sm2-reset-btn" onclick="sm2ResetPw(this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5L18 10M18.5 4.5L21 7"/></svg><span>รีเซ็ตรหัสผ่าน</span><small>ออกจากระบบทุกเครื่อง</small></button>
+                <button type="button" id="sm2-delete-btn" class="sm2-del" onclick="sm2Delete(this)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg><span>ลบบัญชีถาวร</span><small>แนะนำให้ปิดใช้งานแทน</small></button>
+              </div>
+            </div>
+            <div class="sm2-foot">
+              <button type="button" id="staff-cancel-edit-btn" class="sm2-btn" onclick="cancelEditStaff()">ยกเลิก</button>
+              <button type="button" id="staff-submit-btn" class="sm2-btn sm2-pri" onclick="submitAddStaff()">บันทึก</button>
+            </div>
           </div>
-
-          <label class="field-label">เพศ</label>
-          <select id="staff-gender" style="display:none">
-            <option value="">ไม่ระบุเพศ</option>
-            <option value="ชาย">ชาย</option>
-            <option value="หญิง">หญิง</option>
-          </select>
-          <div class="segmented" id="staff-gender-segmented">
-            <button type="button" class="active" data-value="" onclick="setStaffGender('')">ไม่ระบุ</button>
-            <button type="button" data-value="ชาย" onclick="setStaffGender('ชาย')">ชาย</button>
-            <button type="button" data-value="หญิง" onclick="setStaffGender('หญิง')">หญิง</button>
-          </div>
-
-          <label class="field-label">วันเกิด</label>
-          <input type="date" id="staff-birthdate">
-        </div>
+        </section>
       </div>
-      <div class="tb-footer">
-        <button id="staff-cancel-edit-btn" class="td-btn-plain" style="display:none" onclick="cancelEditStaff()">ยกเลิกการแก้ไข</button>
-        <button id="staff-submit-btn" onclick="submitAddStaff()">เพิ่มบัญชีผู้ใช้</button>
-      </div>
+      <div class="sm2-kebab" id="sm2-kebab" role="menu"></div>
     </div>
   </div>
 
@@ -1138,6 +1160,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
   <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
-  <script src="app.js?v=20261028a"></script>
+  <script src="app.js?v=20261028d"></script>
 </body>
 </html>

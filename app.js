@@ -976,60 +976,142 @@ function loadStaffList() {
 
 var ROLE_LABELS = { admin: 'Admin', ceo: 'CEO', staff: 'Staff' };
 
+// =====================================================================================
+// ===== v3 หน้าจัดการบัญชีผู้ใช้ (sm2) — ใช้ API เดิม: getStaffList/addStaff/updateStaff/
+// resetPassword/setStaffActive/deleteStaff (ฝั่งหลังบ้านไม่เปลี่ยน) ==============================
+// =====================================================================================
+var _sm2Staff = [];
+var _sm2Filter = 'all';
+var SM2_COLORS = ['#861f8f', '#1e2a8a', '#2f5d1e', '#d1683c', '#e29ac4', '#5b8def', '#5ab4d6', '#4caf50', '#c0453b', '#f59e0b', '#0f766e', '#64748b'];
+var SM2_ICON = {
+  edit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+  more: '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>',
+  chv: '<svg class="sm2-chv" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>',
+  key: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6M15.5 7.5L18 10M18.5 4.5L21 7"/></svg>',
+  trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>'
+};
+function sm2Find(id) { return _sm2Staff.filter(function (x) { return x.staffId === id; })[0]; }
+function sm2Me() { return localStorage.getItem(ACCOUNT_ID_KEY); }
+function sm2FullName(s) { return ((s.firstName || '') + ' ' + (s.lastName || '')).trim(); }
+function sm2AvatarHtml(s, cls, withDot) {
+  var color = safeColor(s.colorHex || '#888780');
+  var photo = safeImgUrl(s.photoURL);
+  return '<span class="sm2-av' + (cls ? ' ' + cls : '') + '" style="background:' + color + ';color:' + getContrastTextColor(color) + '">' +
+    (photo ? '<img src="' + escapeHtmlPtb(photo) + '" alt="">' : escapeHtmlPtb((s.firstName || '?').charAt(0))) +
+    (withDot ? '<span class="sm2-dot' + (s.active ? '' : ' off') + '"></span>' : '') + '</span>';
+}
+
 function renderStaffList(result) {
   var container = document.getElementById('staff-list');
   if (!result.success) {
-    container.innerHTML = '<p style="font-size:13px;color:var(--danger-text)">' + result.message + '</p>';
+    container.innerHTML = '<p class="sm2-none" style="color:var(--danger-text)">' + escapeHtmlPtb(result.message) + '</p>';
     return;
   }
-
-  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>';
-  var ICON_KEY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="5.5"></circle><path d="M21 2l-9.6 9.6"></path><path d="M15.5 7.5 18 10"></path><path d="M18.5 4.5 21 7"></path></svg>';
-  var ICON_TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>';
-
-  container.innerHTML = '';
-  result.staff.forEach(function (s) {
-    var color = s.colorHex || '#888780';
-    color = safeColor(color);
-    var textColor = getContrastTextColor(color);
-    var initial = escapeHtmlPtb((s.firstName || '?').charAt(0));
-    var fullName = escapeHtmlPtb((s.firstName + ' ' + s.lastName).replace(/['\\]/g, ''));
-
-    var row = document.createElement('div');
-    row.className = 'staff-row';
-    row.innerHTML =
-      '<div class="sr-avatar" style="background:' + color + '">' +
-        (safeImgUrl(s.photoURL)
-          ? '<img src="' + escapeHtmlPtb(safeImgUrl(s.photoURL)) + '" alt="">'
-          : '<span style="color:' + textColor + '">' + initial + '</span>') +
-      '</div>' +
-      '<div class="staff-info">' +
-        '<div class="name-line">' +
-          '<p class="name">' + escapeHtmlPtb(s.firstName + ' ' + s.lastName) + '</p>' +
-          '<span class="role-badge ' + escapeHtmlPtb(s.role) + '">' + escapeHtmlPtb(ROLE_LABELS[s.role] || s.role) + '</span>' +
-          (s.username ? '<span class="id-badge">ID: ' + escapeHtmlPtb(s.username) + '</span>' : '') +
-        '</div>' +
-        '<p class="pos">' + escapeHtmlPtb(s.position || 'ไม่ระบุตำแหน่ง') + '</p>' +
-        '<p class="meta">' + escapeHtmlPtb(s.phone || 'ไม่ระบุเบอร์โทร') + '</p>' +
-      '</div>' +
-      '<div class="sr-actions">' +
-        '<div class="sr-icon-row">' +
-          '<button class="sr-icon-btn" title="แก้ไข" onclick=\'startEditStaff(' + escapeHtmlPtb(JSON.stringify(s)) + ')\'>' + ICON_EDIT + '</button>' +
-          '<button class="sr-icon-btn" title="รีเซ็ตรหัส" onclick="resetPasswordConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_KEY + '</button>' +
-          '<button class="sr-icon-btn danger" title="ลบบัญชี" onclick="deleteStaffConfirm(this, \'' + s.staffId + '\', \'' + fullName + '\')">' + ICON_TRASH + '</button>' +
-        '</div>' +
-        '<label class="sr-toggle">' +
-          '<input type="checkbox" ' + (s.active ? 'checked' : '') + ' onchange="toggleStaffActive(this, \'' + s.staffId + '\', this.checked)">' +
-          'ใช้งาน' +
-        '</label>' +
-      '</div>';
-    container.appendChild(row);
+  _sm2Staff = result.staff || [];
+  sm2Render();
+  // ถ้ากำลังแก้ไขบัญชีอยู่ อัปเดตแผงด้วยข้อมูลล่าสุด (เช่นเปิด/ปิดใช้งานจากตาราง)
+  if (editingStaffId && !sm2Find(editingStaffId)) cancelEditStaff();
+}
+function setSm2Filter(f) { _sm2Filter = f; sm2Render(); }
+function sm2Render() {
+  var container = document.getElementById('staff-list');
+  if (!container) return;
+  var all = _sm2Staff;
+  var active = all.filter(function (s) { return s.active; }).length;
+  document.getElementById('sm2-summary').textContent = all.length + ' บัญชี · ใช้งาน ' + active + (all.length - active ? ' · ปิดใช้งาน ' + (all.length - active) : '');
+  var cnt = function (f) { return all.filter(f).length; };
+  var chips = [['all', 'ทั้งหมด', all.length], ['admin', 'Admin', cnt(function (s) { return s.role === 'admin'; })], ['ceo', 'CEO', cnt(function (s) { return s.role === 'ceo'; })],
+    ['staff', 'Staff', cnt(function (s) { return s.role === 'staff'; })], ['off', 'ปิดใช้งาน', all.length - active]];
+  document.getElementById('sm2-chips').innerHTML = chips.filter(function (c) { return c[0] === 'all' || c[2] > 0 || _sm2Filter === c[0]; }).map(function (c) {
+    return '<button type="button" class="' + (_sm2Filter === c[0] ? 'on' : '') + '" onclick="setSm2Filter(\'' + c[0] + '\')">' + c[1] + '<span>' + c[2] + '</span></button>';
+  }).join('');
+  var q = (document.getElementById('sm2-search').value || '').trim().toLowerCase();
+  var list = all.filter(function (s) {
+    if (_sm2Filter === 'off' && s.active) return false;
+    if (_sm2Filter !== 'all' && _sm2Filter !== 'off' && s.role !== _sm2Filter) return false;
+    if (!q) return true;
+    return [sm2FullName(s), s.position, s.username, s.phone].join(' ').toLowerCase().indexOf(q) !== -1;
   });
+  if (!list.length) {
+    container.innerHTML = '<p class="sm2-none">' + (q ? 'ไม่พบบัญชีที่ตรงกับ "' + escapeHtmlPtb(q) + '"' : 'ไม่มีบัญชีในกลุ่มนี้') + '</p>';
+    return;
+  }
+  var me = sm2Me();
+  container.innerHTML = list.map(function (s) {
+    var id = escapeHtmlPtb(s.staffId);
+    var isMe = s.staffId === me;
+    return '<div class="sm2-row' + (s.active ? '' : ' off') + (s.staffId === editingStaffId ? ' sel' : '') + '" data-id="' + id + '" onclick="startEditStaff(\'' + id + '\')">' +
+      '<div class="sm2-who">' + sm2AvatarHtml(s, '', true) + '<div><b>' + escapeHtmlPtb(sm2FullName(s)) + (isMe ? '<em>(คุณ)</em>' : '') + '</b>' +
+        '<small>' + escapeHtmlPtb(s.position || 'ไม่ระบุตำแหน่ง') + (s.username ? '<span class="sm2-mob"> · @' + escapeHtmlPtb(s.username) + '</span>' : '') + '</small></div></div>' +
+      '<span class="sm2-mono">' + (s.username ? '@' + escapeHtmlPtb(s.username) : '—') + '</span>' +
+      '<span class="sm2-role ' + escapeHtmlPtb(s.role) + '">' + escapeHtmlPtb(ROLE_LABELS[s.role] || s.role) + '</span>' +
+      '<span class="sm2-phone' + (s.phone ? '' : ' none') + '">' + escapeHtmlPtb(s.phone || '—') + '</span>' +
+      '<span class="sm2-sw-cell" onclick="event.stopPropagation()"><label class="sm2-switch" title="' + (isMe ? 'ปิดบัญชีตัวเองไม่ได้' : (s.active ? 'ปิดใช้งาน' : 'เปิดใช้งาน')) + '">' +
+        '<input type="checkbox" aria-label="เปิดใช้งานบัญชี ' + escapeHtmlPtb(sm2FullName(s)) + '"' + (s.active ? ' checked' : '') + (isMe ? ' disabled' : '') +
+        ' onchange="toggleStaffActive(this, \'' + id + '\', this.checked)"><i></i></label></span>' +
+      '<span class="sm2-acts" onclick="event.stopPropagation()">' +
+        '<button type="button" class="sm2-ib edit" title="แก้ไข" onclick="startEditStaff(\'' + id + '\')">' + SM2_ICON.edit + '</button>' +
+        '<button type="button" class="sm2-ib" title="เพิ่มเติม" aria-haspopup="true" onclick="sm2OpenKebab(event, \'' + id + '\')">' + SM2_ICON.more + '</button></span>' +
+      SM2_ICON.chv + '</div>';
+  }).join('');
+}
+
+// เมนู ⋯ ของแต่ละแถว (รีเซ็ตรหัส / ลบ)
+function sm2OpenKebab(ev, id) {
+  ev.stopPropagation();
+  var s = sm2Find(id); if (!s) return;
+  var menu = document.getElementById('sm2-kebab');
+  var isMe = id === sm2Me();
+  menu.innerHTML = '<button type="button" onclick="sm2CloseKebab(); sm2ResetPw(this, \'' + escapeHtmlPtb(id) + '\')">' + SM2_ICON.key + 'รีเซ็ตรหัสผ่าน</button>' +
+    '<button type="button" class="sm2-del"' + (isMe ? ' disabled title="ลบบัญชีตัวเองไม่ได้"' : '') + ' onclick="sm2CloseKebab(); sm2Delete(this, \'' + escapeHtmlPtb(id) + '\')">' + SM2_ICON.trash + 'ลบบัญชีถาวร</button>';
+  var r = ev.currentTarget.getBoundingClientRect();
+  menu.classList.add('open');
+  var w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+  menu.style.top = (r.bottom + 6 + h > window.innerHeight ? r.top - h - 6 : r.bottom + 6) + 'px';
+}
+function sm2CloseKebab() { var m = document.getElementById('sm2-kebab'); if (m) m.classList.remove('open'); }
+document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('#sm2-kebab')) sm2CloseKebab(); });
+window.addEventListener('resize', sm2CloseKebab);
+
+function sm2ResetPw(btn, id) {
+  var s = sm2Find(id || editingStaffId); if (!s) return;
+  resetPasswordConfirm(btn, s.staffId, sm2FullName(s).replace(/['\\]/g, ''));
+}
+function sm2Delete(btn, id) {
+  var s = sm2Find(id || editingStaffId); if (!s) return;
+  deleteStaffConfirm(btn, s.staffId, sm2FullName(s).replace(/['\\]/g, ''));
+}
+
+// สีประจำตัว
+function sm2RenderSwatches(cur) {
+  cur = String(cur || '').toLowerCase();
+  var known = SM2_COLORS.indexOf(cur) !== -1;
+  document.getElementById('sm2-swatches').innerHTML = SM2_COLORS.map(function (c) {
+    return '<button type="button" style="background:' + c + '" class="' + (c === cur ? 'on' : '') + '" aria-label="สี ' + c + '" onclick="sm2PickColor(\'' + c + '\')"></button>';
+  }).join('') + '<button type="button" class="sm2-custom' + (known ? '' : ' on') + '" aria-label="เลือกสีเอง" title="เลือกสีเอง" onclick="document.getElementById(\'staff-color\').click()"></button>';
+}
+function sm2PickColor(c) {
+  document.getElementById('staff-color').value = safeColor(c, '#378ADD');
+  sm2RenderSwatches(document.getElementById('staff-color').value);
+  sm2UpdatePreview();
+}
+function sm2UpdatePreview() {
+  var fn = document.getElementById('staff-firstname').value.trim();
+  var ln = document.getElementById('staff-lastname').value.trim();
+  var color = safeColor(document.getElementById('staff-color').value, '#378ADD');
+  var s = editingStaffId ? sm2Find(editingStaffId) : null;
+  var photo = s ? safeImgUrl(s.photoURL) : '';
+  var av = document.getElementById('sm2-prev-av');
+  av.style.background = color;
+  av.style.color = getContrastTextColor(color);
+  av.innerHTML = photo ? '<img src="' + escapeHtmlPtb(photo) + '" alt="">' : escapeHtmlPtb((fn || '?').charAt(0));
+  document.getElementById('sm2-prev-name').textContent = (fn + ' ' + ln).trim() || 'บัญชีใหม่';
 }
 
 var editingStaffId = null;
 
-// ปุ่ม segmented เลือกสิทธิ์/เพศ - เก็บค่าจริงไว้ใน <select> ที่ซ่อนอยู่ (ของเดิม backend ยังอ่านจากตรงนี้)
+// ปุ่มเลือกสิทธิ์/เพศ - เก็บค่าจริงไว้ใน <select> ที่ซ่อนอยู่ (submitAddStaff อ่านจากตรงนี้)
 function setStaffRole(value) {
   document.getElementById('staff-role').value = value;
   var buttons = document.querySelectorAll('#staff-role-segmented button');
@@ -1045,49 +1127,66 @@ function setStaffGender(value) {
   }
 }
 
+function sm2ClearForm() {
+  ['staff-username', 'staff-firstname', 'staff-lastname', 'staff-position', 'staff-phone', 'staff-birthdate'].forEach(function (id) { document.getElementById(id).value = ''; });
+  document.getElementById('staff-color').value = '#5b8def';
+  setStaffRole('staff');
+  setStaffGender('');
+}
+// "เพิ่มบัญชี" — เปิดแผงแบบฟอร์มว่าง
 function toggleStaffAddForm() {
-  var form = document.getElementById('staff-form');
-  var isHidden = form.style.display === 'none';
-  form.style.display = isHidden ? 'block' : 'none';
-  document.getElementById('staff-form-toggle-btn').style.display = isHidden ? 'none' : 'block';
+  editingStaffId = null;
+  sm2ClearForm();
+  document.getElementById('staff-username-field').style.display = 'block';
+  document.getElementById('sm2-danger').style.display = 'none';
+  document.getElementById('staff-form-title').textContent = 'เพิ่มบัญชีผู้ใช้ใหม่';
+  document.getElementById('staff-submit-btn').textContent = 'เพิ่มบัญชี';
+  sm2RenderSwatches(document.getElementById('staff-color').value);
+  sm2UpdatePreview();
+  document.getElementById('staff-box').classList.add('sm2-editing');
+  document.querySelector('#staff-box .sm2-sbody').scrollTop = 0;
+  sm2Render();
+  setTimeout(function () { document.getElementById('staff-username').focus(); }, 50);
 }
 
-function startEditStaff(s) {
-  document.getElementById('staff-form').style.display = 'block';
-  document.getElementById('staff-form-toggle-btn').style.display = 'none';
+// แก้ไขบัญชี — รับได้ทั้ง staffId หรือ object (รองรับโค้ดเดิมที่ส่ง object มา)
+function startEditStaff(sOrId) {
+  var s = typeof sOrId === 'string' ? sm2Find(sOrId) : sOrId;
+  if (!s) return;
   editingStaffId = s.staffId;
   document.getElementById('staff-username-field').style.display = 'none';
-  document.getElementById('staff-firstname').value = s.firstName;
-  document.getElementById('staff-lastname').value = s.lastName;
+  document.getElementById('staff-firstname').value = s.firstName || '';
+  document.getElementById('staff-lastname').value = s.lastName || '';
   document.getElementById('staff-position').value = s.position || '';
   document.getElementById('staff-phone').value = s.phone || '';
-  document.getElementById('staff-color').value = s.colorHex || '#378ADD';
+  document.getElementById('staff-color').value = safeColor(s.colorHex, '#378ADD');
   setStaffRole(s.role || 'staff');
   setStaffGender(s.gender || '');
   document.getElementById('staff-birthdate').value = s.birthDate || '';
-  document.getElementById('staff-form-title').textContent = 'แก้ไขบัญชีผู้ใช้';
-  document.getElementById('staff-submit-btn').textContent = 'บันทึกการแก้ไข';
-  document.getElementById('staff-cancel-edit-btn').style.display = 'block';
-  document.getElementById('staff-box').scrollTop = document.getElementById('staff-box').scrollHeight;
+  var isMe = s.staffId === sm2Me();
+  document.getElementById('staff-form-title').textContent = 'แก้ไขบัญชี' + (s.username ? ' · @' + s.username : '') + (s.active ? '' : ' · ปิดใช้งานอยู่');
+  document.getElementById('staff-submit-btn').textContent = 'บันทึก';
+  document.getElementById('sm2-danger').style.display = 'block';
+  document.getElementById('sm2-delete-btn').disabled = isMe;
+  var sw = document.getElementById('sm2-active-sw');
+  sw.checked = !!s.active; sw.disabled = isMe;
+  document.getElementById('sm2-active-hint').textContent = isMe ? 'ปิดบัญชีของตัวเองไม่ได้' : 'ปิดแล้วเข้าสู่ระบบไม่ได้ ประวัติงานยังอยู่';
+  document.getElementById('sm2-delete-btn').title = isMe ? 'ลบบัญชีตัวเองไม่ได้' : '';
+  sm2RenderSwatches(document.getElementById('staff-color').value);
+  sm2UpdatePreview();
+  document.getElementById('staff-box').classList.add('sm2-editing');
+  document.querySelector('#staff-box .sm2-sbody').scrollTop = 0;
+  sm2Render();
 }
 
 function cancelEditStaff() {
   editingStaffId = null;
-  document.getElementById('staff-form').style.display = 'none';
-  document.getElementById('staff-form-toggle-btn').style.display = 'block';
+  sm2ClearForm();
   document.getElementById('staff-username-field').style.display = 'block';
-  document.getElementById('staff-username').value = '';
-  document.getElementById('staff-firstname').value = '';
-  document.getElementById('staff-lastname').value = '';
-  document.getElementById('staff-position').value = '';
-  document.getElementById('staff-phone').value = '';
-  document.getElementById('staff-color').value = '#378ADD';
-  setStaffRole('staff');
-  setStaffGender('');
-  document.getElementById('staff-birthdate').value = '';
-  document.getElementById('staff-form-title').textContent = 'เพิ่มบัญชีผู้ใช้ใหม่';
-  document.getElementById('staff-submit-btn').textContent = 'เพิ่มบัญชีผู้ใช้';
-  document.getElementById('staff-cancel-edit-btn').style.display = 'none';
+  var box = document.getElementById('staff-box');
+  if (box) box.classList.remove('sm2-editing');
+  sm2CloseKebab();
+  if (_sm2Staff.length) sm2Render();
 }
 
 function submitAddStaff() {
@@ -1201,6 +1300,7 @@ function deleteStaffConfirm(btn, staffId, name) {
     callApi('deleteStaff', { token: token, staffId: staffId }).then(function (result) {
       if (result.success) {
         Toast.fire({ icon: 'success', title: 'ลบบัญชีถาวรแล้ว' });
+        if (editingStaffId === staffId) cancelEditStaff();
         loadStaffList();
       } else {
         Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: result.message });
@@ -1216,13 +1316,18 @@ function deleteStaffConfirm(btn, staffId, name) {
 function toggleStaffActive(checkboxEl, staffId, active) {
   var token = localStorage.getItem(TOKEN_KEY);
   checkboxEl.disabled = true;
+  var s = typeof sm2Find === 'function' ? sm2Find(staffId) : null;
+  var revert = function () { checkboxEl.checked = !active; };
   callApi('setStaffActive', { token: token, staffId: staffId, active: active }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: active ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว' });
+      if (s) { s.active = active; sm2Render(); if (editingStaffId === staffId) startEditStaff(staffId); }
     } else {
+      revert();
       Swal.fire({ icon: 'error', title: 'อัปเดตไม่สำเร็จ', text: result.message });
     }
   }).catch(function (err) {
+    revert();
     Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
   }).finally(function () {
     checkboxEl.disabled = false;
@@ -3815,16 +3920,23 @@ function m2HolidaysOn(d) {
     return h.type === 'weekly' && d.getDay() === h.value;
   });
 }
+// ช่วงวันของงาน [วันเริ่ม, วันจบ] แบบตัดเวลาออก (allDay end ของ FullCalendar เป็นแบบ exclusive)
+function m2EvSpan(ev) {
+  var s = m2StartOfDay(ev.start);
+  var e = m2StartOfDay(ev.end ? new Date(ev.end.getTime() - (ev.allDay ? 1 : 0)) : ev.start);
+  if (ev.end && !ev.allDay && ev.end.getHours() === 0 && ev.end.getMinutes() === 0 && ev.end > ev.start) {
+    e = m2StartOfDay(new Date(ev.end.getTime() - 1)); // จบเที่ยงคืนพอดี = จบวันก่อนหน้า
+  }
+  if (e < s) e = s;
+  return { s: s, e: e, days: Math.round((e - s) / 86400000) + 1 };
+}
 function m2CalEventsByDay(rangeStart, rangeEnd) {
   var map = {};
   if (!calendarInstance) return map;
   calendarInstance.getEvents().forEach(function (ev) {
     if (ev.extendedProps.isHoliday || !ev.start) return;
     if (activeTaskTypeFilter && ev.extendedProps.taskType !== activeTaskTypeFilter) return;
-    var s = m2StartOfDay(ev.start);
-    var e = ev.end ? new Date(ev.end.getTime() - (ev.allDay ? 1 : 0)) : ev.start; // allDay end เป็นแบบ exclusive
-    e = m2StartOfDay(e);
-    if (e < s) e = s;
+    var sp = m2EvSpan(ev), s = sp.s, e = sp.e;
     if (e < rangeStart || s > rangeEnd) return;
     var d = s < rangeStart ? new Date(rangeStart) : new Date(s);
     for (var i = 0; i < 62 && d <= e && d <= rangeEnd; i++) {
@@ -3870,14 +3982,50 @@ function renderM2Cal() {
   var end = new Date(start); end.setDate(start.getDate() + weeks * 7 - 1);
   var byDay = m2CalEventsByDay(start, end);
   var todayK = m2Ymd(new Date()), selK = m2Ymd(_m2Cal.sel);
+  // v3: งานหลายวัน = เส้นยาวต่อเนื่อง (สูงสุด 3 เส้นต่อสัปดาห์ เกินขึ้น "+N") / งานวันเดียว = จุดใต้ตัวเลข
+  var M2_LANES = 3, M2_LANE_TOP = [37, 43, 49];
+  var multiEvs = [];
+  if (calendarInstance) {
+    calendarInstance.getEvents().forEach(function (ev) {
+      if (ev.extendedProps.isHoliday || !ev.start) return;
+      if (activeTaskTypeFilter && ev.extendedProps.taskType !== activeTaskTypeFilter) return;
+      var sp = m2EvSpan(ev);
+      if (sp.days > 1 && sp.e >= start && sp.s <= end) multiEvs.push({ ev: ev, s: sp.s, e: sp.e, days: sp.days });
+    });
+  }
+  var dayIdx = function (d) { return Math.round((d - start) / 86400000); };
   var grid = '';
-  for (var i = 0; i < weeks * 7; i++) {
-    var d = new Date(start); d.setDate(start.getDate() + i);
-    var k = m2Ymd(d), evs = byDay[k] || [];
-    var kinds = M2_TYPE_ORDER.filter(function (t) { return evs.some(function (ev) { return ev.extendedProps.taskType === t; }); }).slice(0, 3);
-    var cls = [d.getMonth() !== _m2Cal.m ? 'o' : '', d.getDay() === 0 ? 'sun' : '', m2HolidaysOn(d).length ? 'hol' : '', k === todayK ? 't' : '', k === selK ? 'sel' : ''].filter(Boolean).join(' ');
-    grid += '<button type="button" class="' + cls + '" onclick="m2CalPick(' + d.getTime() + ')" aria-label="' + d.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + evs.length + ' งาน">' +
-      d.getDate() + '<span class="m2c-dots">' + kinds.map(function (t) { return '<i class="k-' + t + '"></i>'; }).join('') + '</span></button>';
+  for (var w = 0; w < weeks; w++) {
+    var wS = w * 7, wE = wS + 6;
+    var segs = multiEvs.map(function (m) {
+      return { m: m, ss: Math.max(dayIdx(m.s), wS), se: Math.min(dayIdx(m.e), wE), cl: dayIdx(m.s) < wS, cr: dayIdx(m.e) > wE };
+    }).filter(function (g) { return g.ss <= g.se; })
+      .sort(function (a, b) { return (b.m.days - a.m.days) || (a.m.s - b.m.s); });
+    var lanes = [], hidden = {};
+    segs.forEach(function (g) {
+      var l = 0;
+      while (lanes[l] && lanes[l].some(function (x) { return !(g.se < x.ss || g.ss > x.se); })) l++;
+      (lanes[l] = lanes[l] || []).push(g);
+      g.lane = l;
+      if (l >= M2_LANES) for (var n = g.ss; n <= g.se; n++) hidden[n] = (hidden[n] || 0) + 1;
+    });
+    grid += '<div class="m2c-wk">';
+    for (var i = wS; i <= wE; i++) {
+      var d = new Date(start); d.setDate(start.getDate() + i);
+      var k = m2Ymd(d), evs = byDay[k] || [];
+      var singles = evs.filter(function (ev) { return m2EvSpan(ev).days === 1; });
+      var kinds = M2_TYPE_ORDER.filter(function (t) { return singles.some(function (ev) { return ev.extendedProps.taskType === t; }); }).slice(0, 3);
+      var cls = [d.getMonth() !== _m2Cal.m ? 'o' : '', d.getDay() === 0 ? 'sun' : '', m2HolidaysOn(d).length ? 'hol' : '', k === todayK ? 't' : '', k === selK ? 'sel' : ''].filter(Boolean).join(' ');
+      grid += '<button type="button" class="' + cls + '" onclick="m2CalPick(' + d.getTime() + ')" aria-label="' + d.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + evs.length + ' งาน">' +
+        d.getDate() + '<span class="m2c-dots">' + kinds.map(function (t) { return '<i class="k-' + t + '"></i>'; }).join('') + '</span>' +
+        (hidden[i] ? '<span class="m2c-more">+' + hidden[i] + '</span>' : '') + '</button>';
+    }
+    segs.forEach(function (g) {
+      if (g.lane >= M2_LANES) return;
+      var padL = g.cl ? 0 : 5, padR = g.cr ? 0 : 5;
+      grid += '<span class="m2c-span k-' + escapeHtmlPtb(g.m.ev.extendedProps.taskType) + (g.cl ? ' cl' : '') + (g.cr ? ' cr' : '') + '" style="top:' + M2_LANE_TOP[g.lane] + 'px;left:calc(' + ((g.ss - wS) / 7 * 100) + '% + ' + padL + 'px);width:calc(' + ((g.se - g.ss + 1) / 7 * 100) + '% - ' + (padL + padR) + 'px)"></span>';
+    });
+    grid += '</div>';
   }
   var selEvs = (byDay[selK] || []).slice().sort(function (a, b) {
     if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
@@ -3910,9 +4058,17 @@ function renderM2Cal() {
         var c = safeColor(s.color);
         return '<i style="background:' + c + ';color:' + getContrastTextColor(c) + '">' + escapeHtmlPtb((s.name || '?').charAt(0)) + '</i>';
       }).join('') + (staff.length > 4 ? '<i style="background:var(--surface-alt);color:var(--text-muted)">+' + (staff.length - 4) + '</i>' : '');
+      var sp = m2EvSpan(ev), multiInfo = '';
+      if (sp.days > 1) {
+        var nth = Math.round((selStart - sp.s) / 86400000) + 1;
+        var rng = sp.s.getMonth() === sp.e.getMonth()
+          ? sp.s.getDate() + '–' + sp.e.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+          : sp.s.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + ' – ' + sp.e.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+        multiInfo = '<p class="m2c-range">' + m2Svg('<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', 13) + '<span>' + rng + '</span><span class="m2c-nth">วันที่ ' + nth + '/' + sp.days + '</span></p>';
+      }
       html += '<button type="button" class="m2c-ev" onclick="m2CalOpenEvent(\'' + escapeHtmlPtb(ev.id) + '\')">' +
         '<div class="m2c-tm">' + tm + '</div><div class="m2c-bar k-' + escapeHtmlPtb(t) + '"></div>' +
-        '<div class="m2c-bd"><b>' + escapeHtmlPtb(ev.title) + '</b>' +
+        '<div class="m2c-bd"><b>' + escapeHtmlPtb(ev.title) + '</b>' + multiInfo +
           (p.location ? '<p>' + m2Svg('<path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>', 13) + '<span>' + escapeHtmlPtb(p.location) + '</span></p>' : '') +
           (ppl ? '<div class="m2c-ppl">' + ppl + '</div>' : '') + '</div>' +
         '<span class="m2c-tag" style="background:' + getTaskTypeColor(t) + '">' + (TASK_TYPE_LABELS[t] || t).replace(/\s*\(.*\)/, '') + '</span></button>';
