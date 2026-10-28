@@ -64,6 +64,7 @@ var _MODAL_CLOSE_FN = {
   "personal-task-modal-overlay": function () { closePersonalTaskModal(); },
   "task-export-modal-overlay": function () { closeTaskExportModal(); },
   "lastseen-modal-overlay": function () { closeLastSeenModal(); },
+  "m2-task-modal-overlay": function () { closeM2TaskPage(); },
 };
 
 function _pushModalNav(overlayId) {
@@ -944,6 +945,7 @@ function exitAdminMode() {
   closeTopMenus();
   document.getElementById('task-undated-row').style.display = 'none';
   document.getElementById('notif-bell-btn').style.display = 'none';
+  var mtb2Badge = document.getElementById('mtb2-badge'); if (mtb2Badge) mtb2Badge.style.display = 'none';
   document.getElementById('export-excel-btn').style.display = 'none';
   document.getElementById('dashboard-btn').style.display = 'none';
   document.getElementById('taskboard-sidebar-section').style.display = 'none';
@@ -3410,6 +3412,7 @@ function mmItem(icon, label, fn, extraClass, badge) {
 }
 
 function openMoreMenu() {
+  if (isUiV2()) return openMoreMenuV2();
   closeAllDrawers();
   var role = localStorage.getItem(ROLE_KEY);
   var name = localStorage.getItem(NAME_KEY);
@@ -3420,6 +3423,8 @@ function openMoreMenu() {
     '<span class="mm-ic">' + THEME_META[getThemePref()].icon + '</span>' +
     '<span class="mm-meta">' + THEME_META[getThemePref()].label + '</span></button>';
   var refreshItem = mmItem('🔄', 'รีเฟรชข้อมูล', 'mobileRefreshFromMenu();');
+  // v3: สวิตช์ลองหน้าตาแบบใหม่ (ทดลอง) — ค่าเริ่มต้นปิด เปิด/ปิดได้เองทีละเครื่อง
+  themeItem += mmItem('✨', 'ลองหน้าตาแบบใหม่ (ทดลอง)', 'setUiV2(true);');
 
   if (!localStorage.getItem(TOKEN_KEY)) {
     nameEl.innerHTML = '<div style="font-size:14px;font-weight:600;color:var(--text)">ยังไม่ได้เข้าสู่ระบบ</div>';
@@ -3480,6 +3485,449 @@ function mobileRefreshFromMenu() {
 
 function closeMoreMenu() {
   document.getElementById('more-menu-overlay').classList.remove('show');
+}
+
+// =====================================================================================
+// ===== v3 มือถือ (ทดลอง) ขั้นที่ 1: แถบล่าง + เมนูแบบใหม่ ===============================
+// เปิดด้วยสวิตช์ "ลองหน้าตาแบบใหม่" ในเมนูมือถือ (เก็บใน localStorage ทีละเครื่อง ค่าเริ่มต้นปิด)
+// ทุกปุ่มยังเรียกฟังก์ชัน/หน้าต่างเดิมทั้งหมด ไม่มีการแก้หลังบ้านหรือข้อมูล
+// =====================================================================================
+var UI_V2_KEY = 'c2cal_ui_v2';
+function isUiV2() {
+  try { return localStorage.getItem(UI_V2_KEY) === '1'; } catch (e) { return false; }
+}
+function applyUiV2() {
+  document.documentElement.classList.toggle('ui-v2', isUiV2());
+  if (typeof applyM2CalMode === 'function') applyM2CalMode();
+}
+function setUiV2(on) {
+  try { if (on) localStorage.setItem(UI_V2_KEY, '1'); else localStorage.removeItem(UI_V2_KEY); } catch (e) {}
+  applyUiV2();
+  closeMoreMenu();
+  closeFabSpeedDial();
+  Toast.fire({ icon: 'success', title: on ? 'เปิดหน้าตาแบบใหม่แล้ว' : 'กลับไปใช้หน้าตาเดิมแล้ว' });
+}
+applyUiV2();
+
+function m2Svg(d, size) {
+  var w = size || 20;
+  return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+}
+var M2I = {
+  chv: '<svg class="m2-chv" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>',
+  team: '<path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  chart: '<path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 6-6"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  refresh: '<path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+  holiday: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>',
+  dash: '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  excel: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13l4 5M12 13l-4 5"/>',
+  bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>',
+  theme: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>',
+  logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',
+  login: '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>',
+  spark: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+  check: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'
+};
+function m2Row(icon, label, fn, extra) {
+  return '<button type="button" class="m2-row" onclick="closeMoreMenu(); ' + fn + '">' + m2Svg(icon) +
+    '<span>' + label + '</span>' + (extra || '') + M2I.chv + '</button>';
+}
+function m2Quick(icon, label, fn, bg, fg) {
+  return '<button type="button" class="m2-q" onclick="closeMoreMenu(); ' + fn + '"><span class="m2-qi" style="background:' + bg + ';color:' + fg + '">' +
+    m2Svg(icon) + '</span>' + label + '</button>';
+}
+function m2IsListView() {
+  return m2CalMode() === 'list'; // v3 ขั้นที่ 4: โหมดเดือนใช้ปฏิทินจุดสีของเราเอง โหมดรายการใช้ List ของ FullCalendar
+}
+
+function openMoreMenuV2() {
+  closeAllDrawers();
+  mtb2SetActive('menu');
+  var role = localStorage.getItem(ROLE_KEY);
+  var name = localStorage.getItem(NAME_KEY) || '';
+  var nameEl = document.getElementById('more-menu-name');
+  var container = document.getElementById('more-menu-list');
+  var themeRow = '<button type="button" class="m2-row" onclick="cycleTheme(); openMoreMenuV2();">' + m2Svg(M2I.theme) +
+    '<span>ธีม</span><span class="m2-val">' + escapeHtmlPtb(THEME_META[getThemePref()].label.replace('ธีม: ', '')) + '</span>' + M2I.chv + '</button>';
+  var viewQuick = m2Quick(m2IsListView() ? M2I.cal : M2I.list, m2IsListView() ? 'ดูแบบเดือน' : 'ดูแบบรายการ', 'm2CalToggleMode();', 'var(--tint-blue-bg)', '#1d4ed8');
+  var teamQuick = m2Quick(M2I.team, 'ทีมงาน', "toggleSidebar('member-sidebar');", 'var(--tint-mint-bg)', '#047857');
+  var sumQuick = m2Quick(M2I.chart, 'สรุปงาน', "toggleSidebar('legend-sidebar');", 'var(--tint-amber-bg)', '#c2410c');
+  var refreshQuick = m2Quick(M2I.refresh, 'รีเฟรช', 'mobileRefreshFromMenu();', 'var(--surface-alt)', 'var(--text-muted)');
+  var uiRow = '<button type="button" class="m2-row" onclick="setUiV2(false);">' + m2Svg(M2I.spark) +
+    '<span>หน้าตาแบบใหม่<span class="m2-new">ทดลอง</span></span><span class="m2-val">เปิดอยู่ · แตะเพื่อปิด</span></button>';
+
+  if (!localStorage.getItem(TOKEN_KEY)) {
+    nameEl.innerHTML = '';
+    container.innerHTML = '<div class="m2-grid">' + teamQuick + sumQuick + viewQuick + refreshQuick + '</div>' +
+      '<div class="m2-list">' + themeRow + uiRow + '</div>' +
+      '<div class="m2-list">' + m2Row(M2I.login, 'เข้าสู่ระบบ', 'openLoginModal();') + '</div>';
+  } else {
+    var me = staffMapCache[localStorage.getItem(ACCOUNT_ID_KEY)] || {};
+    var photo = safeImgUrl(me.photoURL);
+    var avBg = me.colorHex ? safeColor(me.colorHex) : '#059669';
+    var av = photo ? '<img src="' + escapeHtmlPtb(photo) + '" alt="">' : escapeHtmlPtb((name || '?').trim().charAt(0));
+    var roleText = (ROLE_LABELS[role] || role || '') + (me.position ? ' · ' + me.position : '');
+    nameEl.innerHTML = '<button type="button" class="m2-me" onclick="closeMoreMenu(); openProfileModal();">' +
+      '<span class="m2-av" style="background:' + avBg + ';color:' + getContrastTextColor(avBg) + '">' + av + '</span>' +
+      '<span><b>' + escapeHtmlPtb(name) + '</b><span class="m2-role">' + escapeHtmlPtb(roleText) + '</span></span>' + M2I.chv + '</button>';
+
+    var html = '<div class="m2-grid">' + teamQuick + sumQuick + viewQuick + refreshQuick + '</div>';
+    var manage = '';
+    if (role === 'admin' || role === 'ceo') {
+      manage += m2Row(M2I.dash, 'Dashboard สรุปงาน', 'openDashboardModal();');
+      manage += '<button type="button" class="m2-row" onclick="closeMoreMenu(); openLastSeenModal();"><span style="width:20px;display:grid;place-items:center"><span style="width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.2)"></span></span><span>การเข้าใช้งานของทีม</span>' + M2I.chv + '</button>';
+    }
+    if (role === 'admin') {
+      manage += m2Row(M2I.userPlus, 'บัญชีผู้ใช้', 'openStaffModal();');
+      manage += m2Row(M2I.holiday, 'วันหยุด', 'openHolidayModal();');
+    }
+    if (role === 'admin' || role === 'ceo') {
+      manage += m2Row(M2I.excel, 'Export Excel (เดือนที่ดูอยู่)', 'exportMonthToExcel();');
+    }
+    if (manage) html += '<div class="m2-h">จัดการ</div><div class="m2-list">' + manage + '</div>';
+    html += '<div class="m2-h">ตั้งค่า</div><div class="m2-list">' +
+      m2Row(M2I.bell, 'ตั้งค่าการแจ้งเตือน', 'openNotifSettingsModal();') + themeRow + uiRow + '</div>';
+    html += '<button type="button" class="m2-out" onclick="closeMoreMenu(); doLogout();">' + m2Svg(M2I.logout) + 'ออกจากระบบ</button>';
+    container.innerHTML = html;
+  }
+  document.getElementById('more-menu-overlay').classList.add('show');
+}
+
+function openAddSheetV2() {
+  closeAllDrawers();
+  document.getElementById('more-menu-name').innerHTML = '';
+  document.getElementById('more-menu-list').innerHTML =
+    '<button type="button" class="m2-dial" onclick="closeMoreMenu(); fabSpeedDialChoose(\'calendar\');"><span class="m2-qi" style="background:var(--tint-mint-bg);color:#047857">' + m2Svg(M2I.cal) + '</span>' +
+      '<span><b>เพิ่มงานปฏิทิน</b><span class="m2-sub">งานที่ทีมเห็นในปฏิทิน (ประชุม นอกสถานที่ กิจกรรม ลา)</span></span></button>' +
+    '<button type="button" class="m2-dial" onclick="closeMoreMenu(); fabSpeedDialChoose(\'personal\');"><span class="m2-qi" style="background:var(--tint-blue-bg);color:#1d4ed8">' + m2Svg(M2I.check) + '</span>' +
+      '<span><b>เพิ่ม Personal Task</b><span class="m2-sub">งานส่วนตัว มี checklist และวันครบกำหนด</span></span></button>';
+  document.getElementById('more-menu-overlay').classList.add('show');
+}
+
+function mtb2SetActive(tab) {
+  document.querySelectorAll('#mtb2 [data-mtb]').forEach(function (b) {
+    b.classList.toggle('on', b.getAttribute('data-mtb') === tab);
+  });
+}
+// แท็บที่เปิดหน้าต่าง (งานของฉัน/แจ้งเตือน/เมนู) ไฮไลต์ชั่วคราว พอปิดหน้าต่างแล้วกลับมาที่ "ปฏิทิน"
+// (ขั้นที่ 2–3 จะเปลี่ยนเป็นหน้าเต็มของแต่ละแท็บ)
+var _mtb2ResetTimer = null;
+function mtb2WatchReturn(overlayId) {
+  clearInterval(_mtb2ResetTimer);
+  _mtb2ResetTimer = setInterval(function () {
+    var el = document.getElementById(overlayId);
+    var open = el && (overlayId === 'more-menu-overlay' ? el.classList.contains('show') : el.style.display !== 'none' && el.style.display !== '');
+    if (!open) { clearInterval(_mtb2ResetTimer); mtb2SetActive('cal'); }
+  }, 400);
+}
+function m2ClosePages(except) {
+  var notiEl = document.getElementById('my-requests-modal-overlay');
+  if (except !== 'noti' && notiEl && notiEl.style.display === 'flex') closeMyRequestsModal();
+  if (except !== 'task' && m2TaskOpen()) closeM2TaskPage();
+}
+function mtb2Go(tab) {
+  var loggedIn = !!localStorage.getItem(TOKEN_KEY);
+  closeMoreMenu();
+  // หน้าเต็มจอ (งานของฉัน/แจ้งเตือน) เว้นแถบล่างไว้ กดแท็บอื่นให้ปิดหน้าที่เปิดอยู่ก่อน
+  // (ปุ่ม + ไม่ปิด — แผ่นเลือกเพิ่มงานลอยทับหน้าปัจจุบันได้)
+  if (tab !== 'add') m2ClosePages(tab);
+  if (tab === 'cal') {
+    closeAllDrawers();
+    mtb2SetActive('cal');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+  if (tab === 'menu') { openMoreMenuV2(); mtb2WatchReturn('more-menu-overlay'); return; }
+  if (!loggedIn) { closeAllDrawers(); openLoginModal(); return; }
+  if (tab === 'add') { openAddSheetV2(); return; }
+  mtb2SetActive(tab);
+  if (tab === 'task') {
+    if (!m2TaskOpen()) openM2TaskPage();
+    mtb2WatchReturn('m2-task-modal-overlay');
+  } else if (tab === 'noti') {
+    if (document.getElementById('my-requests-modal-overlay').style.display !== 'flex') openMyRequestsModal();
+    mtb2WatchReturn('my-requests-modal-overlay');
+  }
+}
+
+// =====================================================================================
+// ===== v3 มือถือ (ทดลอง) ขั้นที่ 3: หน้า "งานของฉัน" ====================================
+// ใช้ข้อมูล _personalTasksCache (listener เดิม) + updatePersonalTaskStatus (ฟังก์ชันหลังบ้านเดิม)
+// แตะชื่องาน = เลือกสถานะ / เปิดรายละเอียดเต็ม (openPersonalTaskModal เดิม)
+// =====================================================================================
+var _m2TaskSeg = 'todo';
+var M2_ST = [['todo', 'ต้องทำ', 'ยังไม่เริ่ม'], ['doing', 'กำลังทำ', 'กำลังดำเนินการ'], ['done', 'เสร็จแล้ว', 'ปิดงานนี้']];
+function m2TaskOpen() {
+  var el = document.getElementById('m2-task-modal-overlay');
+  return !!(el && el.style.display === 'flex');
+}
+function openM2TaskPage() {
+  document.getElementById('m2-task-modal-overlay').style.display = 'flex';
+  _pushModalNav('m2-task-modal-overlay');
+  renderM2Tasks();
+}
+function closeM2TaskPage() {
+  document.getElementById('m2-task-modal-overlay').style.display = 'none';
+}
+function setM2TaskSeg(st) { _m2TaskSeg = st; renderM2Tasks(); }
+function m2StartOfDay(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function m2TaskDue(t) {
+  if (!t.dueDate) return { grp: 3, label: 'ไม่มีกำหนด', cls: '' };
+  var diff = Math.round((m2StartOfDay(t.dueDate) - m2StartOfDay(new Date())) / 86400000);
+  var label = diff === 0 ? 'วันนี้' : diff === 1 ? 'พรุ่งนี้' : t.dueDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  if (t.status !== 'done' && diff < 0) return { grp: 0, label: label, cls: 'late', diff: diff };
+  if (diff === 0) return { grp: 1, label: label, cls: t.status === 'done' ? '' : 'today', diff: diff };
+  return { grp: diff < 0 ? 0 : 2, label: label, cls: '', diff: diff };
+}
+function renderM2Tasks() {
+  var body = document.getElementById('m2-task-body');
+  if (!body) return;
+  var now = new Date();
+  document.getElementById('m2-task-date').textContent = now.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  if (!_personalTasksLoaded) {
+    body.innerHTML = '<div style="height:14px"></div><div class="m2-skel"></div><div class="m2-skel"></div><div class="m2-skel"></div>';
+    return;
+  }
+  var me = localStorage.getItem(ACCOUNT_ID_KEY);
+  var mine = _personalTasksCache.filter(function (t) { return t.assigneeIds.indexOf(me) !== -1; });
+  document.querySelectorAll('#m2-task-seg [data-st]').forEach(function (b) {
+    var st = b.getAttribute('data-st');
+    b.classList.toggle('on', st === _m2TaskSeg);
+    b.querySelector('span').textContent = mine.filter(function (t) { return t.status === st; }).length;
+  });
+  var open = mine.filter(function (t) { return t.status !== 'done'; });
+  var late = open.filter(function (t) { return m2TaskDue(t).grp === 0; }).length;
+  var today = open.filter(function (t) { return m2TaskDue(t).grp === 1; }).length;
+  var html = '<div class="m2-sum"><div><b style="color:var(--m2-late)">' + late + '</b><span>เลยกำหนด</span></div>' +
+    '<div><b style="color:var(--m2-warn)">' + today + '</b><span>ครบวันนี้</span></div>' +
+    '<div><b>' + open.length + '</b><span>ยังไม่เสร็จ</span></div></div>';
+  var list = mine.filter(function (t) { return t.status === _m2TaskSeg; });
+  if (!list.length) {
+    var hint = _m2TaskSeg === 'done' ? 'ติ๊กช่องหน้างานเพื่อย้ายมาที่นี่' : _m2TaskSeg === 'doing' ? 'กด "เริ่มทำ" ที่งานในช่อง "ต้องทำ"' : 'แตะ + แล้วเลือก "เพิ่ม Personal Task"';
+    body.innerHTML = html + '<div class="m2-empty"><b>ไม่มีงานในช่องนี้</b>' + hint + '</div>';
+    return;
+  }
+  list.sort(function (a, b) {
+    var ad = a.dueDate ? a.dueDate.getTime() : Infinity, bd = b.dueDate ? b.dueDate.getTime() : Infinity;
+    return _m2TaskSeg === 'done' ? (bd === Infinity ? -1 : ad === Infinity ? 1 : bd - ad) : ad - bd;
+  });
+  var groups = _m2TaskSeg === 'done' ? [['', function () { return true; }]] :
+    [['เลยกำหนด', function (t) { return m2TaskDue(t).grp === 0; }], ['วันนี้', function (t) { return m2TaskDue(t).grp === 1; }],
+     ['ถัดไป', function (t) { return m2TaskDue(t).grp === 2; }], ['ไม่มีกำหนด', function (t) { return m2TaskDue(t).grp === 3; }]];
+  groups.forEach(function (g) {
+    var items = list.filter(g[1]);
+    if (!items.length) return;
+    if (g[0]) html += '<div class="m2-grp">' + g[0] + '</div>';
+    items.forEach(function (t) {
+      var due = m2TaskDue(t);
+      var cDone = t.checklist.filter(function (c) { return c.done; }).length;
+      var sub = [];
+      if (t.tag) sub.push(escapeHtmlPtb(t.tag));
+      if (t.checklist.length) sub.push('<span class="m2-cbar"><i style="width:' + Math.round(cDone / t.checklist.length * 100) + '%"></i></span> ' + cDone + '/' + t.checklist.length);
+      if (t.assigneeIds.length > 1) sub.push(t.assigneeIds.length + ' ผู้รับผิดชอบ');
+      if (t.priority === 'high') sub.push('<span style="color:var(--m2-late);font-weight:700">สำคัญสูง</span>');
+      var id = escapeHtmlPtb(t.taskId);
+      html += '<div class="m2-tk ' + t.status + '">' +
+        '<button type="button" class="m2-ck' + (t.status === 'done' ? ' done' : '') + '" onclick="m2SetTaskStatus(\'' + id + '\', \'' + (t.status === 'done' ? 'todo' : 'done') + '\')" aria-label="' + (t.status === 'done' ? 'ย้ายกลับไปต้องทำ' : 'ทำเครื่องหมายว่าเสร็จ') + '">' +
+          m2Svg('<path d="M5 12l5 5L20 7"/>', 15).replace('stroke-width="2"', 'stroke-width="3"') + '</button>' +
+        '<button type="button" class="m2-tk-body" onclick="m2TaskSheet(\'' + id + '\')"><b>' + escapeHtmlPtb(t.title) + '</b>' +
+          (sub.length ? '<small>' + sub.join(' · ') + '</small>' : '') + '</button>' +
+        '<div class="m2-tk-r"><span class="m2-due ' + due.cls + '">' + due.label + '</span>' +
+          (t.status === 'todo' ? '<button type="button" class="m2-start" onclick="m2SetTaskStatus(\'' + id + '\', \'doing\')">' +
+            '<svg width="9" height="9" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg>เริ่มทำ</button>' : '') +
+        '</div></div>';
+    });
+  });
+  body.innerHTML = html;
+}
+function m2SetTaskStatus(taskId, status) {
+  var t = _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0];
+  if (!t || t.status === status) return;
+  var old = t.status;
+  t.status = status; // แสดงผลทันที แล้วค่อยยืนยันกับหลังบ้าน (onSnapshot จะส่งค่าจริงกลับมาอีกรอบ)
+  renderM2Tasks(); updatePtbSummaryCard();
+  var label = M2_ST.filter(function (x) { return x[0] === status; })[0][1];
+  callApi('updatePersonalTaskStatus', { token: localStorage.getItem(TOKEN_KEY), taskId: taskId, status: status }).then(function (result) {
+    if (!result.success) {
+      t.status = old; renderM2Tasks(); updatePtbSummaryCard();
+      Swal.fire({ icon: 'error', title: 'ย้ายสถานะไม่สำเร็จ', text: result.message });
+    } else {
+      Toast.fire({ icon: 'success', title: 'ย้ายไป "' + label + '" แล้ว' });
+    }
+  }).catch(function (err) {
+    t.status = old; renderM2Tasks(); updatePtbSummaryCard();
+    Swal.fire({ icon: 'error', title: 'ย้ายสถานะไม่สำเร็จ', text: err.message });
+  });
+}
+function m2TaskSheet(taskId) {
+  var t = _personalTasksCache.filter(function (x) { return x.taskId === taskId; })[0];
+  if (!t) return;
+  var id = escapeHtmlPtb(taskId);
+  var due = m2TaskDue(t);
+  document.getElementById('more-menu-name').innerHTML = '';
+  document.getElementById('more-menu-list').innerHTML = '<div class="m2-stsheet"><h3>' + escapeHtmlPtb(t.title) + '</h3>' +
+    '<p>ครบกำหนด: ' + due.label + (t.checklist.length ? ' · checklist ' + t.checklist.filter(function (c) { return c.done; }).length + '/' + t.checklist.length : '') + '</p>' +
+    '<div class="m2-h">ย้ายสถานะ</div>' +
+    M2_ST.map(function (o) {
+      return '<button type="button" class="m2-stopt' + (t.status === o[0] ? ' on' : '') + '" onclick="closeMoreMenu(); m2SetTaskStatus(\'' + id + '\', \'' + o[0] + '\')"><i></i><b>' + o[1] + '</b><span>' + o[2] + '</span></button>';
+    }).join('') +
+    '<div class="m2-list" style="margin-top:8px">' + m2Row('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>', 'เปิดรายละเอียด · checklist · คอมเมนต์', "openPersonalTaskModal('" + id + "');") + '</div></div>';
+  document.getElementById('more-menu-overlay').classList.add('show');
+}
+
+// =====================================================================================
+// ===== v3 มือถือ (ทดลอง) ขั้นที่ 4: ปฏิทินเดือนแบบจุดสี + รายการของวันที่เลือก ==========
+// อ่านงานจาก calendarInstance.getEvents() (ข้อมูลเดียวกับ FullCalendar) — โหมด "รายการ" ยังใช้ List เดิม
+// =====================================================================================
+var M2CAL_MODE_KEY = 'c2cal_v2_calmode';
+var M2_TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+var M2_TYPE_ORDER = ['meeting', 'onsite', 'event', 'leave'];
+var _m2Cal = (function () { var d = new Date(); return { y: d.getFullYear(), m: d.getMonth(), sel: m2StartOfDay(d) }; })();
+function m2CalMode() {
+  try { return localStorage.getItem(M2CAL_MODE_KEY) === 'list' ? 'list' : 'month'; } catch (e) { return 'month'; }
+}
+function applyM2CalMode() {
+  var on = m2IsMobileV2() && m2CalMode() === 'month';
+  var was = document.documentElement.classList.contains('m2-month');
+  document.documentElement.classList.toggle('m2-month', on);
+  if (on) renderM2Cal();
+  else if (was && calendarInstance) setTimeout(function () { calendarInstance.updateSize(); }, 0);
+}
+function m2CalToggleMode() {
+  var next = m2CalMode() === 'month' ? 'list' : 'month';
+  try { localStorage.setItem(M2CAL_MODE_KEY, next); } catch (e) {}
+  if (next === 'list' && calendarInstance) {
+    if (calendarInstance.view.type.indexOf('list') !== 0) calendarInstance.changeView('listMonth');
+    calendarInstance.gotoDate(new Date(_m2Cal.y, _m2Cal.m, 1));
+  }
+  applyM2CalMode();
+  window.scrollTo({ top: 0 });
+}
+window.addEventListener('resize', function () { if (isUiV2()) applyM2CalMode(); });
+function m2Ymd(d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
+function m2HolidaysOn(d) {
+  var ds = localYmd(d);
+  return (holidaysCache || []).filter(function (h) {
+    if (h.type === 'date') return h.value === ds;
+    return h.type === 'weekly' && d.getDay() === h.value;
+  });
+}
+function m2CalEventsByDay(rangeStart, rangeEnd) {
+  var map = {};
+  if (!calendarInstance) return map;
+  calendarInstance.getEvents().forEach(function (ev) {
+    if (ev.extendedProps.isHoliday || !ev.start) return;
+    if (activeTaskTypeFilter && ev.extendedProps.taskType !== activeTaskTypeFilter) return;
+    var s = m2StartOfDay(ev.start);
+    var e = ev.end ? new Date(ev.end.getTime() - (ev.allDay ? 1 : 0)) : ev.start; // allDay end เป็นแบบ exclusive
+    e = m2StartOfDay(e);
+    if (e < s) e = s;
+    if (e < rangeStart || s > rangeEnd) return;
+    var d = s < rangeStart ? new Date(rangeStart) : new Date(s);
+    for (var i = 0; i < 62 && d <= e && d <= rangeEnd; i++) {
+      var k = m2Ymd(d);
+      (map[k] = map[k] || []).push(ev);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+  return map;
+}
+function m2CalShift(n) {
+  _m2Cal.m += n;
+  if (_m2Cal.m < 0) { _m2Cal.m = 11; _m2Cal.y--; }
+  if (_m2Cal.m > 11) { _m2Cal.m = 0; _m2Cal.y++; }
+  var t = new Date();
+  _m2Cal.sel = (_m2Cal.y === t.getFullYear() && _m2Cal.m === t.getMonth()) ? m2StartOfDay(t) : new Date(_m2Cal.y, _m2Cal.m, 1);
+  if (calendarInstance) calendarInstance.gotoDate(new Date(_m2Cal.y, _m2Cal.m, 1)); // ให้แผงวันหยุด/ตัวเลขสรุปตามเดือนที่ดู
+  renderM2Cal();
+}
+function m2CalToday() {
+  var t = new Date();
+  _m2Cal.y = t.getFullYear(); _m2Cal.m = t.getMonth(); _m2Cal.sel = m2StartOfDay(t);
+  if (calendarInstance) calendarInstance.gotoDate(t);
+  renderM2Cal();
+}
+function m2CalPick(ms) {
+  var d = new Date(+ms);
+  _m2Cal.sel = d;
+  if (d.getMonth() !== _m2Cal.m) { _m2Cal.m = d.getMonth(); _m2Cal.y = d.getFullYear(); if (calendarInstance) calendarInstance.gotoDate(new Date(_m2Cal.y, _m2Cal.m, 1)); }
+  renderM2Cal();
+}
+function m2CalOpenEvent(id) {
+  var ev = calendarInstance && calendarInstance.getEventById(id);
+  if (ev) openTaskDetailModal(ev);
+}
+function m2HhMm(d) { return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
+function renderM2Cal() {
+  var el = document.getElementById('m2-cal');
+  if (!el || !_m2Cal || !M2_TH_MONTHS) return; // ถูกเรียกครั้งแรกจาก applyUiV2() ก่อนตัวแปรด้านล่างพร้อม — รอ eventsSet
+  var first = new Date(_m2Cal.y, _m2Cal.m, 1);
+  var start = new Date(first); start.setDate(1 - first.getDay());
+  var weeks = Math.ceil((first.getDay() + new Date(_m2Cal.y, _m2Cal.m + 1, 0).getDate()) / 7);
+  var end = new Date(start); end.setDate(start.getDate() + weeks * 7 - 1);
+  var byDay = m2CalEventsByDay(start, end);
+  var todayK = m2Ymd(new Date()), selK = m2Ymd(_m2Cal.sel);
+  var grid = '';
+  for (var i = 0; i < weeks * 7; i++) {
+    var d = new Date(start); d.setDate(start.getDate() + i);
+    var k = m2Ymd(d), evs = byDay[k] || [];
+    var kinds = M2_TYPE_ORDER.filter(function (t) { return evs.some(function (ev) { return ev.extendedProps.taskType === t; }); }).slice(0, 3);
+    var cls = [d.getMonth() !== _m2Cal.m ? 'o' : '', d.getDay() === 0 ? 'sun' : '', m2HolidaysOn(d).length ? 'hol' : '', k === todayK ? 't' : '', k === selK ? 'sel' : ''].filter(Boolean).join(' ');
+    grid += '<button type="button" class="' + cls + '" onclick="m2CalPick(' + d.getTime() + ')" aria-label="' + d.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + evs.length + ' งาน">' +
+      d.getDate() + '<span class="m2c-dots">' + kinds.map(function (t) { return '<i class="k-' + t + '"></i>'; }).join('') + '</span></button>';
+  }
+  var selEvs = (byDay[selK] || []).slice().sort(function (a, b) {
+    if (a.allDay !== b.allDay) return a.allDay ? -1 : 1;
+    return a.start - b.start;
+  });
+  var isToday = selK === todayK;
+  var hol = m2HolidaysOn(_m2Cal.sel);
+  var html = '<div class="m2c-top"><h2>' + M2_TH_MONTHS[_m2Cal.m] + ' ' + (_m2Cal.y + 543) + '</h2>' +
+    '<button type="button" class="m2c-today" onclick="m2CalToday()">วันนี้</button>' +
+    '<button type="button" class="m2c-btn" onclick="m2CalShift(-1)" aria-label="เดือนก่อน">' + m2Svg('<path d="M15 18l-6-6 6-6"/>', 18) + '</button>' +
+    '<button type="button" class="m2c-btn" onclick="m2CalShift(1)" aria-label="เดือนถัดไป">' + m2Svg('<path d="M9 18l6-6-6-6"/>', 18) + '</button>' +
+    '<button type="button" class="m2c-btn" onclick="m2CalToggleMode()" aria-label="ดูแบบรายการ">' + m2Svg(M2I.list, 18) + '</button></div>' +
+    '<div class="m2c-grid-wrap"><div class="m2c-dow">' + ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</div>' +
+    '<div class="m2c-grid" id="m2c-grid">' + grid + '</div>' +
+    '<div class="m2c-legend">' + M2_TYPE_ORDER.map(function (t) { return '<span><i class="k-' + t + '"></i>' + (TASK_TYPE_LABELS[t] || t).replace(/\s*\(.*\)/, '') + '</span>'; }).join('') + '</div></div>' +
+    '<div class="m2c-sec"><b>' + (isToday ? 'วันนี้ · ' : '') + _m2Cal.sel.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' }) + '</b><span>' + selEvs.length + ' งาน</span></div>' +
+    (hol.length ? '<div class="m2c-hol">วันหยุด: ' + hol.map(function (h) { return escapeHtmlPtb(h.name); }).join(', ') + '</div>' : '');
+  if (!selEvs.length) {
+    html += '<div class="m2c-empty"><b>ไม่มีงานในวันนี้</b>แตะ + ด้านล่างเพื่อเพิ่มงาน</div>';
+  } else {
+    var selStart = _m2Cal.sel, selEnd = new Date(selStart); selEnd.setDate(selEnd.getDate() + 1);
+    selEvs.forEach(function (ev) {
+      var p = ev.extendedProps, t = p.taskType;
+      var tm;
+      if (ev.allDay) tm = 'ทั้งวัน';
+      else if (ev.start < selStart) tm = 'ต่อ<small>' + (ev.end && ev.end < selEnd ? 'ถึง ' + m2HhMm(ev.end) : 'ทั้งวัน') + '</small>';
+      else tm = m2HhMm(ev.start) + (ev.end ? '<small>' + (ev.end < selEnd ? m2HhMm(ev.end) : 'ข้ามวัน') + '</small>' : '');
+      var staff = p.staff || [];
+      var ppl = staff.slice(0, 4).map(function (s) {
+        var c = safeColor(s.color);
+        return '<i style="background:' + c + ';color:' + getContrastTextColor(c) + '">' + escapeHtmlPtb((s.name || '?').charAt(0)) + '</i>';
+      }).join('') + (staff.length > 4 ? '<i style="background:var(--surface-alt);color:var(--text-muted)">+' + (staff.length - 4) + '</i>' : '');
+      html += '<button type="button" class="m2c-ev" onclick="m2CalOpenEvent(\'' + escapeHtmlPtb(ev.id) + '\')">' +
+        '<div class="m2c-tm">' + tm + '</div><div class="m2c-bar k-' + escapeHtmlPtb(t) + '"></div>' +
+        '<div class="m2c-bd"><b>' + escapeHtmlPtb(ev.title) + '</b>' +
+          (p.location ? '<p>' + m2Svg('<path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>', 13) + '<span>' + escapeHtmlPtb(p.location) + '</span></p>' : '') +
+          (ppl ? '<div class="m2c-ppl">' + ppl + '</div>' : '') + '</div>' +
+        '<span class="m2c-tag" style="background:' + getTaskTypeColor(t) + '">' + (TASK_TYPE_LABELS[t] || t).replace(/\s*\(.*\)/, '') + '</span></button>';
+    });
+  }
+  el.innerHTML = html;
+  // ปัดซ้าย/ขวาบนตารางเพื่อเปลี่ยนเดือน
+  var g = document.getElementById('m2c-grid'), sx = null, sy = null;
+  g.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+  g.addEventListener('touchend', function (e) {
+    if (sx === null) return;
+    var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+    sx = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) m2CalShift(dx < 0 ? 1 : -1);
+  }, { passive: true });
 }
 
 // ===== Staff: ขอลบงาน =====
@@ -4130,6 +4578,8 @@ function setupNotificationsRealtimeListener() {
 
       var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
       var badge = document.getElementById('notif-badge');
+      var badge2 = document.getElementById('mtb2-badge'); // v3 แถบล่างแบบใหม่
+      if (badge2) { badge2.textContent = unreadCount > 99 ? '99+' : unreadCount; badge2.style.display = unreadCount > 0 ? 'grid' : 'none'; }
       if (badge) {
         if (unreadCount > 0) { badge.textContent = unreadCount; badge.style.display = 'flex'; }
         else { badge.style.display = 'none'; }
@@ -4261,20 +4711,44 @@ function renderNotificationsSkeleton() {
 
 function renderNotificationsList() {
   var container = document.getElementById('my-requests-list');
+  var v2 = m2IsMobileV2(); // v3 มือถือ (ทดลอง): จัดกลุ่มตามวัน + ตัวกรอง + เวลาแบบสั้น
+  if (v2) m2UpdateNotiHead();
   if (isFirstNotifSnapshot) {
     renderNotificationsSkeleton();
     return;
   }
   if (lastNotifications.length === 0) {
-    container.innerHTML = '<p style="font-size:13px;color:var(--text-faint)">ยังไม่มีการแจ้งเตือน</p>';
+    container.innerHTML = v2 ? '<div class="m2-nempty"><b>ยังไม่มีการแจ้งเตือน</b>เมื่อมีงานใหม่ คำขอ หรือคอมเมนต์ จะขึ้นที่นี่</div>'
+      : '<p style="font-size:13px;color:var(--text-faint)">ยังไม่มีการแจ้งเตือน</p>';
     return;
   }
   container.innerHTML = '';
-  lastNotifications.forEach(function (n) {
+  var list = lastNotifications;
+  if (v2 && _m2NotiFilter === 'unread') {
+    list = lastNotifications.filter(function (n) { return !n.read; });
+    if (list.length === 0) {
+      container.innerHTML = '<div class="m2-nempty"><b>อ่านครบแล้ว</b>ไม่มีแจ้งเตือนที่ยังไม่อ่าน</div>';
+      return;
+    }
+  }
+  var lastGroup = null;
+  list.forEach(function (n) {
     var card = document.createElement('div');
     card.className = 'request-card' + (n.read ? '' : ' notif-unread');
     var timeLabel = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString('th-TH') : '';
     var info = getNotifTypeInfo(n.type);
+    if (v2) {
+      var when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate() : null;
+      var grp = m2NotiGroup(when);
+      if (grp !== lastGroup) {
+        var gh = document.createElement('div');
+        gh.className = 'm2-ngrp'; gh.textContent = grp;
+        container.appendChild(gh);
+        lastGroup = grp;
+      }
+      timeLabel = m2NotiTime(when);
+      info = { icon: m2NotiIcon(n.type), color: info.color, tag: info.tag };
+    }
 
     var actionsHtml = '';
     if (n.type === 'changeRequestNew' && !n.read) {
@@ -4291,7 +4765,7 @@ function renderNotificationsList() {
         '<div class="notif-meta-row"><span class="rc-meta">' + timeLabel + '</span>' +
           (info.tag ? '<span class="notif-tag">' + info.tag + '</span>' : '') +
         '</div>' + actionsHtml +
-      '</div>';
+      '</div>' + (v2 && !n.read ? '<span class="m2-udot" aria-label="ยังไม่อ่าน"></span>' : '');
 
     // คลิกที่การ์ด: ถ้ายังไม่อ่านให้ทำเครื่องหมายอ่านแล้วเหมือนเดิม และถ้ามีงานผูกอยู่ (taskId ของปฏิทินหลัก
     // หรือ personalTaskId ของ Personal Task Board) ให้เปิดการ์ดรายละเอียดงานซ้อนขึ้นมาเลยโดยไม่ปิดลิสต์นี้ก่อน
@@ -4404,6 +4878,57 @@ function markAllNotificationsRead(btn) {
     btn.disabled = false;
     btn.textContent = originalText;
   });
+}
+
+// ===== v3 มือถือ (ทดลอง) ขั้นที่ 2: ตัวช่วยหน้าแจ้งเตือน =====
+var _m2NotiFilter = 'all';
+function m2IsMobileV2() { return isUiV2() && window.innerWidth <= 768; }
+function setM2NotiFilter(f) {
+  _m2NotiFilter = f;
+  document.querySelectorAll('#m2-noti-filter [data-f]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-f') === f); });
+  renderNotificationsList();
+}
+function m2UpdateNotiHead() {
+  var el = document.getElementById('my-requests-head-text');
+  if (!el) return;
+  var unread = lastNotifications.filter(function (n) { return !n.read; }).length;
+  el.textContent = isFirstNotifSnapshot ? 'กำลังโหลด...' : (unread ? 'ยังไม่อ่าน ' + unread + ' รายการ' : 'อ่านครบแล้ว');
+}
+var M2_NOTI_ICON = {
+  plus: '<path d="M12 5v14M5 12h14"/>', edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>', file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15h6"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  alert: '<path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/>',
+  msg: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>', bell: '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'
+};
+function m2NotiIcon(type) {
+  var k = { task_created: 'plus', personalTask_created: 'plus', task_updated: 'edit', task_cancelled: 'trash', personalTask_deleted: 'trash',
+    changeRequestNew: 'file', changeRequestReviewed: 'check', personalTask_done: 'check', personalTask_assigned: 'user', personalTask_unassigned: 'user',
+    personalTask_rescheduled: 'cal', personalTask_dueSoon: 'clock', personalTask_dueToday: 'clock', personalTask_overdue: 'alert',
+    taskComment: 'msg', taskComment_urgent: 'alert' }[type] || 'bell';
+  return m2Svg(M2_NOTI_ICON[k], 18);
+}
+function m2DayDiff(d) {
+  var a = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var t = new Date(); t = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+  return Math.round((t - a) / 86400000);
+}
+function m2NotiGroup(d) {
+  if (!d) return 'ก่อนหน้านี้';
+  var diff = m2DayDiff(d);
+  if (diff <= 0) return 'วันนี้';
+  if (diff === 1) return 'เมื่อวาน';
+  if (diff < 7) return 'สัปดาห์นี้';
+  return 'ก่อนหน้านี้';
+}
+function m2NotiTime(d) {
+  if (!d) return '';
+  var hm = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  var diff = m2DayDiff(d);
+  if (diff <= 0) return hm + ' น.';
+  if (diff === 1) return 'เมื่อวาน ' + hm + ' น.';
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) + ' ' + hm + ' น.';
 }
 
 function openMyRequestsModal() {
@@ -4668,6 +5193,7 @@ function renderCalendar(result) {
       updateListRangeToggle(arg.view.type);
     },
     eventsSet: function () {
+      if (document.documentElement.classList.contains('m2-month')) renderM2Cal(); // v3 ปฏิทินจุดสี (มือถือทดลอง)
       // ยิงทุกครั้งที่ FullCalendar render เนื้อหาชุดใหม่เสร็จ (เปลี่ยนเดือน/เพิ่ม-แก้-ลบงาน/โหลดครั้งแรก)
       // ใช้จุดนี้เรียง list view ใหม่ให้วันล่าสุดอยู่บนสุด แทนที่จะเรียงเก่า->ใหม่ตามค่าเริ่มต้นของไลบรารี
       reverseListViewDayOrder();
@@ -4844,6 +5370,7 @@ function setupPersonalTasksListener() {
       };
     });
     updatePtbSummaryCard();
+    if (typeof m2TaskOpen === 'function' && m2TaskOpen()) renderM2Tasks(); // v3 หน้า "งานของฉัน" (มือถือทดลอง)
     if (document.getElementById('task-board-modal-overlay').style.display === 'flex') {
       refreshCurrentPtbView();
     }

@@ -2293,3 +2293,243 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .ls-spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--border); border-top-color: #059669; animation: spin .7s linear infinite; }
 .ls-list.ls-stale { opacity: .6; transition: opacity .2s; }
 @media (prefers-reduced-motion: reduce) { .ls-spin { animation: none; } }
+
+
+/* =====================================================================================
+   v3 มือถือ (ทดลอง) ขั้นที่ 1: แถบล่าง + เมนูแบบใหม่ — มีผลเฉพาะ html.ui-v2 บนจอ ≤768px
+   ปิดสวิตช์ (เอาคลาส ui-v2 ออก) = กลับเป็นหน้าเดิมทั้งหมด
+   ===================================================================================== */
+#mtb2 { display: none; }
+:root { --m2-ink: #047857; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --m2-ink: #6ee7b7; } }
+:root[data-theme="dark"] { --m2-ink: #6ee7b7; }
+@media (max-width: 768px) {
+  .ui-v2 #mobile-float-nav,
+  .ui-v2 #mfn-speed-dial, .ui-v2 #mfn-speed-dial-backdrop { display: none !important; }
+  .ui-v2 #notif-bell-btn { display: none !important; } /* มีแท็บแจ้งเตือนที่แถบล่างแล้ว */
+  .ui-v2 #calendar-wrap { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .ui-v2 #mtb2 {
+    display: grid; grid-template-columns: repeat(5, 1fr); align-items: start;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 1400;
+    background: var(--surface); border-top: 1px solid var(--border-soft);
+    padding: 7px 4px calc(8px + env(safe-area-inset-bottom));
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.04);
+  }
+  .mtb2-item {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: 0; padding: 4px 0; font-family: inherit;
+    font-size: 11px; font-weight: 500; color: var(--text-muted); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .mtb2-item.on { color: #059669; font-weight: 700; }
+  .mtb2-item.on::before {
+    content: ""; position: absolute; top: -7px; width: 28px; height: 3px; border-radius: 3px; background: #059669;
+  }
+  .mtb2-item:active { opacity: 0.7; }
+  .mtb2-add {
+    width: 52px; height: 52px; border-radius: 18px; margin-top: -22px;
+    background: #059669; color: #fff; display: grid; place-items: center;
+    box-shadow: 0 6px 16px rgba(5,150,105,0.38);
+  }
+  #mtb2-badge {
+    position: absolute; top: -2px; left: calc(50% + 3px);
+    min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
+    background: #ef4444; color: #fff; font-size: 10px; font-weight: 700;
+    place-items: center; border: 2px solid var(--surface); box-sizing: content-box; line-height: 1;
+  }
+
+  /* เมนูแบบใหม่ (ใช้ bottom sheet เดิม #more-menu-overlay) */
+  .ui-v2 #more-menu-sheet { background: var(--surface-alt); max-height: 86vh; padding: 10px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .m2-me {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px;
+    background: var(--surface); border: 0; border-radius: 16px; text-align: left; cursor: pointer; font-family: inherit; color: var(--text);
+  }
+  .m2-av {
+    width: 48px; height: 48px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    background: #059669; color: #fff; display: grid; place-items: center; font-weight: 800; font-size: 18px;
+  }
+  .m2-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .m2-me b { display: block; font-size: 15.5px; }
+  .m2-me .m2-role { font-size: 11.5px; font-weight: 600; color: var(--m2-ink); background: var(--tint-mint-bg); padding: 2px 9px; border-radius: 999px; }
+  .m2-me .m2-chv { margin-left: auto; color: var(--text-faint); }
+  .m2-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+  .m2-q {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 2px 10px;
+    background: var(--surface); border: 0; border-radius: 16px; cursor: pointer; font-family: inherit;
+    font-size: 11.5px; line-height: 1.2; color: var(--text); text-align: center;
+  }
+  .m2-qi { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; }
+  .m2-h { font-size: 11.5px; font-weight: 700; color: var(--text-muted); margin: 4px 4px 6px; letter-spacing: 0.3px; }
+  .m2-list { background: var(--surface); border-radius: 16px; overflow: hidden; margin-bottom: 12px; }
+  .m2-row {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px;
+    background: none; border: 0; border-bottom: 1px solid var(--border-soft);
+    font-family: inherit; font-size: 14px; color: var(--text); text-align: left; cursor: pointer;
+  }
+  .m2-row:last-child { border-bottom: 0; }
+  .m2-row:active, .m2-q:active, .m2-me:active { background: var(--border-soft); }
+  .m2-row > svg:first-child { color: var(--text-muted); }
+  .m2-row .m2-val { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+  .m2-row .m2-chv { margin-left: auto; color: var(--text-faint); }
+  .m2-row .m2-val + .m2-chv { margin-left: 4px; }
+  .m2-out {
+    display: flex; justify-content: center; align-items: center; gap: 8px; width: 100%; padding: 13px;
+    background: var(--surface); border: 0; border-radius: 16px; cursor: pointer; font-family: inherit;
+    color: var(--danger-text); font-size: 14px; font-weight: 600;
+  }
+  .m2-dial { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px; margin-bottom: 10px; background: var(--surface); border: 0; border-radius: 16px; text-align: left; cursor: pointer; font-family: inherit; color: var(--text); }
+  .m2-dial b { display: block; font-size: 14.5px; }
+  .m2-dial span.m2-sub { font-size: 12px; color: var(--text-muted); }
+  .m2-new { font-size: 10px; font-weight: 800; color: #fff; background: #059669; padding: 1px 7px; border-radius: 999px; margin-left: 6px; }
+}
+
+
+/* ===== v3 มือถือ (ทดลอง) ขั้นที่ 2: หน้าแจ้งเตือนเต็มจอ (ใช้ #my-requests-modal-overlay เดิม) =====
+   เว้นแถบล่างไว้ให้กดสลับแท็บได้ตลอด / ทุกการทำงาน (อ่าน, อนุมัติ, เปิดงาน) ยังเป็นโค้ดเดิม */
+#m2-noti-filter { display: none; }
+@media (max-width: 768px) {
+  .ui-v2 #my-requests-modal-overlay {
+    inset: 0 0 calc(66px + env(safe-area-inset-bottom)) 0;
+    background: var(--surface-alt); align-items: stretch; animation: none;
+    z-index: 1390; /* ใต้แถบล่าง (1400) ให้ปุ่ม + ที่ยื่นขึ้นมาไม่ถูกบัง — modal ที่เปิดซ้อนจากหน้านี้ (2050+) ยังอยู่บนสุด */
+  }
+  .ui-v2 #my-requests-box {
+    width: 100%; max-width: none; max-height: none; height: 100%; border-radius: 0;
+    background: var(--surface-alt); animation: none;
+  }
+  .ui-v2 #my-requests-box .tb-head { padding-top: calc(16px + env(safe-area-inset-top)); }
+  .ui-v2 #my-requests-box .tb-head .modal-close-btn { display: none; }
+  .ui-v2 #my-requests-box .my-requests-head { background: #059669; color: rgba(255,255,255,0.9); border: 0; padding: 0 16px 12px; margin: 0; font-size: 12.5px; }
+  .ui-v2 #mark-all-read-btn { background: #fff; color: #047857; border: 0; border-radius: 999px; font-weight: 700; padding: 6px 13px; width: auto; flex: 0 0 auto; }
+  .ui-v2 #m2-noti-filter { display: flex; gap: 8px; align-items: center; padding: 12px 16px 4px; }
+  #m2-noti-filter button {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  }
+  #m2-noti-filter button.on { background: #059669; border-color: #059669; color: #fff; }
+  #m2-noti-filter .m2-nf-gear { margin-left: auto; padding: 6px 9px; display: grid; place-items: center; }
+  .ui-v2 #my-requests-list { padding: 4px 16px 24px; overflow-y: auto; flex: 1; }
+  .m2-ngrp { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 14px 2px 8px; letter-spacing: 0.2px; }
+  .ui-v2 #my-requests-list .request-card {
+    background: var(--surface); border: 0; border-radius: 16px; padding: 13px 14px; margin-bottom: 8px; gap: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .ui-v2 #my-requests-list .request-card.notif-unread { background: var(--surface); box-shadow: inset 3px 0 0 #059669, 0 1px 3px rgba(0,0,0,0.05); }
+  .ui-v2 #my-requests-list .notif-ic { width: 38px; height: 38px; border-radius: 12px; font-size: 16px; color: var(--text); }
+  .ui-v2 #my-requests-list .rc-task { font-size: 14px; }
+  .ui-v2 #my-requests-list .rc-meta { font-size: 12px; }
+  .ui-v2 #my-requests-list .notif-tag { font-size: 10.5px; }
+  .m2-udot { width: 8px; height: 8px; border-radius: 50%; background: #059669; flex-shrink: 0; align-self: center; }
+  .m2-nempty { text-align: center; padding: 48px 16px; color: var(--text-muted); font-size: 13px; }
+  .m2-nempty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+}
+
+/* ===== v3 มือถือ (ทดลอง) ขั้นที่ 3–4: หน้า "งานของฉัน" + ปฏิทินแบบจุดสี ===== */
+#m2-task-modal-overlay { display: none; }
+#m2-cal { display: none; }
+:root { --m2-meet: #f59e0b; --m2-site: #f97316; --m2-act: #8b5cf6; --m2-leave: #9ca3af; --m2-late: #dc2626; --m2-late-bg: #fee2e2; --m2-warn: #b45309; --m2-warn-bg: #fef3c7; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --m2-late: #f87171; --m2-late-bg: #3b1d1d; --m2-warn: #fbbf24; --m2-warn-bg: #3a2e12; } }
+:root[data-theme="dark"] { --m2-late: #f87171; --m2-late-bg: #3b1d1d; --m2-warn: #fbbf24; --m2-warn-bg: #3a2e12; }
+@media (max-width: 768px) {
+
+  /* --- หน้าเต็มจอแบบมีหัวเขียว (ใช้ร่วม) --- */
+  .ui-v2 #m2-task-modal-overlay[style*="flex"] {
+    position: fixed; inset: 0 0 calc(66px + env(safe-area-inset-bottom)) 0; z-index: 1390; /* ใต้แถบล่าง เหมือนหน้าแจ้งเตือน */
+    background: var(--surface-alt); flex-direction: column;
+  }
+  .m2-page-head { background: #059669; color: #fff; padding: calc(16px + env(safe-area-inset-top)) 16px 12px; flex-shrink: 0; }
+  .m2-ph-row { display: flex; align-items: center; gap: 10px; }
+  .m2-ph-title { flex: 1; line-height: 1.25; }
+  .m2-ph-title b { display: block; font-size: 19px; }
+  .m2-ph-title span { font-size: 12px; opacity: 0.85; }
+  .m2-ph-btn { background: rgba(255,255,255,0.16); color: #fff; border: 0; border-radius: 999px; padding: 7px 13px; font-size: 12.5px; font-weight: 600; font-family: inherit; cursor: pointer; }
+  .m2-seg { display: flex; background: rgba(255,255,255,0.16); border-radius: 12px; padding: 3px; margin-top: 12px; }
+  .m2-seg button { flex: 1; background: none; border: 0; color: #fff; font-family: inherit; font-size: 13px; font-weight: 500; padding: 7px 0; border-radius: 9px; cursor: pointer; }
+  .m2-seg button.on { background: #fff; color: #047857; font-weight: 700; }
+  .m2-seg button span { font-size: 11px; opacity: 0.75; margin-left: 4px; }
+  .m2-page-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; }
+
+  /* --- งานของฉัน --- */
+  .m2-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 16px 2px; }
+  .m2-sum div { background: var(--surface); border-radius: 14px; padding: 10px 12px; }
+  .m2-sum b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .m2-sum span { font-size: 11.5px; color: var(--text-muted); }
+  .m2-grp { font-size: 12px; font-weight: 700; color: var(--text-muted); padding: 14px 18px 6px; }
+  .m2-tk { display: flex; align-items: center; gap: 12px; background: var(--surface); margin: 0 16px 8px; border-radius: 14px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .m2-tk.doing { box-shadow: inset 3px 0 0 #059669, 0 1px 3px rgba(0,0,0,0.05); }
+  .m2-ck { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--text-faint); background: none; flex-shrink: 0; display: grid; place-items: center; color: #fff; cursor: pointer; padding: 0; }
+  .m2-ck svg { opacity: 0; }
+  .m2-ck.done { background: #059669; border-color: #059669; }
+  .m2-ck.done svg { opacity: 1; }
+  .m2-ck:disabled { opacity: 0.5; }
+  .m2-tk-body { flex: 1; min-width: 0; background: none; border: 0; padding: 0; text-align: left; font-family: inherit; color: var(--text); cursor: pointer; }
+  .m2-tk-body b { display: block; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .m2-tk.done .m2-tk-body b { color: var(--text-faint); text-decoration: line-through; }
+  .m2-tk-body small { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+  .m2-cbar { display: inline-block; width: 40px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; vertical-align: middle; }
+  .m2-cbar i { display: block; height: 100%; background: #059669; }
+  .m2-tk-r { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+  .m2-due { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; background: var(--surface-alt); color: var(--text-muted); }
+  .m2-due.late { background: var(--m2-late-bg); color: var(--m2-late); }
+  .m2-due.today { background: var(--m2-warn-bg); color: var(--m2-warn); }
+  .m2-start { display: inline-flex; align-items: center; gap: 4px; background: var(--tint-mint-bg); color: var(--m2-ink); border: 0; border-radius: 999px; padding: 4px 10px; font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .m2-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 20px; }
+  .m2-empty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+  .m2-skel { height: 64px; margin: 0 16px 8px; border-radius: 14px; background: var(--surface); opacity: 0.7; }
+  .m2-stsheet h3 { font-size: 17px; margin: 0 0 4px; color: var(--text); }
+  .m2-stsheet p { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+  .m2-stopt { display: flex; align-items: center; gap: 12px; width: 100%; background: var(--surface); border: 2px solid transparent; border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; font-family: inherit; color: var(--text); cursor: pointer; text-align: left; }
+  .m2-stopt i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--text-faint); flex-shrink: 0; }
+  .m2-stopt.on { border-color: #059669; }
+  .m2-stopt.on i { border: 5px solid #059669; }
+  .m2-stopt b { font-size: 14px; }
+  .m2-stopt span { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+
+  /* --- ปฏิทินแบบจุดสี (แทนมุมมองเดือนของ FullCalendar เฉพาะตอนเปิดหน้าตาใหม่) --- */
+  .ui-v2.m2-month #m2-cal { display: block; }
+  .ui-v2.m2-month #calendar,
+  .ui-v2.m2-month #type-legend-mobile,
+  .ui-v2.m2-month #list-range-toggle { display: none !important; }
+  .m2c-top { display: flex; align-items: center; gap: 6px; padding: 10px 14px 6px; background: var(--surface); }
+  .m2c-top h2 { flex: 1; margin: 0; font-size: 19px; font-weight: 700; color: var(--text); }
+  .m2c-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border-soft); background: var(--surface-alt); color: var(--text); display: grid; place-items: center; cursor: pointer; padding: 0; }
+  .m2c-today { border: 0; background: #059669; color: #fff; border-radius: 999px; padding: 7px 13px; font-size: 12.5px; font-weight: 700; font-family: inherit; cursor: pointer; }
+  .m2c-grid-wrap { background: var(--surface); padding: 0 8px 8px; border-radius: 0 0 20px 20px; box-shadow: 0 6px 16px rgba(0,0,0,0.05); }
+  .m2c-dow, .m2c-grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; }
+  .m2c-dow span { font-size: 11.5px; font-weight: 600; color: var(--text-faint); padding: 6px 0 4px; }
+  .m2c-dow span:first-child { color: var(--m2-late); }
+  .m2c-grid button {
+    height: 48px; border: 0; background: none; border-radius: 12px; font-family: inherit; font-size: 14.5px; color: var(--text);
+    display: flex; flex-direction: column; align-items: center; padding-top: 6px; cursor: pointer; font-variant-numeric: tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m2c-grid .o { color: var(--text-faint); }
+  .m2c-grid .sun, .m2c-grid .hol { color: var(--m2-late); }
+  .m2c-grid .hol { font-weight: 700; }
+  .m2c-grid .t { color: #059669; font-weight: 800; }
+  .m2c-grid .sel { background: #059669; color: #fff; font-weight: 700; }
+  .m2c-dots { display: flex; gap: 3px; height: 5px; margin-top: 5px; }
+  .m2c-dots i { width: 5px; height: 5px; border-radius: 50%; }
+  .m2c-grid .sel .m2c-dots i { box-shadow: 0 0 0 1.5px #fff; }
+  .k-meeting { background: var(--m2-meet); } .k-onsite { background: var(--m2-site); } .k-event { background: var(--m2-act); } .k-leave { background: var(--m2-leave); }
+  .m2c-legend { display: flex; justify-content: center; gap: 12px; padding: 6px 0 2px; font-size: 11px; color: var(--text-muted); }
+  .m2c-legend span { display: flex; align-items: center; gap: 4px; }
+  .m2c-legend i { width: 7px; height: 7px; border-radius: 50%; }
+  .m2c-sec { display: flex; justify-content: space-between; align-items: baseline; padding: 16px 16px 8px; }
+  .m2c-sec b { font-size: 15px; color: var(--text); }
+  .m2c-sec span { font-size: 12px; color: var(--text-muted); }
+  .m2c-hol { margin: 0 16px 10px; padding: 9px 12px; border-radius: 12px; background: var(--m2-late-bg); color: var(--m2-late); font-size: 12.5px; font-weight: 600; }
+  .m2c-ev { display: flex; gap: 12px; width: calc(100% - 32px); margin: 0 16px 10px; padding: 12px 14px; background: var(--surface); border: 0; border-radius: 16px; text-align: left; font-family: inherit; color: var(--text); cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  .m2c-tm { width: 46px; flex-shrink: 0; font-size: 13px; font-weight: 700; line-height: 1.3; font-variant-numeric: tabular-nums; }
+  .m2c-tm small { display: block; font-weight: 400; font-size: 11.5px; color: var(--text-faint); }
+  .m2c-bar { width: 4px; border-radius: 4px; flex-shrink: 0; }
+  .m2c-bd { flex: 1; min-width: 0; }
+  .m2c-bd b { display: block; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .m2c-bd p { margin: 3px 0 0; font-size: 12px; color: var(--text-muted); display: flex; gap: 4px; align-items: flex-start; }
+  .m2c-ppl { display: flex; margin-top: 7px; }
+  .m2c-ppl i { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--surface); margin-left: -6px; font-style: normal; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+  .m2c-ppl i:first-child { margin-left: 0; }
+  .m2c-tag { align-self: flex-start; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; color: #1f2430; }
+  .m2c-empty { text-align: center; padding: 26px 16px; color: var(--text-muted); font-size: 13px; }
+  .m2c-empty b { display: block; color: var(--text); font-size: 14px; margin-bottom: 3px; }
+}
