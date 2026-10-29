@@ -552,6 +552,7 @@ function setupTasksRealtimeListener() {
     lastTaskDocs = snapshot.docs;
     lastRenderedEvents = buildEventsFromTaskDocs(snapshot.docs);
     renderCalendar({ success: true, events: lastRenderedEvents });
+    if (typeof dbIsOpen === 'function' && dbIsOpen()) loadDashboardData(); // Dashboard เปิดอยู่ → ตัวเลขอัปเดตทันที
   }, function (err) {
     console.error('ฟังการเปลี่ยนแปลงงานไม่สำเร็จ', err);
   });
@@ -565,6 +566,8 @@ function setupHolidaysRealtimeListener() {
       return { holidayId: d.id, type: row.type, value: row.value, name: row.name };
     });
     refreshCalendarDayCells(); // dayCellDidMount ไม่รันซ้ำเอง ต้องบังคับสร้างปฏิทินใหม่
+    if (typeof hdIsOpen === 'function' && hdIsOpen()) hdRender(); // หน้าจัดการวันหยุดเปิดอยู่ → อัปเดตทันที
+    if (typeof dbIsOpen === 'function' && dbIsOpen()) loadDashboardData();
   }, function (err) {
     console.error('ฟังการเปลี่ยนแปลงวันหยุดไม่สำเร็จ', err);
   });
@@ -2431,104 +2434,295 @@ function submitChangePassword() {
   });
 }
 
+// ============================================================
+// v2 จัดการวันหยุด (หน้าเต็ม) — ปฏิทินทั้งปี + วันหยุดถัดไป + เพิ่มวันเดียว/หลายวัน/ทุกสัปดาห์ + รายการรายเดือน
+// ใช้ API เดิม addHoliday / deleteHoliday (แก้ไข = เพิ่มอันใหม่แล้วลบอันเดิม ไม่ต้องแก้หลังบ้าน)
+// ============================================================
+var HD_MONTH = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+var HD_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+var HD_DOW = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+var HD_SUGGEST = ['วันขึ้นปีใหม่', 'วันมาฆบูชา', 'วันจักรี', 'วันสงกรานต์', 'วันแรงงาน', 'วันวิสาขบูชา', 'วันอาสาฬหบูชา', 'วันเข้าพรรษา', 'วันแม่แห่งชาติ', 'วันปิยมหาราช', 'วันพ่อแห่งชาติ', 'วันรัฐธรรมนูญ', 'วันสิ้นปี', 'หยุดชดเชย'];
+var hdYear = new Date().getFullYear();
+var hdForm = { mode: 'single', from: '', to: '', weekday: '0', name: '' };
+var hdView = 'list';     // มือถือ: list | year
+var hdBusy = false;
+
+function hdIso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function hdParse(v) { var p = String(v || '').split('-'); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null; }
+function hdDay0(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function hdDiff(d) { return Math.round((hdDay0(d) - hdDay0(new Date())) / 86400000); }
+function hdShort(d) { return d.getDate() + ' ' + HD_MON[d.getMonth()] + ' ' + String(d.getFullYear() + 543).slice(-2); }
+function hdEsc(s) { return escapeHtmlPtb(s == null ? '' : String(s)); }
+function hdWeekly() { return holidaysCache.filter(function (h) { return h.type === 'weekly'; }); }
+function hdDated() { return holidaysCache.filter(function (h) { return h.type === 'date'; }); }
+function hdWeekSet() { var s = {}; hdWeekly().forEach(function (h) { s[String(h.value)] = h; }); return s; }
+function hdByDate() { var m = {}; hdDated().forEach(function (h) { m[h.value] = h; }); return m; }
+
 function openHolidayModal() {
   document.getElementById('holiday-modal-overlay').style.display = 'flex';
-  renderHolidayList();
+  hdYear = new Date().getFullYear();
+  document.body.classList.remove('hd-adding');
+  hdRender();
   _pushModalNav('holiday-modal-overlay');
 }
 function closeHolidayModal() {
   document.getElementById('holiday-modal-overlay').style.display = 'none';
+  document.body.classList.remove('hd-adding');
+}
+function renderHolidayList() { hdRender(); } // ชื่อเดิม (จุดอื่นในแอปยังเรียกอยู่)
+function hdIsOpen() { var o = document.getElementById('holiday-modal-overlay'); return o && o.style.display === 'flex'; }
+
+function hdRender() {
+  var page = document.getElementById('hd-page');
+  if (!page) return;
+  var keepScroll = page.querySelector('.hd-side') ? page.querySelector('.hd-side').scrollTop : 0;
+  var byDate = hdByDate(), weekSet = hdWeekSet();
+  var yearList = hdDated().filter(function (h) { return String(h.value).slice(0, 4) === String(hdYear); })
+    .sort(function (a, b) { return a.value < b.value ? -1 : 1; });
+  var weeklyNames = hdWeekly().map(function (h) { return 'ทุกวัน' + WEEKDAY_NAMES[h.value]; }).join(', ');
+  var sub = 'ปี ' + (hdYear + 543) + ' · หยุด ' + yearList.length + ' วัน' + (weeklyNames ? ' + ' + weeklyNames : '');
+
+  page.innerHTML =
+    '<header class="hd-top">' +
+      '<button type="button" class="hd-back" onclick="history.back()" aria-label="กลับ">‹ <span>กลับ</span></button>' +
+      '<div class="hd-title"><h2>วันหยุดบริษัท</h2><small>' + hdEsc(sub) + '</small></div>' +
+      '<div class="hd-yr"><button type="button" onclick="hdYearShift(-1)" aria-label="ปีก่อน">‹</button><b>' + (hdYear + 543) + '</b><button type="button" onclick="hdYearShift(1)" aria-label="ปีถัดไป">›</button></div>' +
+    '</header>' +
+    '<div class="hd-tabs"><button type="button" class="' + (hdView === 'list' ? 'on' : '') + '" onclick="hdSetView(\'list\')">รายการ</button><button type="button" class="' + (hdView === 'year' ? 'on' : '') + '" onclick="hdSetView(\'year\')">ปฏิทินทั้งปี</button></div>' +
+    '<div class="hd-body view-' + hdView + '">' +
+      '<section class="hd-year">' + hdYearHtml(byDate, weekSet) + '</section>' +
+      '<aside class="hd-side">' + hdNextHtml() + hdFormHtml(byDate, weekSet) + hdListHtml(yearList) + '</aside>' +
+    '</div>' +
+    '<button type="button" class="hd-fab" onclick="hdOpenAdd()">＋ เพิ่มวันหยุด</button>' +
+    '<div class="hd-dim" onclick="hdCloseAdd()"></div>';
+  var side = page.querySelector('.hd-side');
+  if (side) side.scrollTop = keepScroll;
 }
 
-function toggleHolidayTypeFields() {
-  var isWeekly = document.getElementById('holiday-type-weekly-radio').checked;
-  document.getElementById('holiday-type').value = isWeekly ? 'weekly' : 'date';
-  document.getElementById('holiday-date-field').style.display = isWeekly ? 'none' : 'block';
-  document.getElementById('holiday-weekly-field').style.display = isWeekly ? 'block' : 'none';
-}
+function hdYearShift(n) { hdYear += n; hdRender(); }
+function hdSetView(v) { hdView = v; hdRender(); }
 
-function renderHolidayList() {
-  var container = document.getElementById('holiday-list');
-  container.innerHTML = '';
-  if (holidaysCache.length === 0) {
-    container.innerHTML = '<p style="font-size:13px;color:var(--text-muted)">ยังไม่มีวันหยุดที่ตั้งไว้</p>';
-    return;
-  }
-
-  var weekly = holidaysCache.filter(function (h) { return h.type === 'weekly'; });
-  var dated = holidaysCache.filter(function (h) { return h.type === 'date'; })
-    .slice().sort(function (a, b) { return a.value < b.value ? -1 : 1; });
-
-  weekly.concat(dated).forEach(function (h) {
-    var row = document.createElement('div');
-    row.className = 'holiday-row';
-    var badge = h.type === 'weekly'
-      ? '<span class="holiday-badge weekly">ทุกสัปดาห์</span>'
-      : '<span class="holiday-badge">' + escapeHtmlPtb(h.value) + '</span>';
-    var label = h.type === 'weekly' ? ('ทุกวัน' + WEEKDAY_NAMES[h.value]) : h.name;
-    row.innerHTML =
-      badge +
-      '<span class="hname">' + escapeHtmlPtb(h.name) + (h.type === 'weekly' ? ' (' + WEEKDAY_NAMES[h.value] + ')' : '') + '</span>' +
-      '<button class="row-edit-btn" onclick="deleteHolidayConfirm(this, \'' + h.holidayId + '\')">ลบ</button>';
-    container.appendChild(row);
-  });
-}
-
-function submitAddHoliday() {
-  var type = document.getElementById('holiday-type').value;
-  var value = type === 'weekly'
-    ? document.getElementById('holiday-weekday').value
-    : document.getElementById('holiday-date').value;
-  var name = document.getElementById('holiday-name').value.trim();
-  var btn = document.getElementById('holiday-submit-btn');
-
-  if (!value || !name) {
-    Swal.fire({ icon: 'warning', title: 'กรอกข้อมูลไม่ครบ', text: 'กรุณาเลือกวัน/วันที่ และกรอกชื่อวันหยุด' });
-    return;
-  }
-
-  var token = localStorage.getItem(TOKEN_KEY);
-  setButtonLoading(btn, true, 'กำลังเพิ่ม...');
-  callApi('addHoliday', { token: token, type: type, value: value, name: name }).then(function (result) {
-    if (result.success) {
-      document.getElementById('holiday-date').value = '';
-      document.getElementById('holiday-name').value = '';
-      refreshCalendarAfterHolidayChange();
-      renderHolidayList();
-      Toast.fire({ icon: 'success', title: 'เพิ่มวันหยุดแล้ว' });
-    } else {
-      Swal.fire({ icon: 'error', title: 'เพิ่มไม่สำเร็จ', text: result.message });
+function hdYearHtml(byDate, weekSet) {
+  var today = hdDay0(new Date());
+  var h = '<div class="hd-months">';
+  for (var m = 0; m < 12; m++) {
+    var first = new Date(hdYear, m, 1).getDay();
+    var n = new Date(hdYear, m + 1, 0).getDate();
+    var cnt = 0, cells = '';
+    for (var i = 0; i < first; i++) cells += '<span class="e"></span>';
+    for (var d = 1; d <= n; d++) {
+      var dt = new Date(hdYear, m, d), iso = hdIso(dt), hol = byDate[iso], wk = weekSet[String(dt.getDay())];
+      var cls = hol ? 'h' : (wk ? 'w' : '');
+      if (hol) cnt++;
+      if (+dt === +today) cls += ' t';
+      if (dt < today) cls += ' past';
+      var tip = hol ? hol.name : (wk ? wk.name : 'เพิ่มวันหยุดวันที่ ' + hdShort(dt));
+      cells += '<button type="button" class="' + cls + '" title="' + hdEsc(tip) + '" onclick="hdCellClick(\'' + iso + '\')">' + d + '</button>';
     }
-  }).catch(function (err) {
-    Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
-  }).finally(function () {
-    setButtonLoading(btn, false);
+    h += '<div class="hd-mo"><h5><span>' + HD_MONTH[m] + '</span>' + (cnt ? '<em>' + cnt + ' วัน</em>' : '') + '</h5>' +
+      '<div class="hd-mg">' + HD_DOW.map(function (x, k) { return '<span class="dw' + (weekSet[String(k)] ? ' off' : '') + '">' + x + '</span>'; }).join('') + cells + '</div></div>';
+  }
+  h += '</div><div class="hd-leg"><span><i class="h"></i>วันหยุดบริษัท</span><span><i class="w"></i>หยุดประจำทุกสัปดาห์</span><span><i class="t"></i>วันนี้</span><span class="tip">แตะวันว่างเพื่อเพิ่มวันหยุด · แตะวันสีแดงเพื่อแก้หรือลบ</span></div>';
+  return h;
+}
+
+function hdNextHtml() {
+  var today = hdIso(new Date());
+  var next = hdDated().filter(function (h) { return h.value >= today; }).sort(function (a, b) { return a.value < b.value ? -1 : 1; })[0];
+  if (!next) return '<div class="hd-next empty"><div><p>วันหยุดถัดไป</p><h3>ยังไม่มีวันหยุดที่จะถึง</h3></div></div>';
+  var d = hdParse(next.value), diff = hdDiff(d);
+  return '<div class="hd-next"><div class="dd"><b>' + d.getDate() + '</b><small>' + HD_MON[d.getMonth()] + '</small></div>' +
+    '<div><p>วันหยุดถัดไป · ' + (diff === 0 ? 'วันนี้' : diff === 1 ? 'พรุ่งนี้' : 'อีก ' + diff + ' วัน') + '</p><h3>' + hdEsc(next.name) + '</h3><p>วัน' + WEEKDAY_NAMES[d.getDay()] + ' ' + hdShort(d) + '</p></div></div>';
+}
+
+// วันที่ที่จะเพิ่มตามฟอร์ม (หลายวันติดกัน = ทุกวันในช่วง)
+function hdFormDates() {
+  var f = hdForm;
+  if (f.mode === 'weekly') return [];
+  var a = hdParse(f.from);
+  if (!a) return [];
+  if (f.mode === 'single') return [a];
+  var b = hdParse(f.to) || a;
+  if (b < a) { var t = a; a = b; b = t; }
+  var out = [], c = new Date(a);
+  while (c <= b && out.length < 31) { out.push(new Date(c)); c.setDate(c.getDate() + 1); }
+  return out;
+}
+
+function hdFormHtml(byDate, weekSet) {
+  var f = hdForm;
+  var modes = [['single', 'วันเดียว'], ['range', 'หลายวันติดกัน'], ['weekly', 'ทุกสัปดาห์']];
+  var fields = '';
+  if (f.mode === 'weekly') {
+    fields = '<label class="hd-f"><span>วันในสัปดาห์</span><select id="hdWeekday" onchange="hdFormSet(\'weekday\', this.value)">' +
+      WEEKDAY_NAMES.map(function (n, i) { return '<option value="' + i + '"' + (String(f.weekday) === String(i) ? ' selected' : '') + (weekSet[String(i)] ? ' disabled' : '') + '>ทุกวัน' + n + (weekSet[String(i)] ? ' (ตั้งไว้แล้ว)' : '') + '</option>'; }).join('') + '</select></label>';
+  } else if (f.mode === 'range') {
+    fields = '<div class="hd-fr"><label class="hd-f"><span>ตั้งแต่</span><input type="date" id="hdFrom" value="' + f.from + '" onchange="hdFormSet(\'from\', this.value)"></label>' +
+      '<label class="hd-f"><span>ถึง</span><input type="date" id="hdTo" value="' + f.to + '" onchange="hdFormSet(\'to\', this.value)"></label></div>';
+  } else {
+    fields = '<label class="hd-f"><span>วันที่</span><input type="date" id="hdFrom" value="' + f.from + '" onchange="hdFormSet(\'from\', this.value)"></label>';
+  }
+  var dates = hdFormDates();
+  var dup = dates.filter(function (d) { return byDate[hdIso(d)]; });
+  var fresh = dates.filter(function (d) { return !byDate[hdIso(d)]; });
+  var prev = '';
+  if (f.mode === 'weekly') prev = weekSet[String(f.weekday)] ? '<div class="hd-prev warn">ตั้งวันนี้เป็นวันหยุดประจำไว้แล้ว</div>' : '<div class="hd-prev">ทุกวัน' + WEEKDAY_NAMES[f.weekday] + ' จะแสดงเป็นวันหยุดในปฏิทิน</div>';
+  else if (dates.length) {
+    prev = '<div class="hd-prev">' + (fresh.length ? 'จะเพิ่ม ' + fresh.length + ' วัน: ' + fresh.slice(0, 7).map(function (d) { return HD_DOW[d.getDay()] + '. ' + d.getDate() + ' ' + HD_MON[d.getMonth()]; }).join(' · ') + (fresh.length > 7 ? ' …' : '') : 'ทุกวันในช่วงนี้เป็นวันหยุดอยู่แล้ว') + '</div>' +
+      (dup.length && fresh.length ? '<div class="hd-prev warn">ข้าม ' + dup.length + ' วันที่เป็นวันหยุดอยู่แล้ว</div>' : '');
+  }
+  var count = f.mode === 'weekly' ? (weekSet[String(f.weekday)] ? 0 : 1) : fresh.length;
+  var can = count > 0 && f.name.trim() && !hdBusy;
+  return '<div class="hd-card hd-add" id="hdAdd"><div class="hd-card-h"><h4>เพิ่มวันหยุด</h4><button type="button" class="hd-x" onclick="hdCloseAdd()" aria-label="ปิด">✕</button></div>' +
+    '<div class="hd-seg">' + modes.map(function (m) { return '<button type="button" class="' + (f.mode === m[0] ? 'on' : '') + '" onclick="hdFormSet(\'mode\', \'' + m[0] + '\')">' + m[1] + '</button>'; }).join('') + '</div>' +
+    fields +
+    '<label class="hd-f"><span>ชื่อวันหยุด</span><input type="text" id="hdName" maxlength="60" placeholder="เช่น วันสงกรานต์" value="' + hdEsc(f.name) + '" oninput="hdNameInput(this.value)"></label>' +
+    '<div class="hd-sug">' + HD_SUGGEST.map(function (n) { return '<button type="button" onclick="hdFormSet(\'name\', ' + JSON.stringify(n).replace(/"/g, '&quot;') + ')">' + n + '</button>'; }).join('') + '</div>' +
+    prev +
+    '<button type="button" class="hd-btn" id="hdSubmit" onclick="hdSubmit()"' + (can ? '' : ' disabled') + '>' + (hdBusy ? 'กำลังเพิ่ม...' : 'เพิ่มวันหยุด' + (count > 1 ? ' ' + count + ' วัน' : '')) + '</button></div>';
+}
+function hdFormSet(k, v) {
+  hdForm[k] = v;
+  if (k === 'mode' && v !== 'weekly' && !hdForm.from) hdForm.from = hdIso(new Date());
+  if (k === 'from' && hdForm.mode === 'range' && (!hdForm.to || hdForm.to < v)) hdForm.to = v;
+  hdRender();
+  if (k === 'name') { var n = document.getElementById('hdName'); if (n) n.focus(); }
+}
+// พิมพ์ชื่อ: อัปเดตเฉพาะปุ่ม ไม่ต้องวาดใหม่ทั้งหน้า (กันเคอร์เซอร์กระโดด)
+function hdNameInput(v) {
+  hdForm.name = v;
+  var b = document.getElementById('hdSubmit');
+  var byDate = hdByDate(), weekSet = hdWeekSet();
+  var count = hdForm.mode === 'weekly' ? (weekSet[String(hdForm.weekday)] ? 0 : 1) : hdFormDates().filter(function (d) { return !byDate[hdIso(d)]; }).length;
+  if (b) b.disabled = !(count > 0 && v.trim() && !hdBusy);
+}
+function hdOpenAdd(dateIso) {
+  if (dateIso) { hdForm.mode = 'single'; hdForm.from = dateIso; }
+  else if (!hdForm.from) hdForm.from = hdIso(new Date());
+  document.body.classList.add('hd-adding');
+  hdRender();
+  setTimeout(function () {
+    var el = document.getElementById('hdAdd'); if (el && el.scrollIntoView && window.innerWidth >= 900) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    var n = document.getElementById('hdName'); if (n && !n.value) n.focus();
+  }, 60);
+}
+function hdCloseAdd() { document.body.classList.remove('hd-adding'); }
+
+function hdCellClick(iso) {
+  var h = hdByDate()[iso];
+  if (h) { hdEdit(h.holidayId); return; }
+  hdOpenAdd(iso);
+}
+
+function hdListHtml(yearList) {
+  var h = '<div class="hd-card hd-list"><div class="hd-card-h"><h4>รายการวันหยุด</h4><small>ปี ' + (hdYear + 543) + '</small></div>';
+  hdWeekly().forEach(function (w) {
+    h += '<div class="hd-wk"><i></i><span>' + hdEsc(w.name) + ' <small>ทุกวัน' + WEEKDAY_NAMES[w.value] + '</small></span><button type="button" class="hd-k" onclick="hdEdit(\'' + w.holidayId + '\')" aria-label="จัดการ">⋯</button></div>';
+  });
+  if (!yearList.length) h += '<p class="hd-empty">ยังไม่มีวันหยุดในปี ' + (hdYear + 543) + '<br><button type="button" class="hd-link" onclick="hdOpenAdd()">＋ เพิ่มวันหยุด</button></p>';
+  var lastM = -1;
+  yearList.forEach(function (x) {
+    var d = hdParse(x.value), m = d.getMonth(), diff = hdDiff(d);
+    if (m !== lastM) {
+      var n = yearList.filter(function (y) { return hdParse(y.value).getMonth() === m; }).length;
+      h += '<div class="hd-mh"><span>' + HD_MONTH[m] + '</span><span>' + n + ' วัน</span></div>';
+      lastM = m;
+    }
+    h += '<div class="hd-row' + (diff < 0 ? ' past' : '') + '"><div class="dt"><b>' + d.getDate() + '</b><small>' + HD_DOW[d.getDay()] + '.</small></div>' +
+      '<div class="nm"><b>' + hdEsc(x.name) + '</b><small>' + (diff < 0 ? 'ผ่านไปแล้ว' : diff === 0 ? 'วันนี้' : diff === 1 ? 'พรุ่งนี้' : 'อีก ' + diff + ' วัน') + '</small></div>' +
+      '<button type="button" class="hd-k" onclick="hdEdit(\'' + x.holidayId + '\')" aria-label="แก้หรือลบ">⋯</button></div>';
+  });
+  return h + '</div>';
+}
+
+function hdAdd(type, value, name) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  return callApi('addHoliday', { token: token, type: type, value: value, name: name }).then(function (r) {
+    if (!r.success) throw new Error(r.message || 'เพิ่มไม่สำเร็จ');
+    return r;
+  });
+}
+function hdDel(id) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  return callApi('deleteHoliday', { token: token, holidayId: id }).then(function (r) {
+    if (!r.success) throw new Error(r.message || 'ลบไม่สำเร็จ');
+    return r;
   });
 }
 
-function deleteHolidayConfirm(btn, holidayId) {
-  Swal.fire({
-    icon: 'warning', title: 'ยืนยันลบวันหยุดนี้?',
-    showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก'
-  }).then(function (res) {
-    if (!res.isConfirmed) return;
-    var token = localStorage.getItem(TOKEN_KEY);
-    setButtonLoading(btn, true, 'กำลังลบ...');
-    callApi('deleteHoliday', { token: token, holidayId: holidayId }).then(function (result) {
-      if (result.success) {
-        refreshCalendarAfterHolidayChange();
-        renderHolidayList();
-        Toast.fire({ icon: 'success', title: 'ลบวันหยุดแล้ว' });
-      } else {
-        Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: result.message });
-      }
-    }).catch(function (err) {
-      Swal.fire({ icon: 'error', title: 'เชื่อมต่อ API ไม่ได้', text: err.message });
-    }).finally(function () {
-      setButtonLoading(btn, false);
+function hdSubmit() {
+  if (hdBusy) return;
+  var f = hdForm, name = f.name.trim();
+  if (!name) return;
+  var byDate = hdByDate();
+  var jobs = f.mode === 'weekly' ? [['weekly', String(f.weekday)]] : hdFormDates().filter(function (d) { return !byDate[hdIso(d)]; }).map(function (d) { return ['date', hdIso(d)]; });
+  if (!jobs.length) return;
+  hdBusy = true; hdRender();
+  var done = 0;
+  var chain = Promise.resolve();
+  jobs.forEach(function (j) {
+    chain = chain.then(function () {
+      return hdAdd(j[0], j[1], name).then(function () {
+        done++;
+        var b = document.getElementById('hdSubmit'); if (b) b.textContent = 'กำลังเพิ่ม ' + done + '/' + jobs.length + '...';
+      });
     });
   });
+  chain.then(function () {
+    hdBusy = false;
+    hdForm.name = '';
+    var firstDate = jobs[0][0] === 'date' ? hdParse(jobs[0][1]) : null;
+    if (firstDate && firstDate.getFullYear() !== hdYear) hdYear = firstDate.getFullYear();
+    document.body.classList.remove('hd-adding');
+    hdRender();
+    Toast.fire({ icon: 'success', title: 'เพิ่มวันหยุด' + (jobs.length > 1 ? ' ' + jobs.length + ' วัน' : '') + 'แล้ว' });
+  }).catch(function (err) {
+    hdBusy = false; hdRender();
+    Swal.fire({ icon: 'error', title: 'เพิ่มไม่สำเร็จ', text: (done ? 'เพิ่มได้ ' + done + ' จาก ' + jobs.length + ' วัน · ' : '') + (err.message || 'เชื่อมต่อ API ไม่ได้') });
+  });
 }
+
+// แก้ไข = เพิ่มรายการใหม่ก่อน แล้วค่อยลบรายการเดิม (ถ้าเพิ่มไม่สำเร็จ ของเดิมยังอยู่)
+function hdEdit(id) {
+  var h = holidaysCache.filter(function (x) { return x.holidayId === id; })[0];
+  if (!h) return;
+  var isW = h.type === 'weekly';
+  var d = isW ? null : hdParse(h.value);
+  Swal.fire({
+    title: isW ? 'หยุดประจำทุกวัน' + WEEKDAY_NAMES[h.value] : 'วันหยุด ' + hdShort(d),
+    html: '<div class="hd-sw">' + (isW ? '' : '<label class="hd-f"><span>วันที่</span><input type="date" id="hdEdDate" value="' + h.value + '"></label>') +
+      '<label class="hd-f"><span>ชื่อวันหยุด</span><input type="text" id="hdEdName" maxlength="60" value="' + hdEsc(h.name) + '"></label></div>',
+    showCancelButton: true, showDenyButton: true,
+    confirmButtonText: 'บันทึก', denyButtonText: 'ลบวันหยุดนี้', cancelButtonText: 'ปิด',
+    confirmButtonColor: '#059669', denyButtonColor: '#dc2626', reverseButtons: false,
+    preConfirm: function () {
+      var nm = document.getElementById('hdEdName').value.trim();
+      var dv = isW ? h.value : document.getElementById('hdEdDate').value;
+      if (!nm || !dv) { Swal.showValidationMessage('กรุณากรอกวันที่และชื่อ'); return false; }
+      if (!isW && dv !== h.value && hdByDate()[dv]) { Swal.showValidationMessage('วันที่นี้เป็นวันหยุดอยู่แล้ว'); return false; }
+      return { name: nm, value: dv };
+    }
+  }).then(function (r) {
+    if (r.isDenied) {
+      Swal.fire({ icon: 'warning', title: 'ลบวันหยุดนี้?', text: h.name, showCancelButton: true, confirmButtonText: 'ลบ', cancelButtonText: 'ยกเลิก', confirmButtonColor: '#dc2626' }).then(function (c) {
+        if (!c.isConfirmed) return;
+        hdDel(id).then(function () { hdRender(); Toast.fire({ icon: 'success', title: 'ลบวันหยุดแล้ว' }); })
+          .catch(function (e) { Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: e.message }); });
+      });
+      return;
+    }
+    if (!r.isConfirmed) return;
+    if (r.value.name === h.name && r.value.value === h.value) return;
+    Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: function () { Swal.showLoading(); } });
+    hdAdd(h.type, r.value.value, r.value.name).then(function () { return hdDel(id); }).then(function () {
+      Swal.close(); hdRender(); Toast.fire({ icon: 'success', title: 'แก้วันหยุดแล้ว' });
+    }).catch(function (e) { Swal.fire({ icon: 'error', title: 'แก้ไม่สำเร็จ', text: e.message }); });
+  });
+}
+// ชื่อเดิม (เผื่อมีจุดเรียกค้าง)
+function submitAddHoliday() { hdSubmit(); }
+function toggleHolidayTypeFields() { }
+function deleteHolidayConfirm(btn, id) { hdEdit(id); }
 
 // เก็บชื่อฟังก์ชันไว้ให้จุดเรียกใช้เดิมยังทำงานได้ แต่ไม่ต้องทำอะไรจริงแล้ว
 // เพราะ setupHolidaysRealtimeListener() destroy+สร้างปฏิทินใหม่ให้อัตโนมัติอยู่แล้วทุกครั้งที่ addHoliday/deleteHoliday เปลี่ยนข้อมูลจริง
@@ -3285,158 +3479,323 @@ function closeDaySheet() {
   if (overlay) overlay.classList.remove('show');
 }
 
-// ===== Dashboard สรุปงาน (Admin/CEO) =====
-var dashboardChartDaily = null;
+// ============================================================
+// v2 Dashboard สรุปงาน (หน้าเต็ม) — สำหรับผู้บริหารดู KPI: ประโยคสรุป + 5 KPI + แนวโน้มตามประเภท +
+// สถานะ Task Board + งานเกินกำหนด + ตารางรายคน · คำนวณจากแคชในเครื่องทั้งหมด (ไม่ยิง API เพิ่ม)
+// ============================================================
+var DB_TYPES = ['onsite', 'meeting', 'event', 'leave'];
+var DB_TYPE_COLOR = { meeting: '#f59e0b', onsite: '#f97316', event: '#8b5cf6', leave: '#9ca3af' };
+var DB_TYPE_NAME = { meeting: 'ประชุม', onsite: 'ออกพบลูกค้า', event: 'อีเวนต์', leave: 'ลา' };
+var DB_PERIODS = [['week', 'สัปดาห์นี้'], ['month', 'เดือนนี้'], ['quarter', 'ไตรมาสนี้'], ['year', 'ปีนี้'], ['custom', 'กำหนดเอง']];
+var dbPeriod = 'month';
+var dbCustom = { from: '', to: '' };
+var dashboardChartDaily = null; // ชื่อเดิม (เลิกใช้ Chart.js ในหน้านี้แล้ว)
 var dashboardChartType = null;
 
-function onDashboardPeriodChange() {
-  var isCustom = document.getElementById('dashboard-period').value === 'custom';
-  document.getElementById('dashboard-custom-range').style.display = isCustom ? 'inline-flex' : 'none';
-  if (!isCustom) loadDashboardData();
-}
-
+function dbIsOpen() { var o = document.getElementById('dashboard-modal-overlay'); return o && o.style.display === 'flex'; }
 function openDashboardModal() {
   document.getElementById('dashboard-modal-overlay').style.display = 'flex';
   loadDashboardData();
   _pushModalNav('dashboard-modal-overlay');
 }
-
-function closeDashboardModal() {
-  document.getElementById('dashboard-modal-overlay').style.display = 'none';
+function closeDashboardModal() { document.getElementById('dashboard-modal-overlay').style.display = 'none'; }
+function onDashboardPeriodChange() { loadDashboardData(); }
+function dbSetPeriod(p) {
+  dbPeriod = p;
+  if (p === 'custom' && !dbCustom.from) {
+    var n = new Date();
+    dbCustom.from = hdIso(new Date(n.getFullYear(), n.getMonth(), 1));
+    dbCustom.to = hdIso(n);
+  }
+  loadDashboardData();
 }
+function dbSetCustom(k, v) { dbCustom[k] = v; loadDashboardData(); }
 
-// คำนวณช่วงวันที่ของงวดปัจจุบันและงวดก่อนหน้า (สำหรับเทียบเทรนด์) จาก period ที่เลือก
+function dbFmt(d) { return d.getDate() + ' ' + HD_MON[d.getMonth()] + ' ' + String(d.getFullYear() + 543).slice(-2); }
+function dbRangeLabel(a, bExcl) { return dbFmt(a) + ' – ' + dbFmt(new Date(bExcl - 86400000)); }
+
+// ช่วงงวดปัจจุบัน + งวดก่อนหน้า (end แบบ exclusive) · คงชื่อ/shape เดิมไว้ให้ printDashboardReport ใช้
 function getDashboardRanges(period) {
-  var now = new Date();
-  var curStart, curEnd, prevStart, prevEnd, label;
-
-  if (period === 'custom') {
-    var startVal = document.getElementById('dashboard-custom-start').value;
-    var endVal = document.getElementById('dashboard-custom-end').value;
-    if (!startVal || !endVal) {
-      // ยังไม่ได้เลือกวันที่ครบ ใช้เดือนนี้ไปพลางๆก่อน
-      curStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    } else {
-      curStart = new Date(startVal + 'T00:00:00');
-      curEnd = new Date(endVal + 'T00:00:00');
-      curEnd.setDate(curEnd.getDate() + 1); // รวมวันสิ้นสุดด้วย (exclusive end)
-    }
-    // ช่วงกำหนดเองไม่มีงวดก่อนหน้าให้เทียบ (ความยาวช่วงไม่แน่นอน) ใช้ช่วงเดียวกันไปเปรียบเทียบกับตัวเอง = ไม่มีเทรนด์
-    prevStart = curStart; prevEnd = curStart;
-    label = curStart.toLocaleDateString('th-TH') + ' - ' + new Date(curEnd - 86400000).toLocaleDateString('th-TH');
-    return { curStart: curStart, curEnd: curEnd, prevStart: prevStart, prevEnd: prevEnd, label: label };
-  }
-
+  var now = new Date(), y = now.getFullYear(), m = now.getMonth();
+  var cs, ce, ps, pe, label;
   if (period === 'week') {
-    var day = now.getDay(); // 0=อาทิตย์
-    curStart = new Date(now); curStart.setDate(now.getDate() - day); curStart.setHours(0, 0, 0, 0);
-    curEnd = new Date(curStart); curEnd.setDate(curStart.getDate() + 7);
-    prevStart = new Date(curStart); prevStart.setDate(curStart.getDate() - 7);
-    prevEnd = new Date(curStart);
-    label = 'สัปดาห์นี้ (' + curStart.toLocaleDateString('th-TH') + ' - ' +
-      new Date(curEnd - 86400000).toLocaleDateString('th-TH') + ')';
+    cs = new Date(y, m, now.getDate() - now.getDay());
+    ce = new Date(cs.getFullYear(), cs.getMonth(), cs.getDate() + 7);
+    ps = new Date(cs.getFullYear(), cs.getMonth(), cs.getDate() - 7); pe = cs;
+    label = 'สัปดาห์นี้ (' + dbRangeLabel(cs, ce) + ')';
+  } else if (period === 'quarter') {
+    var q = Math.floor(m / 3);
+    cs = new Date(y, q * 3, 1); ce = new Date(y, q * 3 + 3, 1);
+    ps = new Date(y, q * 3 - 3, 1); pe = cs;
+    label = 'ไตรมาส ' + (q + 1) + '/' + (y + 543);
+  } else if (period === 'year') {
+    cs = new Date(y, 0, 1); ce = new Date(y + 1, 0, 1);
+    ps = new Date(y - 1, 0, 1); pe = cs;
+    label = 'ปี ' + (y + 543);
+  } else if (period === 'custom') {
+    var a = hdParse(dbCustom.from) || new Date(y, m, 1), b = hdParse(dbCustom.to) || now;
+    if (b < a) { var t = a; a = b; b = t; }
+    cs = hdDay0(a); ce = new Date(b.getFullYear(), b.getMonth(), b.getDate() + 1);
+    ps = cs; pe = cs; // ช่วงกำหนดเองไม่เทียบงวดก่อน
+    label = dbRangeLabel(cs, ce);
   } else {
-    curStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    curEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    prevEnd = curStart;
-    label = curStart.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+    cs = new Date(y, m, 1); ce = new Date(y, m + 1, 1);
+    ps = new Date(y, m - 1, 1); pe = cs;
+    label = HD_MONTH[m] + ' ' + (y + 543);
   }
-  return { curStart: curStart, curEnd: curEnd, prevStart: prevStart, prevEnd: prevEnd, label: label };
+  return { curStart: cs, curEnd: ce, prevStart: ps, prevEnd: pe, label: label };
 }
 
-// กรองงานจาก lastTaskDocs ที่โหลดไว้แล้ว (ไม่ยิง API ใหม่) ตามช่วงวันที่ที่กำหนด
+// งานปฏิทินที่ "เริ่ม" ในช่วง (นับครั้ง) — ไม่รวมงานยกเลิก/ไม่ระบุวัน
 function filterTasksByRange(start, end) {
   var result = [];
   lastTaskDocs.forEach(function (docSnap) {
     var row = docSnap.data();
     if (row.isUndated || !row.startDateTime || row.status === 'ยกเลิกงาน') return;
-    var taskStart = firestoreDateToJs(row.startDateTime);
-    if (taskStart >= start && taskStart < end) result.push({ id: docSnap.id, data: row, start: taskStart });
+    var s = firestoreDateToJs(row.startDateTime);
+    if (s && s >= start && s < end) result.push({ id: docSnap.id, data: row, start: s });
   });
   return result;
 }
 
-function trendBadge(cur, prev) {
-  if (prev === 0) return cur > 0 ? '<span class="trend-up">ใหม่</span>' : '';
-  var diff = cur - prev;
-  var pct = Math.round((diff / prev) * 100);
-  if (diff === 0) return '<span class="trend-flat">±0%</span>';
-  return diff > 0
-    ? '<span class="trend-up">▲ ' + pct + '%</span>'
-    : '<span class="trend-down">▼ ' + Math.abs(pct) + '%</span>';
+// วันหยุด (บริษัท + ประจำสัปดาห์) ไว้ไม่นับเป็นวันลา
+function dbOffDay(d) {
+  var iso = hdIso(d);
+  for (var i = 0; i < holidaysCache.length; i++) {
+    var h = holidaysCache[i];
+    if ((h.type === 'date' && h.value === iso) || (h.type === 'weekly' && String(h.value) === String(d.getDay()))) return true;
+  }
+  return false;
+}
+// วันลา (นับเฉพาะวันทำงาน) ต่อคน ของงานลาที่ทับช่วง [start, end)
+function dbLeaveDays(start, end) {
+  var per = {};
+  lastTaskDocs.forEach(function (docSnap) {
+    var row = docSnap.data();
+    if (row.taskType !== 'leave' || row.isUndated || !row.startDateTime || row.status === 'ยกเลิกงาน') return;
+    var s = hdDay0(firestoreDateToJs(row.startDateTime));
+    var e = hdDay0(firestoreDateToJs(row.endDateTime) || s);
+    if (e < s) e = s;
+    var c = s < start ? new Date(start) : new Date(s);
+    var guard = 0;
+    while (c <= e && c < end && guard++ < 400) {
+      if (!dbOffDay(c)) (row.staffIds || []).forEach(function (id) { per[id] = (per[id] || 0) + 1; });
+      c.setDate(c.getDate() + 1);
+    }
+  });
+  return per;
+}
+function dbSum(o) { var s = 0; for (var k in o) if (o.hasOwnProperty(k)) s += o[k]; return s; }
+
+function dbTrend(cur, prev, show) {
+  if (!show) return '';
+  if (prev === 0) return cur > 0 ? '<em class="db-tr up">ใหม่</em>' : '<em class="db-tr">—</em>';
+  var pct = Math.round((cur - prev) / prev * 100);
+  if (pct === 0) return '<em class="db-tr">เท่าเดิม</em>';
+  return '<em class="db-tr ' + (pct > 0 ? 'up' : 'dn') + '">' + (pct > 0 ? '▲ ' : '▼ ') + Math.abs(pct) + '%</em>';
+}
+function trendBadge(cur, prev) { return dbTrend(cur, prev, true); } // ชื่อเดิม
+
+// ช่องแนวโน้ม: สัปดาห์ = รายวัน, เดือน = รายสัปดาห์, ไตรมาส/ปี = รายเดือน, กำหนดเอง ตามความยาว
+function dbBuckets(r) {
+  var days = Math.round((r.curEnd - r.curStart) / 86400000), out = [], c, n;
+  if (dbPeriod === 'week' || (dbPeriod === 'custom' && days <= 14)) {
+    for (c = new Date(r.curStart); c < r.curEnd; c.setDate(c.getDate() + 1)) {
+      n = new Date(c.getFullYear(), c.getMonth(), c.getDate() + 1);
+      out.push({ s: new Date(c), e: n, label: (days <= 7 ? HD_DOW[c.getDay()] + ' ' : '') + c.getDate() });
+    }
+  } else if (dbPeriod === 'month' || (dbPeriod === 'custom' && days <= 92)) {
+    c = new Date(r.curStart);
+    var i = 1;
+    while (c < r.curEnd) {
+      n = new Date(c.getFullYear(), c.getMonth(), c.getDate() + 7);
+      if (n > r.curEnd) n = new Date(r.curEnd);
+      out.push({ s: new Date(c), e: n, label: (dbPeriod === 'month' ? 'สัปดาห์ ' + i : c.getDate() + ' ' + HD_MON[c.getMonth()]) });
+      c = n; i++;
+    }
+  } else {
+    c = new Date(r.curStart.getFullYear(), r.curStart.getMonth(), 1);
+    while (c < r.curEnd) {
+      n = new Date(c.getFullYear(), c.getMonth() + 1, 1);
+      out.push({ s: c < r.curStart ? new Date(r.curStart) : new Date(c), e: n > r.curEnd ? new Date(r.curEnd) : n, label: HD_MON[c.getMonth()] });
+      c = n;
+    }
+  }
+  return out;
+}
+
+function dbStaffName(id) { var s = staffMapCache[id]; return s ? ((s.firstName || '') + ' ' + (s.lastName || '')).trim() : 'ไม่ทราบชื่อ'; }
+function dbAvatar(id) {
+  var s = staffMapCache[id] || {};
+  var col = safeColor(s.colorHex) || '#64748b';
+  var ini = ((s.firstName || '?').trim().charAt(0) || '?');
+  return '<span class="db-av" style="background:' + col + '">' + hdEsc(ini) + '</span>';
 }
 
 function loadDashboardData() {
-  var period = document.getElementById('dashboard-period').value;
-  var ranges = getDashboardRanges(period);
-  var curTasks = filterTasksByRange(ranges.curStart, ranges.curEnd);
-  var prevTasks = filterTasksByRange(ranges.prevStart, ranges.prevEnd);
-  var showTrend = period !== 'custom'; // ช่วงกำหนดเองไม่มีงวดก่อนหน้าให้เทียบจริง ไม่โชว์เทรนด์กันหลอกตา
+  var page = document.getElementById('db2-page');
+  if (!page) return;
+  var showTrend = dbPeriod !== 'custom';
+  var r = getDashboardRanges(dbPeriod);
+  var cur = filterTasksByRange(r.curStart, r.curEnd);
+  var prev = showTrend ? filterTasksByRange(r.prevStart, r.prevEnd) : [];
 
-  // ===== การ์ดสรุป (พร้อมเทรนด์เทียบงวดก่อน) =====
-  var typeKeys = ['meeting', 'onsite', 'event', 'leave'];
   var curByType = {}, prevByType = {};
-  typeKeys.forEach(function (t) { curByType[t] = 0; prevByType[t] = 0; });
-  curTasks.forEach(function (t) { curByType[t.data.taskType] = (curByType[t.data.taskType] || 0) + 1; });
-  prevTasks.forEach(function (t) { prevByType[t.data.taskType] = (prevByType[t.data.taskType] || 0) + 1; });
+  DB_TYPES.forEach(function (t) { curByType[t] = 0; prevByType[t] = 0; });
+  cur.forEach(function (t) { curByType[t.data.taskType] = (curByType[t.data.taskType] || 0) + 1; });
+  prev.forEach(function (t) { prevByType[t.data.taskType] = (prevByType[t.data.taskType] || 0) + 1; });
 
-  var cardsHtml = '<div class="dash-card"><p class="dash-num">' + curTasks.length + '</p>' +
-    '<p class="dash-label">งานทั้งหมด</p>' + (showTrend ? trendBadge(curTasks.length, prevTasks.length) : '') + '</div>';
-  typeKeys.forEach(function (t) {
-    cardsHtml += '<div class="dash-card"><p class="dash-num">' + curByType[t] + '</p>' +
-      '<p class="dash-label">' + (TASK_TYPE_LABELS[t] || t) + '</p>' +
-      (showTrend ? trendBadge(curByType[t], prevByType[t]) : '') + '</div>';
-  });
-  document.getElementById('dashboard-cards').innerHTML = cardsHtml;
+  var clients = {};
+  cur.forEach(function (t) { if (t.data.taskType === 'onsite' && t.data.locationName) clients[String(t.data.locationName).trim()] = 1; });
+  var clientN = Object.keys(clients).length;
 
-  // ===== กราฟแท่ง: จำนวนงานต่อวัน =====
-  var dayCount = {};
-  curTasks.forEach(function (t) {
-    var key = t.start.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-    dayCount[key] = (dayCount[key] || 0) + 1;
-  });
-  var dayLabels = Object.keys(dayCount);
-  if (dashboardChartDaily) dashboardChartDaily.destroy();
-  dashboardChartDaily = new Chart(document.getElementById('dashboard-chart-daily'), {
-    type: 'bar',
-    data: { labels: dayLabels, datasets: [{ label: 'จำนวนงาน', data: dayLabels.map(function (k) { return dayCount[k]; }), backgroundColor: '#059669' }] },
-    options: { responsive: true, plugins: { title: { display: true, text: 'จำนวนงานต่อวัน' } } }
-  });
+  var leaveCur = dbLeaveDays(r.curStart, r.curEnd), leavePrev = showTrend ? dbLeaveDays(r.prevStart, r.prevEnd) : {};
+  var leaveTotal = dbSum(leaveCur), leavePeople = Object.keys(leaveCur).length;
 
-  // ===== กราฟวงกลม: สัดส่วนประเภทงาน =====
-  if (dashboardChartType) dashboardChartType.destroy();
-  dashboardChartType = new Chart(document.getElementById('dashboard-chart-type'), {
-    type: 'doughnut',
-    data: {
-      labels: typeKeys.map(function (t) { return TASK_TYPE_LABELS[t] || t; }),
-      datasets: [{ data: typeKeys.map(function (t) { return curByType[t]; }), backgroundColor: typeKeys.map(getTaskTypeColor) }]
-    },
-    options: { responsive: true, plugins: { title: { display: true, text: 'สัดส่วนประเภทงาน' } } }
-  });
+  // Task Board: งานที่กำหนดส่งอยู่ในช่วง
+  var ptb = (_personalTasksCache || []).filter(function (t) { return t.dueDate && t.dueDate >= r.curStart && t.dueDate < r.curEnd; });
+  var ptbDone = ptb.filter(function (t) { return t.status === 'done'; });
+  var donePct = ptb.length ? Math.round(ptbDone.length / ptb.length * 100) : null;
+  var timed = ptbDone.filter(function (t) { return t.completedAt; });
+  var onTime = timed.filter(function (t) { var d = new Date(t.dueDate); d.setHours(23, 59, 59, 999); return t.completedAt <= d; });
+  var onTimePct = timed.length ? Math.round(onTime.length / timed.length * 100) : null;
 
-  // ===== ตารางภาระงาน (CEO + Staff เท่านั้น ไม่รวม Admin) =====
+  // งานเกินกำหนด ณ ตอนนี้ (ทุกช่วง)
+  var today0 = hdDay0(new Date());
+  var overdue = (_personalTasksCache || []).filter(isPtbOverdue).map(function (t) {
+    return { t: t, days: Math.round((today0 - hdDay0(t.dueDate)) / 86400000) };
+  }).sort(function (a, b) { return b.days - a.days; });
+
+  // ===== ประโยคสรุป =====
+  var tr = function (c, p) {
+    if (!showTrend || (c === p)) return '';
+    if (p === 0) return '';
+    var d = c - p;
+    return ' <span class="' + (d > 0 ? 'up' : 'dn') + '">(' + (d > 0 ? 'มากกว่า' : 'น้อยกว่า') + 'งวดก่อน ' + Math.abs(d) + ')</span>';
+  };
+  var say = '<b>' + hdEsc(r.label) + '</b> ทีมออกพบลูกค้า <b>' + curByType.onsite + ' ครั้ง</b>' + (clientN ? ' (' + clientN + ' ราย)' : '') + tr(curByType.onsite, prevByType.onsite) +
+    ' · ประชุม <b>' + curByType.meeting + ' ครั้ง</b>' + tr(curByType.meeting, prevByType.meeting) +
+    (donePct === null ? ' · ไม่มีงานใน Task Board ที่ครบกำหนดช่วงนี้' : ' · ปิดงาน Task Board ได้ <b>' + donePct + '%</b> (' + ptbDone.length + '/' + ptb.length + ')') +
+    (overdue.length ? ' · <span class="r">มีงานเกินกำหนด ' + overdue.length + ' งาน</span>' : ' · <b>ไม่มีงานเกินกำหนด</b>');
+
+  // ===== KPI =====
+  var kpi = function (cls, label, val, unit, sub) {
+    return '<div class="db-k ' + cls + '"><small>' + label + '</small><b>' + val + (unit ? '<u>' + unit + '</u>' : '') + '</b><em>' + sub + '</em></div>';
+  };
+  var kpis =
+    kpi('co', 'ออกพบลูกค้า', curByType.onsite, 'ครั้ง', (clientN ? clientN + ' ราย · ' : '') + (dbTrend(curByType.onsite, prevByType.onsite, showTrend) || '&nbsp;')) +
+    kpi('cy', 'ประชุม', curByType.meeting, 'ครั้ง', dbTrend(curByType.meeting, prevByType.meeting, showTrend) || '&nbsp;') +
+    kpi('cg', 'ปิดงาน Task Board', donePct === null ? '–' : donePct, donePct === null ? '' : '%',
+      donePct === null ? 'ไม่มีงานครบกำหนดช่วงนี้' : (onTimePct === null ? ptbDone.length + '/' + ptb.length + ' งาน' : 'ทันกำหนด ' + onTimePct + '% · ' + ptbDone.length + '/' + ptb.length)) +
+    kpi('cr', 'งานเกินกำหนดตอนนี้', overdue.length, 'งาน', overdue.length ? 'ค้างนานสุด ' + overdue[0].days + ' วัน' : 'เยี่ยม ไม่มีงานค้าง') +
+    kpi('cs', 'วันลา', leaveTotal, 'วัน', (leavePeople ? leavePeople + ' คน · ' : '') + (dbTrend(leaveTotal, dbSum(leavePrev), showTrend) || '&nbsp;'));
+
+  // ===== แนวโน้มตามประเภท (แท่งซ้อน) =====
+  var buckets = dbBuckets(r);
+  var maxB = 1;
+  buckets.forEach(function (b) {
+    b.c = {}; b.n = 0;
+    cur.forEach(function (t) { if (t.start >= b.s && t.start < b.e) { b.c[t.data.taskType] = (b.c[t.data.taskType] || 0) + 1; b.n++; } });
+    if (b.n > maxB) maxB = b.n;
+  });
+  var barsHtml = buckets.map(function (b) {
+    var segs = DB_TYPES.map(function (t) {
+      var v = b.c[t] || 0;
+      return v ? '<i style="height:' + (v / maxB * 100) + '%;background:' + DB_TYPE_COLOR[t] + '" title="' + DB_TYPE_NAME[t] + ' ' + v + '"></i>' : '';
+    }).join('');
+    return '<div class="db-col" title="' + hdEsc(b.label) + ': ' + b.n + ' งาน"><span class="db-cn">' + (b.n || '') + '</span><div class="db-stk">' + segs + '</div></div>';
+  }).join('');
+  var trendCard = '<div class="db-card db-c-trend"><div class="db-ch"><h4>งานตามประเภท</h4><small>รวม ' + cur.length + ' งาน</small></div>' +
+    '<div class="db-lg">' + DB_TYPES.map(function (t) { return '<span><i style="background:' + DB_TYPE_COLOR[t] + '"></i>' + DB_TYPE_NAME[t] + ' <b>' + curByType[t] + '</b></span>'; }).join('') + '</div>' +
+    (cur.length ? '<div class="db-bars n' + Math.min(buckets.length, 31) + '">' + barsHtml + '</div><div class="db-bl">' + buckets.map(function (b) { return '<span>' + hdEsc(b.label) + '</span>'; }).join('') + '</div>'
+      : '<p class="db-empty">ยังไม่มีงานในช่วงนี้</p>') + '</div>';
+
+  // ===== Task Board: โดนัทสถานะ + รายการเกินกำหนด =====
+  var st = { done: 0, doing: 0, todo: 0, late: 0 };
+  ptb.forEach(function (t) { if (t.status === 'done') st.done++; else if (isPtbOverdue(t)) st.late++; else if (t.status === 'doing') st.doing++; else st.todo++; });
+  var segsD = [['done', 'เสร็จแล้ว', '#059669'], ['doing', 'กำลังทำ', '#3b82f6'], ['todo', 'ยังไม่เริ่ม', '#cbd5e1'], ['late', 'เกินกำหนด', '#dc2626']];
+  var tot = ptb.length, acc = 0, C = 2 * Math.PI * 38;
+  var arcs = tot ? segsD.map(function (s) {
+    var v = st[s[0]]; if (!v) return '';
+    var len = v / tot * C, a = '<circle r="38" cx="50" cy="50" fill="none" stroke="' + s[2] + '" stroke-width="16" stroke-dasharray="' + len + ' ' + (C - len) + '" stroke-dashoffset="' + (-acc) + '"></circle>';
+    acc += len; return a;
+  }).join('') : '';
+  var donut = '<svg viewBox="0 0 100 100" class="db-donut" role="img" aria-label="สถานะงาน Task Board"><g transform="rotate(-90 50 50)"><circle r="38" cx="50" cy="50" fill="none" stroke="#eef0f2" stroke-width="16"></circle>' + arcs + '</g>' +
+    '<text x="50" y="49" text-anchor="middle" class="db-dn1">' + (donePct === null ? '–' : donePct + '%') + '</text><text x="50" y="62" text-anchor="middle" class="db-dn2">ปิดแล้ว</text></svg>';
+  var ovList = overdue.slice(0, 6).map(function (o) {
+    var who = (o.t.assigneeIds || []).map(dbStaffName).join(', ') || 'ยังไม่มีผู้รับผิดชอบ';
+    return '<div class="db-it"><div class="bd"><b>' + hdEsc(o.t.title) + '</b><small>' + hdEsc(who) + '</small></div><span class="db-late">' + o.days + ' วัน</span></div>';
+  }).join('');
+  var taskCard = '<div class="db-card db-c-task"><div class="db-ch"><h4>Task Board</h4><small>งานที่ครบกำหนดในช่วงนี้ ' + tot + ' งาน</small></div>' +
+    '<div class="db-dw">' + donut + '<div class="db-dl">' + segsD.map(function (s) { return '<span><i style="background:' + s[2] + '"></i>' + s[1] + '<b>' + st[s[0]] + '</b></span>'; }).join('') + '</div></div>' +
+    '<h5 class="db-sub">งานเกินกำหนดตอนนี้' + (overdue.length > 6 ? ' (6 จาก ' + overdue.length + ')' : '') + '</h5>' +
+    (ovList || '<p class="db-ok">ไม่มีงานเกินกำหนด</p>') + '</div>';
+
+  // ===== รายคน =====
+  var per = {};
+  var row = function (id) { return per[id] || (per[id] = { onsite: 0, meeting: 0, event: 0, leave: 0, tDone: 0, tAll: 0, late: 0 }); };
   var workload = {};
-  curTasks.forEach(function (t) {
+  cur.forEach(function (t) {
     (t.data.staffIds || []).forEach(function (id) {
       var s = staffMapCache[id];
       if (!s || s.role === 'admin') return;
       workload[id] = (workload[id] || 0) + 1;
+      if (t.data.taskType !== 'leave') row(id)[t.data.taskType] = (row(id)[t.data.taskType] || 0) + 1;
     });
   });
-  var sorted = Object.keys(workload).sort(function (a, b) { return workload[b] - workload[a]; });
-  var tableHtml = '<table class="dash-workload-table"><tr><th>ชื่อ</th><th>จำนวนงาน</th></tr>';
-  if (sorted.length === 0) tableHtml += '<tr><td colspan="2">ไม่มีข้อมูล</td></tr>';
-  sorted.forEach(function (id) {
-    var s = staffMapCache[id];
-    tableHtml += '<tr><td>' + escapeHtmlPtb(s.firstName + ' ' + s.lastName) + '</td><td>' + workload[id] + '</td></tr>';
+  Object.keys(leaveCur).forEach(function (id) { var s = staffMapCache[id]; if (s && s.role !== 'admin') row(id).leave = leaveCur[id]; });
+  ptb.forEach(function (t) { (t.assigneeIds || []).forEach(function (id) { var s = staffMapCache[id]; if (!s || s.role === 'admin') return; row(id).tAll++; if (t.status === 'done') row(id).tDone++; }); });
+  overdue.forEach(function (o) { (o.t.assigneeIds || []).forEach(function (id) { var s = staffMapCache[id]; if (!s || s.role === 'admin') return; row(id).late++; }); });
+  var ids = Object.keys(per).sort(function (a, b) {
+    var A = per[a], B = per[b];
+    return (B.onsite + B.meeting + B.event) - (A.onsite + A.meeting + A.event) || B.tAll - A.tAll || dbStaffName(a).localeCompare(dbStaffName(b), 'th');
   });
-  tableHtml += '</table>';
-  document.getElementById('dashboard-workload-table').innerHTML = tableHtml;
+  var cell = function (v, cls) { return '<td class="n">' + (v ? '<b class="' + (cls || '') + '">' + v + '</b>' : '<span class="z">–</span>') + '</td>'; };
+  var tbar = function (p) {
+    if (!p.tAll) return '<span class="z">–</span>';
+    var pc = Math.round(p.tDone / p.tAll * 100);
+    return '<div class="db-tb"><div class="bar"><i style="width:' + pc + '%"></i></div><span>' + p.tDone + '/' + p.tAll + '</span></div>';
+  };
+  var staffCard = '<div class="db-card db-c-staff"><div class="db-ch"><h4>รายคน</h4><small>' + ids.length + ' คน · เรียงตามจำนวนงานปฏิทิน</small></div>';
+  if (!ids.length) staffCard += '<p class="db-empty">ยังไม่มีข้อมูลในช่วงนี้</p>';
+  else {
+    staffCard += '<div class="db-tw"><table class="db-tbl"><thead><tr><th>ชื่อ</th><th>ออกพบลูกค้า</th><th>ประชุม</th><th>อีเวนต์</th><th>วันลา</th><th>Task Board (ปิด/ทั้งหมด)</th><th>เกินกำหนด</th></tr></thead><tbody>' +
+      ids.map(function (id) {
+        var p = per[id];
+        return '<tr><td><div class="db-who">' + dbAvatar(id) + '<span>' + hdEsc(dbStaffName(id)) + '</span></div></td>' + cell(p.onsite, 'o') + cell(p.meeting, 'y') + cell(p.event, 'p') + cell(p.leave, 's') +
+          '<td>' + tbar(p) + '</td><td class="n">' + (p.late ? '<span class="db-late">' + p.late + '</span>' : '<span class="z">–</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    staffCard += '<div class="db-scards">' + ids.map(function (id) {
+      var p = per[id];
+      var chip = function (v, t, c) { return v ? '<span class="db-chip ' + c + '">' + t + ' ' + v + '</span>' : ''; };
+      return '<div class="db-sc"><div class="db-who">' + dbAvatar(id) + '<b>' + hdEsc(dbStaffName(id)) + '</b>' + (p.late ? '<span class="db-late">เกินกำหนด ' + p.late + '</span>' : '') + '</div>' +
+        '<div class="db-chips">' + chip(p.onsite, 'ออกพบลูกค้า', 'o') + chip(p.meeting, 'ประชุม', 'y') + chip(p.event, 'อีเวนต์', 'p') + chip(p.leave, 'ลา (วัน)', 's') + (p.onsite + p.meeting + p.event + p.leave ? '' : '<span class="z">ไม่มีงานปฏิทิน</span>') + '</div>' +
+        (p.tAll ? '<div class="db-sct"><small>Task Board</small>' + tbar(p) + '</div>' : '') + '</div>';
+    }).join('') + '</div>';
+  }
+  staffCard += '</div>';
 
-  // เก็บไว้ใช้ตอนพิมพ์รายงาน (curByType เพิ่มมาให้รายงานสรุป exec ใช้ทำโดนัทสัดส่วนประเภทงาน)
-  window._dashboardPrintData = { ranges: ranges, curTasks: curTasks, workload: workload, sorted: sorted, curByType: curByType };
+  // ===== ประกอบหน้า =====
+  var ctl = '<div class="db-seg" role="tablist">' + DB_PERIODS.map(function (p) { return '<button type="button" class="' + (dbPeriod === p[0] ? 'on' : '') + '" onclick="dbSetPeriod(\'' + p[0] + '\')">' + p[1] + '</button>'; }).join('') + '</div>' +
+    (dbPeriod === 'custom' ? '<div class="db-cus"><input type="date" value="' + dbCustom.from + '" onchange="dbSetCustom(\'from\', this.value)" aria-label="ตั้งแต่"><span>ถึง</span><input type="date" value="' + dbCustom.to + '" onchange="dbSetCustom(\'to\', this.value)" aria-label="ถึง"></div>' : '');
+  var keep = page.querySelector('.db-body') ? page.querySelector('.db-body').scrollTop : 0;
+  page.innerHTML =
+    '<header class="hd-top db-top">' +
+      '<button type="button" class="hd-back" onclick="history.back()" aria-label="กลับ">‹ <span>กลับ</span></button>' +
+      '<div class="hd-title"><h2>Dashboard สรุปงาน</h2><small>' + hdEsc(r.label) + (showTrend ? ' · เทียบกับงวดก่อน' : '') + '</small></div>' +
+      '<button type="button" class="db-print" onclick="printDashboardReport()">🖨️ <span>พิมพ์รายงาน</span></button>' +
+    '</header>' +
+    '<div class="db-body"><div class="db-bar">' + ctl + '</div>' +
+      '<div class="db-say">' + say + '</div>' +
+      '<div class="db-kp">' + kpis + '</div>' +
+      '<div class="db-g2">' + trendCard + taskCard + '</div>' +
+      staffCard +
+      '<p class="db-foot">ออกพบลูกค้า/ประชุม/อีเวนต์ นับตามวันเริ่มงานในปฏิทิน · วันลานับเฉพาะวันทำงาน (ไม่รวมวันหยุดบริษัท) · "ทันกำหนด" นับเฉพาะงานที่ปิดหลังอัปเดตระบบนี้</p>' +
+    '</div>';
+  var body = page.querySelector('.db-body'); if (body) body.scrollTop = keep;
+
+  var sorted = Object.keys(workload).sort(function (a, b) { return workload[b] - workload[a]; });
+  window._dashboardPrintData = { ranges: r, curTasks: cur, workload: workload, sorted: sorted, curByType: curByType };
 }
 
 // ===== พิมพ์รายงาน (เปิด print dialog ของเบราว์เซอร์ ให้ Save เป็น PDF ได้เอง) =====
@@ -5522,10 +5881,14 @@ function setupPersonalTasksListener() {
         assigneeIds: d.assigneeIds || [],
         checklist: d.checklist || [],
         attachments: d.attachments || [],
-        createdBy: d.createdBy
+        createdBy: d.createdBy,
+        completedAt: d.completedAt ? firestoreDateToJs(d.completedAt) : null, // เวลาที่ปิดงาน (ใช้ทำ KPI ทันกำหนด)
+        createdAt: d.createdAt ? firestoreDateToJs(d.createdAt) : null,
+        updatedAt: d.updatedAt ? firestoreDateToJs(d.updatedAt) : null
       };
     });
     updatePtbSummaryCard();
+    if (typeof dbIsOpen === 'function' && dbIsOpen()) loadDashboardData();
     if (typeof m2TaskOpen === 'function' && m2TaskOpen()) renderM2Tasks(); // v3 หน้า "งานของฉัน" (มือถือทดลอง)
     if (document.getElementById('task-board-modal-overlay').style.display === 'flex') {
       refreshCurrentPtbView();

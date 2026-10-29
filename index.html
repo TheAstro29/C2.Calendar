@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css?v=20261028d">
+  <link rel="stylesheet" href="style.css?v=20261029a">
 </head>
 <body>
 
@@ -568,90 +568,14 @@
     </div>
   </div>
 
-  <div id="holiday-modal-overlay">
-    <div id="holiday-box">
-      <div class="tb-head">
-        <h2>🗓️ วันหยุดองค์กร</h2>
-        <button id="holiday-close" onclick="closeHolidayModal()">✕</button>
-      </div>
-      <div class="tb-info-banner">วันหยุดที่เพิ่มจะถูกซ่อนออกจากปฏิทินงานให้อัตโนมัติ</div>
-
-      <div class="tb-body">
-        <div id="holiday-list"></div>
-
-        <hr class="tb-divider">
-        <h3 class="tb-subhead">เพิ่มวันหยุดใหม่</h3>
-
-        <select id="holiday-type" style="display:none" onchange="toggleHolidayTypeFields()">
-          <option value="date">วันที่เฉพาะ</option>
-          <option value="weekly">หยุดประจำสัปดาห์ (ซ้ำทุกสัปดาห์)</option>
-        </select>
-
-        <label class="radio-row">
-          <input type="radio" name="holiday-datemode" id="holiday-type-date-radio" checked onchange="toggleHolidayTypeFields()">
-          <span>วันที่เฉพาะ</span>
-        </label>
-        <div id="holiday-date-field" class="tb-indent">
-          <input type="date" id="holiday-date">
-        </div>
-
-        <label class="radio-row">
-          <input type="radio" name="holiday-datemode" id="holiday-type-weekly-radio" onchange="toggleHolidayTypeFields()">
-          <span>หยุดประจำสัปดาห์ (ซ้ำทุกสัปดาห์)</span>
-        </label>
-        <div id="holiday-weekly-field" class="tb-indent" style="display:none">
-          <select id="holiday-weekday">
-            <option value="0">ทุกวันอาทิตย์</option>
-            <option value="1">ทุกวันจันทร์</option>
-            <option value="2">ทุกวันอังคาร</option>
-            <option value="3">ทุกวันพุธ</option>
-            <option value="4">ทุกวันพฤหัสบดี</option>
-            <option value="5">ทุกวันศุกร์</option>
-            <option value="6">ทุกวันเสาร์</option>
-          </select>
-        </div>
-
-        <label class="field-label">ชื่อวันหยุด</label>
-        <input type="text" id="holiday-name" placeholder="เช่น วันขึ้นปีใหม่">
-      </div>
-      <div class="tb-footer">
-        <button id="holiday-submit-btn" onclick="submitAddHoliday()">เพิ่มวันหยุด</button>
-      </div>
-    </div>
+  <!-- หน้าจัดการวันหยุด (เต็มจอ) — เนื้อหาสร้างด้วย hdRender() ใน app.js -->
+  <div id="holiday-modal-overlay" class="v2page">
+    <div id="hd-page" class="v2page-in" role="dialog" aria-label="วันหยุดบริษัท"></div>
   </div>
 
-  <div id="dashboard-modal-overlay">
-    <div id="dashboard-box">
-      <div class="tb-head">
-        <h2>📊 Dashboard สรุปงาน</h2>
-        <button id="dashboard-close" onclick="closeDashboardModal()">✕</button>
-      </div>
-      <div class="tb-body">
-        <div id="dashboard-controls">
-          <select id="dashboard-period" onchange="onDashboardPeriodChange()">
-            <option value="month">เดือนนี้</option>
-            <option value="week">สัปดาห์นี้</option>
-            <option value="custom">กำหนดเอง</option>
-          </select>
-          <span id="dashboard-custom-range" style="display:none">
-            <input type="date" id="dashboard-custom-start" onchange="loadDashboardData()">
-            <span>ถึง</span>
-            <input type="date" id="dashboard-custom-end" onchange="loadDashboardData()">
-          </span>
-          <button onclick="printDashboardReport()">🖨️ พิมพ์รายงาน</button>
-        </div>
-
-        <div id="dashboard-cards"></div>
-
-        <div class="dashboard-chart-row">
-          <div class="dashboard-chart-box"><canvas id="dashboard-chart-daily"></canvas></div>
-          <div class="dashboard-chart-box"><canvas id="dashboard-chart-type"></canvas></div>
-        </div>
-
-        <h3>ภาระงานของแต่ละคน</h3>
-        <div id="dashboard-workload-table"></div>
-      </div>
-    </div>
+  <!-- Dashboard สรุปงาน (เต็มจอ) — เนื้อหาสร้างด้วย loadDashboardData() ใน app.js -->
+  <div id="dashboard-modal-overlay" class="v2page">
+    <div id="db2-page" class="v2page-in" role="dialog" aria-label="Dashboard สรุปงาน"></div>
   </div>
 
   <!-- เดิมมีหน้าพิมพ์รายงานแบบตารางซ่อนไว้ตรงนี้ (ใช้กับ window.print() ในเฟรมเดิม) - เลิกใช้แล้ว เพราะ
@@ -1160,6 +1084,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
   <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
-  <script src="app.js?v=20261028d"></script>
+  <script src="app.js?v=20261029a"></script>
 </body>
 </html>
