@@ -3795,72 +3795,165 @@ function loadDashboardData() {
   var body = page.querySelector('.db-body'); if (body) body.scrollTop = keep;
 
   var sorted = Object.keys(workload).sort(function (a, b) { return workload[b] - workload[a]; });
-  window._dashboardPrintData = { ranges: r, curTasks: cur, workload: workload, sorted: sorted, curByType: curByType };
+  window._dashboardPrintData = { ranges: r, curTasks: cur, workload: workload, sorted: sorted, curByType: curByType,
+    // ข้อมูลเพิ่มสำหรับรายงานผู้บริหาร (printDashboardReport)
+    period: dbPeriod, showTrend: showTrend, prevByType: prevByType, leaveTotal: leaveTotal, leavePeople: leavePeople, leavePrev: dbSum(leavePrev),
+    ptbTotal: ptb.length, ptbDone: ptbDone.length, donePct: donePct, onTimePct: onTimePct, overdue: overdue, buckets: buckets, per: per, staffIds: ids };
 }
 
 // ===== พิมพ์รายงาน (เปิด print dialog ของเบราว์เซอร์ ให้ Save เป็น PDF ได้เอง) =====
 
+// ===== รายงานผู้บริหาร (พิมพ์จาก Dashboard) — ออกแบบใหม่ 31 ต.ค. 69 =====
+// อ่านจากบนลงล่าง: สรุปสั้น → ตัวเลขหลัก → ต้องติดตาม → แนวโน้ม → รายคน → ลูกค้าที่ไปพบ → กำหนดการ 7 วัน
+// ฟังก์ชันนี้รับข้อมูลที่เตรียมไว้แล้ว (ไม่แตะ Firestore) เพื่อให้ทดสอบ/แก้หน้าตาได้ง่าย
+function dbReportHtml(R) {
+  var E = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+  var TC = { onsite: '#f97316', meeting: '#f59e0b', event: '#8b5cf6', leave: '#9ca3af' };
+  var TN = { onsite: 'ออกพบลูกค้า', meeting: 'ประชุม', event: 'อีเวนต์', leave: 'ลา' };
+  var TYPES = ['onsite', 'meeting', 'event', 'leave'];
+  var prevName = R.prevName; // เช่น 'เดือนก่อน' · null = ไม่เทียบ
+
+  // ลูกศรเทียบงวดก่อน (good = ขึ้นแล้วดี/ลงแล้วดี/กลาง)
+  var trend = function (cur, prev, goodWhenUp) {
+    if (!prevName || prev == null) return '';
+    if (cur === prev) return '<span class="tr flat">เท่ากับ' + prevName + '</span>';
+    var up = cur > prev, d = Math.abs(cur - prev);
+    var cls = goodWhenUp === null ? 'flat' : (up === goodWhenUp ? 'good' : 'bad');
+    return '<span class="tr ' + cls + '">' + (up ? '▲' : '▼') + ' ' + (up ? 'มากกว่า' : 'น้อยกว่า') + prevName + ' ' + d + '</span>';
+  };
+  var kpi = function (label, val, unit, sub, cls) {
+    return '<div class="k ' + (cls || '') + '"><div class="kl">' + label + '</div><div class="kv">' + val + (unit ? '<small>' + unit + '</small>' : '') + '</div><div class="ks">' + (sub || '&nbsp;') + '</div></div>';
+  };
+
+  // ---- สรุปสั้น (ประโยคธรรมดา) ----
+  var b = [];
+  b.push('ทีมออกพบลูกค้า <b>' + R.byType.onsite + ' ครั้ง</b>' + (R.clients.length ? ' ลูกค้า <b>' + R.clients.length + ' ราย</b>' : '') +
+    (prevName ? ' (' + prevName + ' ' + R.prevByType.onsite + ' ครั้ง)' : ''));
+  b.push('ประชุม <b>' + R.byType.meeting + ' ครั้ง</b> · อีเวนต์ <b>' + R.byType.event + ' ครั้ง</b>');
+  b.push(R.ptb.total ? 'ปิดงาน Task Board ได้ <b>' + R.ptb.donePct + '%</b> (' + R.ptb.done + ' จาก ' + R.ptb.total + ' งาน)' + (R.ptb.onTimePct != null ? ' · ทันกำหนด ' + R.ptb.onTimePct + '%' : '') : 'ไม่มีงาน Task Board ที่ครบกำหนดในช่วงนี้');
+  b.push(R.overdue.length ? '<span class="red">มีงานเกินกำหนด <b>' + R.overdue.length + ' งาน</b> · ค้างนานสุด ' + R.overdue[0].days + ' วัน (ดูหัวข้อ "ต้องติดตาม")</span>' : '<span class="grn">ไม่มีงานเกินกำหนด</span>');
+  b.push(R.leave.total ? 'วันลารวม <b>' + R.leave.total + ' วัน</b> (' + R.leave.people + ' คน)' : 'ไม่มีการลาในช่วงนี้');
+
+  var kpis = kpi('ออกพบลูกค้า', R.byType.onsite, 'ครั้ง', trend(R.byType.onsite, R.prevByType.onsite, true) || (R.clients.length + ' ราย'), 'o') +
+    kpi('ประชุม', R.byType.meeting, 'ครั้ง', trend(R.byType.meeting, R.prevByType.meeting, null), 'y') +
+    kpi('ปิดงาน Task Board', R.ptb.total ? R.ptb.donePct : '–', R.ptb.total ? '%' : '', R.ptb.total ? R.ptb.done + '/' + R.ptb.total + ' งาน' : 'ไม่มีงานครบกำหนด', 'g') +
+    kpi('งานเกินกำหนด', R.overdue.length, 'งาน', R.overdue.length ? 'ค้างนานสุด ' + R.overdue[0].days + ' วัน' : 'ไม่มีงานค้าง', R.overdue.length ? 'r' : 'g') +
+    kpi('วันลา', R.leave.total, 'วัน', trend(R.leave.total, R.leave.prev, null) || (R.leave.people + ' คน'), 's');
+
+  // ---- ต้องติดตาม ----
+  var follow = R.overdue.length
+    ? '<table class="t"><thead><tr><th>งานที่เกินกำหนด</th><th>ผู้รับผิดชอบ</th><th class="c">กำหนดส่ง</th><th class="c">เกินมา</th></tr></thead><tbody>' +
+      R.overdue.slice(0, 10).map(function (o) { return '<tr><td><b>' + E(o.title) + '</b></td><td>' + E(o.who) + '</td><td class="c">' + E(o.due) + '</td><td class="c"><span class="late">' + o.days + ' วัน</span></td></tr>'; }).join('') +
+      '</tbody></table>' + (R.overdue.length > 10 ? '<div class="more">และอีก ' + (R.overdue.length - 10) + ' งาน</div>' : '')
+    : '<div class="okbox">✓ ไม่มีงานเกินกำหนด ทุกงานอยู่ในกำหนดเวลา</div>';
+
+  // ---- แนวโน้ม (แท่งซ้อน SVG) ----
+  var bk = R.buckets, maxN = Math.max.apply(null, bk.map(function (x) { return x.n; }).concat([1]));
+  var W = 690, H = 150, padB = 22, padT = 16, gap = bk.length > 14 ? 4 : 10, bw = (W - gap * (bk.length - 1)) / bk.length;
+  var bars = bk.map(function (x, i) {
+    var X = i * (bw + gap), y = H - padB, segs = '';
+    TYPES.forEach(function (t) { var v = x.c[t] || 0; if (!v) return; var h = v / maxN * (H - padB - padT); y -= h; segs += '<rect x="' + X.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" fill="' + TC[t] + '"></rect>'; });
+    return segs + (x.n ? '<text x="' + (X + bw / 2).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" class="bn">' + x.n + '</text>' : '') +
+      '<text x="' + (X + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" class="bl">' + E(x.label) + '</text>';
+  }).join('');
+  var chart = R.total ? '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart"><line x1="0" x2="' + W + '" y1="' + (H - padB) + '" y2="' + (H - padB) + '" stroke="#D2DCD8"></line>' + bars + '</svg>' : '<div class="muted">ยังไม่มีงานในช่วงนี้</div>';
+  var legend = TYPES.map(function (t) { return '<span><i style="background:' + TC[t] + '"></i>' + TN[t] + ' <b>' + R.byType[t] + '</b></span>'; }).join('');
+
+  // ---- รายคน ----
+  var n = function (v, c) { return v ? '<b' + (c ? ' style="color:' + c + '"' : '') + '>' + v + '</b>' : '<span class="z">–</span>'; };
+  var staff = R.staff.length ? '<table class="t st"><thead><tr><th>ชื่อ</th><th class="c">ออกพบลูกค้า</th><th class="c">ประชุม</th><th class="c">อีเวนต์</th><th class="c">วันลา</th><th>Task Board (ปิด/ทั้งหมด)</th><th class="c">เกินกำหนด</th></tr></thead><tbody>' +
+    R.staff.map(function (p) {
+      var pc = p.tAll ? Math.round(p.tDone / p.tAll * 100) : 0;
+      return '<tr><td><span class="dot" style="background:' + E(p.color) + '"></span>' + E(p.name) + '</td><td class="c">' + n(p.onsite) + '</td><td class="c">' + n(p.meeting) + '</td><td class="c">' + n(p.event) + '</td><td class="c">' + n(p.leave) + '</td>' +
+        '<td>' + (p.tAll ? '<div class="pb"><div><i style="width:' + pc + '%"></i></div><span>' + p.tDone + '/' + p.tAll + '</span></div>' : '<span class="z">–</span>') + '</td>' +
+        '<td class="c">' + (p.late ? '<span class="late">' + p.late + '</span>' : '<span class="z">–</span>') + '</td></tr>';
+    }).join('') + '</tbody></table>' : '<div class="muted">ยังไม่มีข้อมูลในช่วงนี้</div>';
+
+  // ---- ลูกค้าที่ไปพบ ----
+  var clients = R.clients.length ? '<div class="chips">' + R.clients.slice(0, 24).map(function (c) { return '<span>' + E(c.name) + (c.n > 1 ? ' <b>×' + c.n + '</b>' : '') + '</span>'; }).join('') + '</div>' + (R.clients.length > 24 ? '<div class="more">และอีก ' + (R.clients.length - 24) + ' ราย</div>' : '') : '<div class="muted">ไม่มีการออกพบลูกค้าในช่วงนี้</div>';
+
+  // ---- 7 วันข้างหน้า ----
+  var up = R.upcoming.length ? '<table class="t"><thead><tr><th style="width:110px">วัน</th><th>งาน</th><th style="width:110px">ประเภท</th><th>ผู้รับผิดชอบ</th></tr></thead><tbody>' +
+    R.upcoming.map(function (u) { return '<tr><td><b>' + E(u.day) + '</b>' + (u.when ? '<div class="sub">' + E(u.when) + '</div>' : '') + '</td><td>' + E(u.title) + (u.place ? '<div class="sub">' + E(u.place) + '</div>' : '') + '</td><td><span class="dot" style="background:' + (TC[u.type] || '#9ca3af') + '"></span>' + E(TN[u.type] || u.type) + '</td><td>' + E(u.who) + '</td></tr>'; }).join('') +
+    '</tbody></table>' : '<div class="muted">ไม่มีกำหนดการใน 7 วันข้างหน้า</div>';
+
+  var sec = function (title, sub, body, cls) { return '<section class="' + (cls || '') + '"><h2>' + title + (sub ? '<small>' + sub + '</small>' : '') + '</h2>' + body + '</section>'; };
+
+  return '<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายงานสรุปงาน ' + E(R.label) + '</title>' +
+    '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=Sarabun:wght@400;600&display=swap">' +
+    '<style>' +
+    '@page{size:A4;margin:12mm 12mm 14mm}*{box-sizing:border-box}' +
+    'body{margin:0;background:#F4F5F4;color:#201E1D;font:13px/1.55 "Sarabun","Chakra Petch",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}' +
+    '.page{width:186mm;margin:16px auto;background:#fff;padding:0 0 8px}' +
+    '@media print{body{background:#fff}.page{margin:0;width:auto}}' +
+    'h1,h2,.kv,.hd b{font-family:"Chakra Petch",sans-serif}' +
+    '.hd{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #3F654D;padding-bottom:12px}' +
+    '.hd .lg{display:flex;align-items:center;gap:10px}.hd img{width:40px;height:40px;border-radius:9px}.hd .lg b{font-size:18px;color:#3F654D;letter-spacing:.04em}.hd .lg small{display:block;font-size:11px;color:#63816F}' +
+    '.hd .tt{text-align:right}.hd .ey{font-size:12px;color:#63816F;font-weight:600}.hd h1{margin:2px 0 0;font-size:26px;line-height:1.15;color:#201E1D}.hd .rg{font-size:12px;color:#4a4a48}' +
+    '.sum{margin-top:14px;background:#EEF4F0;border-radius:10px;padding:12px 16px}.sum h3{margin:0 0 6px;font:700 14px "Chakra Petch",sans-serif;color:#2F513C}.sum ul{margin:0;padding-left:18px}.sum li{margin:2px 0}' +
+    '.red{color:#B91C1C}.grn{color:#2F7A4C;font-weight:600}' +
+    '.kp{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}.k{border:1px solid #D2DCD8;border-top:4px solid #63816F;border-radius:8px;padding:8px 10px}' +
+    '.k.o{border-top-color:#f97316}.k.y{border-top-color:#f59e0b}.k.g{border-top-color:#3F654D}.k.r{border-top-color:#DC2626;background:#FDF4F4}.k.s{border-top-color:#9ca3af}' +
+    '.kl{font-size:11.5px;color:#4a4a48;font-weight:600}.kv{font-size:28px;font-weight:700;line-height:1.1;margin-top:2px}.kv small{font-size:12px;font-weight:500;color:#63816F;margin-left:3px}.k.r .kv{color:#B91C1C}.ks{font-size:11px;color:#63816F;margin-top:2px}' +
+    '.tr{font-weight:600}.tr.good{color:#2F7A4C}.tr.bad{color:#B91C1C}.tr.flat{color:#63816F}' +
+    'section{margin-top:16px;break-inside:avoid}h2{font-size:15px;margin:0 0 6px;color:#2F513C;display:flex;align-items:baseline;gap:8px;border-left:4px solid #3F654D;padding-left:8px}h2 small{font:400 11.5px "Sarabun",sans-serif;color:#63816F}' +
+    '.t{width:100%;border-collapse:collapse;font-size:12.5px}.t th{text-align:left;font-weight:600;font-size:11.5px;color:#2F513C;background:#EEF4F0;padding:6px 8px;border-bottom:1.5px solid #9DB3A6}.t td{padding:6px 8px;border-bottom:1px solid #E4EAE6;vertical-align:top}.t .c{text-align:center}' +
+    '.t tr{break-inside:avoid}.sub{font-size:11px;color:#63816F}.z{color:#B9C2BD}.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:0}' +
+    '.late{display:inline-block;background:#FDE2E2;color:#B91C1C;font-weight:700;border-radius:20px;padding:0 9px;font-size:11.5px}' +
+    '.okbox{background:#EEF6F1;border:1px solid #CFE3D6;color:#2F7A4C;font-weight:600;border-radius:8px;padding:10px 14px}' +
+    '.more,.muted{font-size:11.5px;color:#63816F;margin-top:4px}' +
+    '.chart{width:100%;height:auto;display:block}.chart .bn{font:600 11px "Chakra Petch",sans-serif;fill:#201E1D;text-anchor:middle}.chart .bl{font:10.5px "Sarabun",sans-serif;fill:#4a4a48;text-anchor:middle}' +
+    '.lgd{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;margin-bottom:6px}.lgd i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}' +
+    '.pb{display:flex;align-items:center;gap:6px}.pb div{flex:1;height:7px;background:#E4EAE6;border-radius:4px;overflow:hidden;max-width:90px}.pb i{display:block;height:100%;background:#3F654D}.pb span{font-size:11.5px;color:#4a4a48}' +
+    '.chips{display:flex;flex-wrap:wrap;gap:5px}.chips span{border:1px solid #D2DCD8;border-radius:20px;padding:1px 10px;font-size:12px}.chips b{color:#f97316}' +
+    '.ft{margin-top:18px;border-top:1px solid #D2DCD8;padding-top:6px;display:flex;justify-content:space-between;font-size:10.5px;color:#63816F}' +
+    '</style></head><body><div class="page">' +
+    '<div class="hd"><div class="lg"><img src="' + E(R.iconUrl) + '" alt=""><div><b>C2TECH</b><small>บริษัท ซีทูเทค จำกัด</small></div></div>' +
+      '<div class="tt"><div class="ey">รายงานสรุปงานทีม</div><h1>' + E(R.label) + '</h1><div class="rg">' + E(R.rangeLabel) + (prevName ? ' · เทียบกับ' + prevName : '') + '</div></div></div>' +
+    '<div class="sum"><h3>สรุปสั้น</h3><ul>' + b.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul></div>' +
+    '<div class="kp">' + kpis + '</div>' +
+    sec('ต้องติดตาม', 'งาน Task Board ที่เกินกำหนด ณ วันที่พิมพ์', follow) +
+    sec('งานตามช่วงเวลา', 'รวม ' + R.total + ' งาน · นับตามวันเริ่มงานในปฏิทิน', '<div class="lgd">' + legend + '</div>' + chart) +
+    sec('รายคน', R.staff.length + ' คน · เรียงตามจำนวนงาน', staff) +
+    sec('ลูกค้าที่ไปพบ', R.clients.length + ' ราย', clients) +
+    sec('กำหนดการ 7 วันข้างหน้า', E(R.upRange), up) +
+    '<div class="ft"><span>C2TECH · C2 Calendar · วันลานับเฉพาะวันทำงาน</span><span>พิมพ์เมื่อ ' + E(R.generatedAt) + '</span></div>' +
+    '</div></body></html>';
+}
+
 function printDashboardReport() {
   var d = window._dashboardPrintData;
   if (!d) return;
-
-  // โดนัทสัดส่วนประเภทงาน (ปฏิทินหลักไม่มีสถานะ เสร็จแล้ว/กำลังทำ/ต้องทำ แบบ Personal Task Board มีแต่ประเภทงาน
-  // meeting/onsite/event/leave จึงใช้ตัวนี้แทนเป็นแกนโดนัทของรายงาน Dashboard)
-  var typeKeys = ['meeting', 'onsite', 'event', 'leave'];
-  var donutSegments = typeKeys.map(function (t) {
-    return { label: (TASK_TYPE_LABELS[t] || t).replace(/\s*\(.*\)/, ''), count: (d.curByType && d.curByType[t]) || 0, color: getTaskTypeColor(t) };
-  }).filter(function (seg) { return seg.count > 0; }); // ไม่โชว์ประเภทที่ไม่มีงานเลยกันโดนัทรก
-  if (donutSegments.length === 0) donutSegments = [{ label: 'ไม่มีงาน', count: 0, color: '#E5E7EB' }];
-  var donutTotal = donutSegments.reduce(function (s, x) { return s + x.count; }, 0);
-  var topSeg = donutSegments.reduce(function (a, b) { return b.count > a.count ? b : a; }, donutSegments[0]);
-
-  var workload = d.sorted.map(function (id) {
-    var s = staffMapCache[id];
-    return { name: s ? (s.firstName + ' ' + s.lastName) : id, count: d.workload[id], color: s ? s.colorHex : '#9AA1A8' };
-  }).slice(0, 8);
-
-  // งานที่ใกล้ถึงเร็วๆ นี้ในช่วงที่เลือก (จำกัด 7 วันข้างหน้า ให้สอดคล้องกับฝั่ง Task Board) - ปฏิทินหลักเป็น
-  // กำหนดการ ไม่ใช่ deadline จึงไม่มีแนวคิด "เกินกำหนด" แบบ Task Board จึง rightWarning เป็น null เสมอ (โชว์กล่อง
-  // เขียวแทนอัตโนมัติจาก execReportHtml) - เพิ่ม "who" จาก t.data.staffIds resolve ผ่าน staffMapCache
-  var todayOnly2 = new Date(); todayOnly2.setHours(0, 0, 0, 0);
-  var upcoming7d = d.curTasks.slice().filter(function (t) { return t.start >= todayOnly2; })
-    .sort(function (a, b) { return a.start - b.start; })
-    .map(function (t) {
-      var due = new Date(t.start); due.setHours(0, 0, 0, 0);
-      var diffDays = Math.round((due - todayOnly2) / 86400000);
-      return { t: t, diffDays: diffDays };
-    })
-    .filter(function (x) { return x.diffDays <= 7; })
-    .slice(0, 6)
-    .map(function (x) {
-      var t = x.t;
-      var who = (t.data.staffIds || []).map(function (id) {
-        var s = staffMapCache[id];
-        return s ? (s.firstName + ' ' + s.lastName) : id;
-      }).join(', ');
-      var badge = x.diffDays === 0 ? 'วันนี้' : (x.diffDays === 1 ? 'พรุ่งนี้' : 'อีก ' + x.diffDays + ' วัน');
-      var badgeBg = x.diffDays <= 1 ? '#FEF0E1' : (x.diffDays <= 3 ? '#FEF3E0' : '#EEF6F1');
-      var badgeTextColor = x.diffDays <= 1 ? '#C2540A' : (x.diffDays <= 3 ? '#B45309' : '#3F654D');
-      return { title: t.data.taskName, who: who, badge: badge, badgeBg: badgeBg, badgeTextColor: badgeTextColor };
-    });
-
-  var html = execReportHtml({
-    periodLabel: 'Dashboard — ' + d.ranges.label,
-    dateRangeLabel: d.ranges.label,
-    totalLabel: 'งานทั้งหมด',
-    donutSegments: donutSegments,
-    donutSectionTitle: 'สัดส่วนประเภทงาน',
-    donutCenterPct: donutTotal > 0 ? Math.round(topSeg.count / donutTotal * 100) : 0,
-    donutCenterSub: topSeg.label,
-    workload: workload,
-    rightWarning: null,
-    upcomingTitle: '🗓️ งานที่ใกล้จะถึง — 7 วันข้างหน้า',
-    upcomingItems: upcoming7d,
-    generatedAtLabel: fmtGeneratedAtLabel()
+  var PREV = { week: 'สัปดาห์ก่อน', month: 'เดือนก่อน', quarter: 'ไตรมาสก่อน', year: 'ปีก่อน' };
+  var fmtD = function (x) { return x.getDate() + ' ' + HD_MON[x.getMonth()] + ' ' + String(x.getFullYear() + 543).slice(-2); };
+  var byType = {}, prevByType = {};
+  DB_TYPES.forEach(function (t) { byType[t] = d.curByType[t] || 0; prevByType[t] = d.showTrend ? ((d.prevByType || {})[t] || 0) : null; });
+  // ลูกค้าที่ไปพบ (นับครั้ง)
+  var cm = {};
+  d.curTasks.forEach(function (t) { if (t.data.taskType === 'onsite' && t.data.locationName) { var k = String(t.data.locationName).trim(); cm[k] = (cm[k] || 0) + 1; } });
+  var clients = Object.keys(cm).map(function (k) { return { name: k, n: cm[k] }; }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name, 'th'); });
+  var who = function (ids) { return (ids || []).map(dbStaffName).join(', ') || '-'; };
+  var overdue = (d.overdue || []).map(function (o) { return { title: o.t.title, who: who(o.t.assigneeIds) === '-' ? 'ยังไม่มีผู้รับผิดชอบ' : who(o.t.assigneeIds), due: fmtD(o.t.dueDate), days: o.days }; });
+  var staff = (d.staffIds || []).map(function (id) { var p = d.per[id], s = staffMapCache[id] || {};
+    return { name: dbStaffName(id), color: safeColor(s.colorHex) || '#64748b', onsite: p.onsite, meeting: p.meeting, event: p.event, leave: p.leave, tAll: p.tAll, tDone: p.tDone, late: p.late }; });
+  // กำหนดการ 7 วันข้างหน้า (นับจากวันนี้ ไม่ขึ้นกับงวดที่เลือก)
+  var t0 = hdDay0(new Date()), t7 = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + 7);
+  var upcoming = filterTasksByRange(t0, t7).sort(function (a, b) { return a.start - b.start; }).slice(0, 15).map(function (t) {
+    var hm = t.start.getHours() || t.start.getMinutes() ? ('0' + t.start.getHours()).slice(-2) + ':' + ('0' + t.start.getMinutes()).slice(-2) : '';
+    return { day: HD_DOW[t.start.getDay()] + ' ' + t.start.getDate() + ' ' + HD_MON[t.start.getMonth()], when: t.data.isAllDay ? 'ทั้งวัน' : hm,
+      title: t.data.taskName || '-', place: t.data.locationName || '', type: t.data.taskType, who: who(t.data.staffIds) };
   });
-
-  // สร้างและพิมพ์จากแท็บใหม่แทน window.print() ในเฟรมเดิม (ดูเหตุผลที่ exportWorkbookViaNewTab ด้านบน) -
-  // ฟังก์ชันนี้ไม่มีการรอ API ก่อน จึงยังเปิดแท็บใหม่ได้ตรงๆ แบบ synchronous จาก click ปุ่ม
+  var r = d.ranges;
+  var html = dbReportHtml({
+    label: r.label.replace(/\s*\(.*\)$/, ''), rangeLabel: dbRangeLabel(r.curStart, r.curEnd), prevName: d.showTrend ? (PREV[d.period] || 'งวดก่อน') : null,
+    iconUrl: new URL('icons/icon-192.png', window.location.href).href, generatedAt: fmtGeneratedAtLabel(),
+    byType: byType, prevByType: prevByType, total: d.curTasks.length, clients: clients,
+    ptb: { total: d.ptbTotal, done: d.ptbDone, donePct: d.donePct, onTimePct: d.onTimePct },
+    overdue: overdue, leave: { total: d.leaveTotal, people: d.leavePeople, prev: d.showTrend ? d.leavePrev : null },
+    buckets: (d.buckets || []).map(function (b) { return { label: b.label, n: b.n, c: b.c }; }), staff: staff,
+    upRange: dbRangeLabel(t0, t7), upcoming: upcoming
+  });
+  // เปิดแท็บใหม่แล้วพิมพ์ (ดูเหตุผลที่ exportWorkbookViaNewTab ด้านบน)
   openExecReportInNewTab(html);
 }
 
