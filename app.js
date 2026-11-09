@@ -194,7 +194,8 @@ var CLOUD_FUNCTION_ACTIONS = [
   'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
   'addTaskComment', 'addPersonalTaskComment',
   'editTaskComment', 'deleteTaskComment', 'editPersonalTaskComment', 'deletePersonalTaskComment',
-  'heartbeat', 'getLastSeenList', 'logoutSession'
+  'heartbeat', 'getLastSeenList', 'logoutSession',
+  'qrStart', 'qrPoll', 'qrInfo', 'qrApprove', 'listMySessions', 'revokeMySession'
 ];
 
 // ===== callApi: ยังใช้ชื่อ/รูปแบบเดิมทุกจุดที่เรียกในไฟล์นี้ แค่เปลี่ยนปลายทางข้างในเป็น Firebase =====
@@ -747,13 +748,13 @@ function showAuthGate() {
   var sub = document.querySelector('#login-box p.sub');
   if (sub) sub.textContent = 'กรุณาเข้าสู่ระบบเพื่อเข้าใช้งาน C2 Calendar';
   document.getElementById('login-error-text').style.display = 'none';
-  setTimeout(function () {
-    var el = document.getElementById('username');
-    if (el) el.focus();
-  }, 50);
+  // คอมพิวเตอร์: เปิดหน้า QR ก่อน (มือถือที่ login อยู่สแกนเข้าได้เลย) · มือถือ: ช่องรหัสผ่านเหมือนเดิม
+  if (isDesktopLogin() && !_pendingQrId) { showQrLogin(); return; }
+  showPasswordLogin();
 }
 
 function hideAuthGate() {
+  qrLoginStop();
   var overlay = document.getElementById('login-modal-overlay');
   overlay.classList.remove('login-forced');
   overlay.style.display = 'none';
@@ -774,6 +775,7 @@ function startAuthenticatedApp(name, role) {
   loadMemberSidebar();
   loadTodoList();
   startPresenceHeartbeat();
+  maybeOpenPendingQr();
 }
 
 // ปิด listener/ข้อมูลทั้งหมดที่โหลดไว้ตอน login (เรียกตอน logout) - กันไม่ให้ข้อมูลงาน/วันหยุดเก่าที่เคย
@@ -792,7 +794,7 @@ function teardownAuthenticatedListeners() {
 function openLoginModal() {
   document.getElementById('login-modal-overlay').style.display = 'flex';
   document.getElementById('login-error-text').style.display = 'none';
-  document.getElementById('username').focus();
+  if (isDesktopLogin()) showQrLogin(); else showPasswordLogin();
   _pushModalNav('login-modal-overlay');
 }
 function closeLoginModal() {
@@ -830,16 +832,7 @@ function doLogin() {
 
   callApi('login', { username: username, password: password, device: getDeviceInfo() }).then(function (result) {
     if (result.success) {
-      // ขั้นตอนสำคัญ: เอา Firebase Custom Token ไปยื่นให้ Firebase Auth
-      // เพื่อให้ Security Rules มองเห็นว่า "login อยู่แล้ว" ตอนอ่านข้อมูลแบบ real-time (Phase 6.2)
-      return fbAuth.signInWithCustomToken(result.firebaseCustomToken).then(function () {
-        localStorage.setItem(TOKEN_KEY, result.token);
-        localStorage.setItem(NAME_KEY, result.fullName);
-        localStorage.setItem(ROLE_KEY, result.role);
-        localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
-        startAuthenticatedApp(result.fullName, result.role);
-        Toast.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ' + result.fullName });
-      });
+      return finishLogin(result);
     } else {
       showLoginError(result.message);
     }
@@ -847,6 +840,231 @@ function doLogin() {
     showLoginError('เชื่อมต่อ API ไม่ได้: ' + err.message);
   }).finally(function () {
     setButtonLoading(btn, false);
+  });
+}
+
+// ขั้นตอนสำคัญ: เอา Firebase Custom Token ไปยื่นให้ Firebase Auth เพื่อให้ Security Rules มองเห็นว่า
+// "login อยู่แล้ว" ตอนอ่านข้อมูลแบบ real-time · ใช้ร่วมกันทั้ง login ด้วยรหัสผ่าน และ QR login
+function finishLogin(result) {
+  return fbAuth.signInWithCustomToken(result.firebaseCustomToken).then(function () {
+    qrLoginStop();
+    localStorage.setItem(TOKEN_KEY, result.token);
+    localStorage.setItem(NAME_KEY, result.fullName);
+    localStorage.setItem(ROLE_KEY, result.role);
+    localStorage.setItem(ACCOUNT_ID_KEY, result.accountId);
+    startAuthenticatedApp(result.fullName, result.role);
+    Toast.fire({ icon: 'success', title: 'เข้าสู่ระบบสำเร็จ ยินดีต้อนรับ ' + result.fullName });
+  });
+}
+
+// =====================================================================
+// QR login (2569-11) — คอม: แสดง QR (เปลี่ยนทุก 60 วิ) แล้วถามสถานะทุก 2 วิ · มือถือ: สแกน → ยืนยัน
+// QR มีแค่ลิงก์ ?qr=<id> (ไม่มีรหัสผ่าน/token) · secret ที่ใช้รับ session อยู่ในหน่วยความจำของคอมเครื่องนี้เท่านั้น
+// =====================================================================
+var QR_ROTATE_MS = 60 * 1000, QR_POLL_MS = 2000, QR_MAX_ROUNDS = 5;
+var _qr = { on: false, id: '', secret: '', until: 0, rounds: 0, pollT: null, tickT: null, busy: false };
+function isDesktopLogin() { return getDeviceInfo().type === 'desktop' && window.innerWidth >= 700; }
+function loadScriptOnce(src, test) {
+  if (test()) return Promise.resolve();
+  return new Promise(function (ok, bad) {
+    var s = document.createElement('script'); s.src = src; s.async = true;
+    s.onload = function () { test() ? ok() : bad(new Error('โหลดไม่สำเร็จ')); }; s.onerror = function () { bad(new Error('โหลดไม่สำเร็จ')); };
+    document.head.appendChild(s);
+  });
+}
+function qrSvg(text) {
+  var q = qrcode(0, 'M'); q.addData(text); q.make();
+  var n = q.getModuleCount(), m = 2, d = '';
+  for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + (c + m) + ' ' + (r + m) + 'h1v1h-1z';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + (n + 2 * m) + ' ' + (n + 2 * m) + '" shape-rendering="crispEdges" aria-hidden="true"><rect width="100%" height="100%" fill="#fff"/><path d="' + d + '" fill="#111"/></svg>';
+}
+function qrLoginLink(id) { return location.origin + location.pathname.replace(/index\.html$/, '') + '?qr=' + id; }
+function showQrLogin() {
+  document.getElementById('pw-login').hidden = true;
+  document.getElementById('qr-login').hidden = false;
+  document.getElementById('login-error-text').style.display = 'none';
+  qrLoginStart(true);
+}
+function showPasswordLogin() {
+  qrLoginStop();
+  document.getElementById('qr-login').hidden = true;
+  document.getElementById('pw-login').hidden = false;
+  setTimeout(function () { var el = document.getElementById('username'); if (el) el.focus(); }, 50);
+}
+function qrSetStatus(html, over) {
+  var st = document.getElementById('qr-status'); if (st) st.innerHTML = html;
+  var ov = document.getElementById('qr-over');
+  if (ov) { ov.hidden = !over; ov.innerHTML = over || ''; }
+}
+function qrLoginStop() {
+  _qr.on = false; clearTimeout(_qr.pollT); clearInterval(_qr.tickT); _qr.pollT = null; _qr.tickT = null; _qr.secret = '';
+}
+function qrLoginStart(reset) {
+  var box = document.getElementById('qr-login');
+  if (!box || box.hidden) return;
+  if (reset) _qr.rounds = 0;
+  if (_qr.rounds >= QR_MAX_ROUNDS) { qrLoginStop(); qrSetStatus('QR หมดเวลาแล้ว', '<span>แตะเพื่อสร้าง QR ใหม่</span>'); return; }
+  qrLoginStop(); _qr.on = true; _qr.rounds++;
+  qrSetStatus('กำลังสร้าง QR…', '');
+  loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js', function () { return typeof window.qrcode === 'function'; })
+    .then(function () { return callApi('qrStart', { device: getDeviceInfo() }); })
+    .then(function (r) {
+      if (!_qr.on) return;
+      if (!r || !r.success) throw new Error((r && r.message) || 'สร้าง QR ไม่สำเร็จ');
+      _qr.id = r.id; _qr.secret = r.secret; _qr.until = Date.now() + QR_ROTATE_MS;
+      document.getElementById('qr-img').innerHTML = qrSvg(qrLoginLink(r.id));
+      qrTick(); _qr.tickT = setInterval(qrTick, 1000);
+      _qr.pollT = setTimeout(qrPollOnce, QR_POLL_MS);
+    })
+    .catch(function (err) { _qr.on = false; qrSetStatus('สร้าง QR ไม่สำเร็จ: ' + escapeHtmlPtb(err.message), '<span>แตะเพื่อลองใหม่</span>'); });
+}
+function qrTick() {
+  if (!_qr.on) return;
+  var left = Math.max(0, Math.ceil((_qr.until - Date.now()) / 1000));
+  if (left <= 0) { qrLoginStart(false); return; }
+  if (!_qr.scanned) qrSetStatus('QR เปลี่ยนใหม่ใน <b class="qr-num">0:' + String(left).padStart(2, '0') + '</b>', '');
+}
+function qrPollOnce() {
+  if (!_qr.on || !_qr.secret) return;
+  if (document.hidden) { _qr.pollT = setTimeout(qrPollOnce, QR_POLL_MS); return; }
+  var id = _qr.id, secret = _qr.secret;
+  callApi('qrPoll', { id: id, secret: secret }).then(function (r) {
+    if (!_qr.on || id !== _qr.id) return;
+    if (r && r.success && r.status === 'approved') {
+      qrLoginStop(); qrSetStatus('<b>ยืนยันแล้ว</b> · กำลังเข้าสู่ระบบ…', '');
+      return finishLogin(r).catch(function (e) { qrSetStatus('เข้าสู่ระบบไม่สำเร็จ: ' + escapeHtmlPtb(e.message), '<span>แตะเพื่อลองใหม่</span>'); });
+    }
+    if (r && r.status === 'rejected') { _qr.scanned = false; qrSetStatus('มือถือกดยกเลิก · สร้าง QR ใหม่ให้แล้ว', ''); setTimeout(function () { qrLoginStart(true); }, 1200); return; }
+    if (r && r.status === 'expired') { _qr.scanned = false; qrLoginStart(false); return; }
+    if (r && r.scanned && !_qr.scanned) { _qr.scanned = true; _qr.until = Math.max(_qr.until, Date.now() + 60 * 1000); qrSetStatus('<b>สแกนแล้ว</b> · กดยืนยันบนมือถือ', ''); }
+    _qr.pollT = setTimeout(qrPollOnce, QR_POLL_MS);
+  }).catch(function () { if (_qr.on) _qr.pollT = setTimeout(qrPollOnce, QR_POLL_MS * 2); });
+}
+document.addEventListener('visibilitychange', function () {
+  // กลับมาที่แท็บ: QR อาจหมดอายุระหว่างซ่อน → สร้างใหม่
+  if (!document.hidden && _qr.on && Date.now() > _qr.until) qrLoginStart(false);
+});
+
+// ----- มือถือ: ลิงก์ ?qr=<id> (สแกนด้วยแอปกล้อง) หรือเมนู "สแกนเข้าคอมพิวเตอร์" -----
+var _pendingQrId = (function () {
+  try {
+    var u = new URL(location.href), id = u.searchParams.get('qr');
+    if (id) { u.searchParams.delete('qr'); history.replaceState(history.state, '', u.pathname + (u.search || '') + u.hash); }
+    return /^[a-f0-9]{32}$/.test(id || '') ? id : '';
+  } catch (e) { return ''; }
+})();
+function qrIdFromText(t) {
+  t = String(t || '').trim();
+  var m = t.match(/[?&]qr=([a-f0-9]{32})/); if (m) return m[1];
+  return /^[a-f0-9]{32}$/.test(t) ? t : '';
+}
+function maybeOpenPendingQr() {
+  if (!_pendingQrId || !localStorage.getItem(TOKEN_KEY)) return;
+  var id = _pendingQrId; _pendingQrId = '';
+  setTimeout(function () { openQrConfirm(id); }, 600);
+}
+function openQrConfirm(id) {
+  var token = localStorage.getItem(TOKEN_KEY);
+  if (!token) { _pendingQrId = id; Toast.fire({ icon: 'info', title: 'เข้าสู่ระบบบนมือถือก่อน แล้วระบบจะถามยืนยันให้' }); return; }
+  callApi('qrInfo', { token: token, id: id }).then(function (r) {
+    if (!r.success) { Swal.fire({ icon: 'warning', title: 'ใช้ QR นี้ไม่ได้', text: r.message, confirmButtonColor: '#047857' }); return; }
+    var dev = (r.device && r.device.label) || 'คอมพิวเตอร์';
+    var when = new Date(r.createdAt).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+    return Swal.fire({
+      title: 'เข้าสู่ระบบบนคอมพิวเตอร์?',
+      html: '<div class="qrc-kv"><span>บัญชี</span><b>' + escapeHtmlPtb(r.fullName) + '</b><span>อุปกรณ์</span><b>' + escapeHtmlPtb(dev) + '</b><span>เวลา</span><b>' + when + '</b></div>' +
+        '<div class="qrc-warn">ถ้าไม่ได้สแกนเองที่หน้าคอมของคุณ ให้กด <b>ยกเลิก</b></div>',
+      showCancelButton: true, confirmButtonText: 'ยืนยัน เข้าสู่ระบบ', cancelButtonText: 'ยกเลิก', reverseButtons: true,
+      confirmButtonColor: '#047857', focusCancel: true, customClass: { popup: 'qrc-pop' }
+    }).then(function (res) {
+      var ok = !!res.isConfirmed;
+      return callApi('qrApprove', { token: token, id: id, approve: ok }).then(function (a) {
+        if (!a.success) { Swal.fire({ icon: 'warning', title: 'ไม่สำเร็จ', text: a.message, confirmButtonColor: '#047857' }); return; }
+        Toast.fire(ok ? { icon: 'success', title: 'ยืนยันแล้ว · คอมจะเข้าสู่ระบบภายในไม่กี่วินาที' } : { icon: 'info', title: 'ยกเลิกแล้ว · คอมเข้าสู่ระบบไม่ได้' });
+      });
+    });
+  }).catch(function (err) { Swal.fire({ icon: 'error', title: 'เชื่อมต่อไม่ได้', text: err.message, confirmButtonColor: '#047857' }); });
+}
+var _qrScan = { stream: null, raf: 0, timer: 0 };
+function stopQrScanner() {
+  cancelAnimationFrame(_qrScan.raf); clearTimeout(_qrScan.timer);
+  if (_qrScan.stream) _qrScan.stream.getTracks().forEach(function (t) { t.stop(); });
+  _qrScan.stream = null;
+}
+function openQrScanner() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    Swal.fire({ icon: 'info', title: 'เปิดกล้องในแอปไม่ได้', text: 'ใช้แอปกล้องของมือถือสแกน QR ที่หน้าคอมแทนได้', confirmButtonColor: '#047857' }); return;
+  }
+  var found = false;
+  Swal.fire({
+    title: 'สแกนเข้าคอมพิวเตอร์',
+    html: '<div class="qrs-wrap"><video id="qrs-video" playsinline muted></video><div class="qrs-frame" aria-hidden="true"></div></div><p class="qrs-hint" id="qrs-hint">หันกล้องไปที่ QR บนหน้าจอคอม</p>',
+    showConfirmButton: false, showCancelButton: true, cancelButtonText: 'ปิด', customClass: { popup: 'qrs-pop' },
+    didOpen: function () {
+      var video = document.getElementById('qrs-video'), hint = document.getElementById('qrs-hint');
+      var useNative = 'BarcodeDetector' in window;
+      var ready = useNative ? Promise.resolve() : loadScriptOnce('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js', function () { return typeof window.jsQR === 'function'; });
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }).then(function (stream) {
+        _qrScan.stream = stream; video.srcObject = stream; return video.play().then(function () { return ready; });
+      }).then(function () {
+        var det = useNative ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+        var cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+        var done = function (text) {
+          var id = qrIdFromText(text);
+          if (!id) { hint.textContent = 'QR นี้ไม่ใช่ของ C2 Calendar'; return false; }
+          found = true; stopQrScanner(); Swal.close(); setTimeout(function () { openQrConfirm(id); }, 200); return true;
+        };
+        var loop = function () {
+          if (!_qrScan.stream || found) return;
+          if (video.readyState < 2) { _qrScan.raf = requestAnimationFrame(loop); return; }
+          if (det) {
+            det.detect(video).then(function (codes) { if (codes && codes[0] && done(codes[0].rawValue)) return; _qrScan.timer = setTimeout(loop, 250); }).catch(function () { _qrScan.timer = setTimeout(loop, 400); });
+          } else {
+            var w = Math.min(640, video.videoWidth), h = Math.round(video.videoHeight * w / video.videoWidth);
+            cv.width = w; cv.height = h; cx.drawImage(video, 0, 0, w, h);
+            var img = cx.getImageData(0, 0, w, h), code = window.jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+            if (code && done(code.data)) return;
+            _qrScan.timer = setTimeout(loop, 250);
+          }
+        };
+        loop();
+      }).catch(function (err) {
+        stopQrScanner();
+        hint.innerHTML = (err && err.name === 'NotAllowedError') ? 'ไม่ได้อนุญาตให้ใช้กล้อง · อนุญาตกล้องในการตั้งค่าเบราว์เซอร์ หรือใช้<b>แอปกล้องของมือถือ</b>สแกนแทน' : 'เปิดกล้องไม่ได้ · ใช้<b>แอปกล้องของมือถือ</b>สแกน QR แทน';
+      });
+    },
+    willClose: stopQrScanner
+  });
+}
+
+// ----- อุปกรณ์ที่เข้าสู่ระบบอยู่ (ของตัวเอง) -----
+function openSessionsModal() {
+  var token = localStorage.getItem(TOKEN_KEY); if (!token) return;
+  var render = function () {
+    return callApi('listMySessions', { token: token }).then(function (r) {
+      var fmt = function (ms) { return ms ? new Date(ms).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : 'ก่อนเริ่มเก็บข้อมูล'; };
+      var rows = r.sessions.map(function (x) {
+        var d = x.device || {}, mob = d.type === 'mobile';
+        return '<div class="ses-row' + (x.current ? ' cur' : '') + '"><span class="ses-ic">' + (mob ? '📱' : '💻') + '</span><span class="ses-t"><b>' + escapeHtmlPtb(d.label || (mob ? 'มือถือ' : 'คอมพิวเตอร์')) + (x.current ? ' <em>เครื่องนี้</em>' : '') + '</b><small>' + (x.via === 'qr' ? 'สแกน QR · ' : x.via === 'password' ? 'รหัสผ่าน · ' : '') + 'เข้าเมื่อ ' + fmt(x.createdAt) + '</small></span>' +
+          (x.current ? '' : '<button type="button" class="ses-out" data-sid="' + escapeHtmlPtb(x.sid) + '">ออกจากระบบ</button>') + '</div>';
+      }).join('');
+      var others = r.sessions.filter(function (x) { return !x.current; }).length;
+      return '<div class="ses-list">' + rows + '</div>' + (others ? '<button type="button" class="ses-all" data-all="1">ออกจากระบบทุกเครื่อง ยกเว้นเครื่องนี้ (' + others + ')</button>' : '<p class="ses-none">ไม่มีเครื่องอื่นที่เข้าสู่ระบบอยู่</p>');
+    });
+  };
+  Swal.fire({ title: 'อุปกรณ์ที่เข้าสู่ระบบ', html: '<p class="ses-none">กำลังโหลด…</p>', showConfirmButton: false, showCloseButton: true, customClass: { popup: 'ses-pop' },
+    didOpen: function (pop) {
+      var box = pop.querySelector('.swal2-html-container');
+      var load = function () { render().then(function (h) { box.innerHTML = h; }).catch(function (e) { box.innerHTML = '<p class="ses-none">โหลดไม่สำเร็จ: ' + escapeHtmlPtb(e.message) + '</p>'; }); };
+      box.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-sid],[data-all]'); if (!b) return;
+        b.disabled = true; b.textContent = 'กำลังออก…';
+        callApi('revokeMySession', b.dataset.all ? { token: token, all: true } : { token: token, sid: b.dataset.sid }).then(function (r) {
+          Toast.fire({ icon: 'success', title: 'ออกจากระบบ ' + r.removed + ' เครื่องแล้ว' }); load();
+        }).catch(function (err) { Toast.fire({ icon: 'error', title: err.message }); load(); });
+      });
+      load();
+    }
   });
 }
 
@@ -4001,6 +4219,8 @@ function openMoreMenu() {
     groups.push(refreshItem + themeItem);
 
     var group2 = mmItem('👤', 'โปรไฟล์', 'openProfileModal();') +
+      mmItem('📷', 'สแกนเข้าคอมพิวเตอร์', 'openQrScanner();') +
+      mmItem('💻', 'อุปกรณ์ที่เข้าสู่ระบบ', 'openSessionsModal();') +
       mmItem('⚙️', 'ตั้งค่าการแจ้งเตือน', 'openNotifSettingsModal();');
     groups.push(group2);
 
@@ -4071,6 +4291,8 @@ function m2Svg(d, size) {
   return '<svg width="' + w + '" height="' + w + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
 }
 var M2I = {
+  qrscan: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="4" height="4" rx=".5"/><rect x="13" y="13" width="4" height="4" rx=".5"/><path d="M13 7h4v2M7 15v2h2"/>',
+  devices: '<rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.2"/>',
   chv: '<svg class="m2-chv" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>',
   team: '<path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   chart: '<path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 6-6"/>',
@@ -4145,6 +4367,9 @@ function openMoreMenuV2() {
       manage += m2Row(M2I.excel, 'Export Excel (เดือนที่ดูอยู่)', 'exportMonthToExcel();');
     }
     if (manage) html += '<div class="m2-h">จัดการ</div><div class="m2-list">' + manage + '</div>';
+    html += '<div class="m2-h">เข้าสู่ระบบ</div><div class="m2-list">' +
+      m2Row(M2I.qrscan, 'สแกนเข้าคอมพิวเตอร์', 'openQrScanner();') +
+      m2Row(M2I.devices, 'อุปกรณ์ที่เข้าสู่ระบบ', 'openSessionsModal();') + '</div>';
     html += '<div class="m2-h">ตั้งค่า</div><div class="m2-list">' +
       m2Row(M2I.bell, 'ตั้งค่าการแจ้งเตือน', 'openNotifSettingsModal();') + themeRow + uiRow + '</div>';
     html += '<button type="button" class="m2-out" onclick="closeMoreMenu(); doLogout();">' + m2Svg(M2I.logout) + 'ออกจากระบบ</button>';

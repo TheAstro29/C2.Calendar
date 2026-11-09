@@ -2970,3 +2970,34 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 .v2page-in .hd-f input:focus-visible, .v2page-in .hd-f select:focus-visible { outline: 0; }
 :root[data-theme="dark"] .hd-card-h h4, :root[data-theme="dark"] .db-ch h4 { color: #6ee7b7; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .hd-card-h h4, :root:not([data-theme="light"]) .db-ch h4 { color: #6ee7b7; } }
+
+/* ===== QR login (2569-11) ===== */
+#login-box:has(#qr-login:not([hidden])) { width: 340px; }
+#login-box [hidden] { display: none !important; }
+#login-box .qr-switch { width: 100%; margin-top: 12px; padding: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.28); border-radius: 10px; color: rgba(255,255,255,0.92); font-size: 13.5px; font-family: inherit; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; justify-content: center; }
+#login-box .qr-switch:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.5); }
+#login-box .qr-switch:focus-visible, #qr-over:focus-visible { outline: 2px solid #a7f3d0; outline-offset: 2px; }
+.qr-steps { margin: 8px 0 14px; padding-left: 20px; color: rgba(255,255,255,0.82); font-size: 13px; line-height: 1.7; }
+.qr-steps b { color: #fff; }
+#qr-frame { position: relative; width: 200px; height: 200px; margin: 0 auto; background: #fff; border-radius: 14px; padding: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+#qr-img, #qr-img svg { width: 100%; height: 100%; display: block; }
+#qr-over { position: absolute; inset: 0; border: 0; border-radius: 14px; background: rgba(255,255,255,0.94); color: #065f46; font: 600 14px/1.4 inherit; font-family: inherit; cursor: pointer; display: grid; place-items: center; padding: 16px; }
+#qr-status { text-align: center; margin: 12px 0 0; font-size: 13px; color: rgba(255,255,255,0.8); min-height: 20px; }
+#qr-status b { color: #fff; } .qr-num { font-variant-numeric: tabular-nums; }
+/* มือถือ: ยืนยัน / สแกน / อุปกรณ์ */
+.qrc-kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; text-align: left; font-size: 14.5px; margin: 4px 0 12px; }
+.qrc-kv span { color: #6b7280; } .qrc-kv b { font-weight: 600; }
+.qrc-warn { background: #fef3c7; color: #92400e; border-radius: 10px; padding: 10px 12px; font-size: 13.5px; text-align: left; }
+.qrs-wrap { position: relative; width: 100%; max-width: 320px; aspect-ratio: 1; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #111; }
+.qrs-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.qrs-frame { position: absolute; inset: 18%; border: 3px solid #34d399; border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,0.35); }
+.qrs-hint { font-size: 14px; color: #4b5563; margin: 12px 0 0; }
+.ses-list { display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.ses-row { display: flex; gap: 10px; align-items: center; border: 1px solid #e5e7eb; border-radius: 12px; padding: 10px 12px; }
+.ses-row.cur { border-color: #34d399; background: #ecfdf5; }
+.ses-ic { font-size: 20px; } .ses-t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ses-t b { font-size: 14px; font-weight: 600; } .ses-t em { font-style: normal; font-size: 11.5px; color: #047857; background: #d1fae5; border-radius: 999px; padding: 1px 8px; margin-left: 4px; }
+.ses-t small { font-size: 12.5px; color: #6b7280; }
+.ses-out { border: 1px solid #fecaca; color: #b91c1c; background: #fff; border-radius: 8px; padding: 6px 10px; font-family: inherit; font-size: 13px; cursor: pointer; min-height: 36px; }
+.ses-all { margin-top: 12px; width: 100%; border: 0; background: #fee2e2; color: #b91c1c; border-radius: 10px; padding: 11px; font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.ses-none { color: #6b7280; font-size: 14px; }

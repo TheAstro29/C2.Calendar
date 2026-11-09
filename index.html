@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css?v=20261031a">
+  <link rel="stylesheet" href="style.css?v=20261109q">
 </head>
 <body>
 
@@ -126,6 +126,7 @@
         </button>
         <div id="user-menu" class="tb-menu tb-menu-right" role="menu">
           <button role="menuitem" onclick="closeTopMenus(); openProfileModal()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"/></svg>โปรไฟล์ของฉัน</button>
+          <button role="menuitem" onclick="closeTopMenus(); openSessionsModal()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="12" rx="1.2"/></svg>อุปกรณ์ที่เข้าสู่ระบบ</button>
           <div class="tb-menu-sep"></div>
           <button role="menuitem" class="tb-danger" onclick="closeTopMenus(); doLogout()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>ออกจากระบบ</button>
         </div>
@@ -328,15 +329,33 @@
 
     <div id="login-box">
       <button id="login-close" onclick="closeLoginModal()">✕</button>
-      <h2>เข้าสู่ระบบ C2 Calendar</h2>
-      <p class="sub">สำหรับจัดการงานต่างๆ</p>
-      <input type="text" id="username" placeholder="ชื่อผู้ใช้">
-      <div class="pw-wrap">
-        <input type="password" id="password" placeholder="รหัสผ่าน">
-        <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('password', this)">👁</button>
+      <div id="pw-login">
+        <h2>เข้าสู่ระบบ C2 Calendar</h2>
+        <p class="sub">สำหรับจัดการงานต่างๆ</p>
+        <input type="text" id="username" placeholder="ชื่อผู้ใช้">
+        <div class="pw-wrap">
+          <input type="password" id="password" placeholder="รหัสผ่าน">
+          <button type="button" class="pw-toggle-btn" onclick="togglePasswordVisibility('password', this)">👁</button>
+        </div>
+        <p id="login-error-text"></p>
+        <button id="login-submit-btn" class="submit" onclick="doLogin()">เข้าสู่ระบบ</button>
+        <button type="button" class="qr-switch" onclick="showQrLogin()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>เข้าด้วย QR จากมือถือ</button>
       </div>
-      <p id="login-error-text"></p>
-      <button id="login-submit-btn" class="submit" onclick="doLogin()">เข้าสู่ระบบ</button>
+      <!-- QR login: มือถือที่ login อยู่แล้วสแกน → กดยืนยันบนมือถือ → คอมเข้าระบบเอง (ดู qrLogin* ใน app.js) -->
+      <div id="qr-login" hidden>
+        <h2>เข้าสู่ระบบด้วยมือถือ</h2>
+        <ol class="qr-steps">
+          <li>เปิด C2 Calendar บนมือถือที่เข้าสู่ระบบอยู่แล้ว</li>
+          <li>เมนู → <b>สแกนเข้าคอมพิวเตอร์</b> (หรือใช้แอปกล้องสแกน)</li>
+          <li>สแกน QR นี้ แล้วกด <b>ยืนยัน</b> บนมือถือ</li>
+        </ol>
+        <div id="qr-frame">
+          <div id="qr-img" aria-label="QR สำหรับเข้าสู่ระบบ" role="img"></div>
+          <button type="button" id="qr-over" hidden onclick="qrLoginStart(true)"></button>
+        </div>
+        <p id="qr-status" aria-live="polite">กำลังสร้าง QR…</p>
+        <button type="button" class="qr-switch" onclick="showPasswordLogin()">ใช้ชื่อผู้ใช้และรหัสผ่านแทน</button>
+      </div>
     </div>
 
     <p id="login-footer">© C2 Tech Company Limited</p>
@@ -1084,6 +1103,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
   <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
-  <script src="app.js?v=20261031a"></script>
+  <script src="app.js?v=20261109q"></script>
 </body>
 </html>
