@@ -187,8 +187,10 @@ var CLOUD_FUNCTION_ACTIONS = [
   'login', 'validateSessionCallable', 'addTask', 'updateTask', 'deleteTask',
   'getStaffList', 'getPublicStaffList', 'addStaff', 'updateStaff', 'resetPassword', 'setStaffActive', 'deleteStaff',
   'addHoliday', 'deleteHoliday',
-  'requestDeleteTask', 'requestRescheduleTask', 'approveChangeRequest', 'rejectChangeRequest',
+  // (2569-11-20) เพิ่ม requestEditTask — เดิมตกหล่นจากรายการนี้ ปุ่ม "ขอแก้ไขงาน" เลยได้ "ไม่รู้จัก action" ทุกครั้ง
+  'requestDeleteTask', 'requestRescheduleTask', 'requestEditTask', 'approveChangeRequest', 'rejectChangeRequest',
   'getMyProfile', 'updateOwnProfile', 'changeOwnPassword', 'markNotificationRead',
+  'deleteNotification', 'clearReadNotifications',
   'addTaskTag', 'createPersonalTask', 'updatePersonalTaskStatus', 'updatePersonalTask', 'deletePersonalTask',
   'toggleChecklistItem', 'registerTaskAttachment', 'getCompanyTaskSummary', 'exportTaskReport',
   'registerPushToken', 'getNotificationPrefs', 'updateNotificationPrefs', 'sendTestNotification',
@@ -1172,6 +1174,7 @@ function exitAdminMode() {
   document.getElementById('taskboard-sidebar-section').style.display = 'none';
   teardownPersonalTasksListener();
   if (_unsubNotifications) { _unsubNotifications(); _unsubNotifications = null; }
+  teardownPendingRequestsListener();
   lastNotifications = [];
   isFirstNotifSnapshot = true;
   loadTodoList();
@@ -1559,21 +1562,41 @@ function toggleStaffActive(checkboxEl, staffId, active) {
 // เก็บเป็น HTML ที่จำกัดชนิด tag ไว้ (กรองผ่าน sanitizeRichText ทั้งตอนโหลดเข้ากล่องและตอนบันทึก กัน HTML/สไตล์
 // แปลกปลอมหลุดเข้ามา) ส่วนที่ export ออกเป็น Excel หรือแสดงในที่ที่ต้องการข้อความล้วนใช้ stripHtmlToText แทน
 var RICH_TEXT_ALLOWED_TAGS = { B: 1, STRONG: 1, I: 1, EM: 1, BR: 1, SPAN: 1, DIV: 1 };
+// tag ที่เนื้อหาข้างในไม่ใช่ข้อความให้คนอ่าน — ตัดทิ้งทั้งก้อน ไม่ unwrap
+var RICH_TEXT_DROP_TAGS = { SCRIPT: 1, STYLE: 1, IFRAME: 1, OBJECT: 1, EMBED: 1, TEMPLATE: 1, NOSCRIPT: 1, TEXTAREA: 1, TITLE: 1, SVG: 1, MATH: 1 };
+
+// (2569-11-20) แก้ช่องโหว่ XSS 2 จุด:
+//   1) เดิม parse ด้วย div ของหน้าจริง (document.createElement) → เบราว์เซอร์โหลด <img src=x onerror=...> และรัน
+//      handler ทันทีตอนตั้ง innerHTML ก่อนตัวกรองจะได้ลบ tag ทิ้ง — ตอนนี้ parse ใน document แยก (createHTMLDocument)
+//      ซึ่งไม่โหลดรูป/ไม่รันสคริปต์ใดๆ
+//   2) ตอน unwrap tag ที่ไม่อนุญาต ลูกที่ย้ายออกมาถูกข้ามไป (child = next) ไม่ถูกตรวจ → <p><img onerror></p> รอดได้
+//      ตอนนี้กลับไปตรวจลูกตัวแรกที่ย้ายออกมาต่อทันที
+var _richTextDoc = null;
+function richTextInertDoc() {
+  if (!_richTextDoc) _richTextDoc = document.implementation.createHTMLDocument('');
+  return _richTextDoc;
+}
 
 function sanitizeRichText(html) {
-  var container = document.createElement('div');
+  var container = richTextInertDoc().createElement('div');
   container.innerHTML = html || '';
   (function walk(node) {
     var child = node.firstChild;
     while (child) {
       var next = child.nextSibling;
       if (child.nodeType === 1) {
-        var tag = child.tagName;
-        if (!RICH_TEXT_ALLOWED_TAGS[tag]) {
-          // tag ที่ไม่อนุญาต - unwrap เอาแค่เนื้อหาข้างในออกมาแทนที่จะตัดทิ้งทั้งหมด
-          while (child.firstChild) node.insertBefore(child.firstChild, child);
+        var tag = child.tagName.toUpperCase();
+        if (RICH_TEXT_DROP_TAGS[tag]) {
           node.removeChild(child);
           child = next;
+          continue;
+        }
+        if (!RICH_TEXT_ALLOWED_TAGS[tag]) {
+          // tag ที่ไม่อนุญาต - unwrap เอาแค่เนื้อหาข้างในออกมาแทนที่จะตัดทิ้งทั้งหมด แล้วตรวจลูกที่ย้ายออกมาต่อ
+          var firstMoved = child.firstChild;
+          while (child.firstChild) node.insertBefore(child.firstChild, child);
+          node.removeChild(child);
+          child = firstMoved || next;
           continue;
         }
         // ลบ attribute เดิมทั้งหมด เหลือแค่ style ที่กรองแล้ว (เฉพาะ span, เฉพาะ color/font-size)
@@ -1598,7 +1621,7 @@ function sanitizeRichText(html) {
 }
 
 function stripHtmlToText(html) {
-  var d = document.createElement('div');
+  var d = richTextInertDoc().createElement('div'); // document แยก — กัน <img onerror> ทำงานตอน parse (ดู sanitizeRichText)
   d.innerHTML = html || '';
   d.querySelectorAll('br').forEach(function (el) { el.replaceWith('\n'); });
   d.querySelectorAll('div').forEach(function (el) { el.insertAdjacentText('beforebegin', '\n'); });
@@ -5378,9 +5401,67 @@ var isFirstNotifSnapshot = true;
 // _unsubPersonalTasks/_unsubTaskTags อยู่แล้ว
 var _unsubNotifications = null;
 
+// ===== (2569-11-20) สถานะจริงของคำขออนุมัติ สำหรับ Admin =====
+// บั๊กที่ผู้ใช้แจ้ง: Admin A อนุมัติแล้ว Admin B ยังเห็นคำขอ "รออนุมัติ" ค้าง — เดิมหน้าเว็บตัดสินจากแค่ n.read ของสำเนา
+// แจ้งเตือนตัวเอง (backend ไป mark ให้ทีหลัง) ถ้า mark พลาด/คำขอเก่าก่อนมีตัวแก้ ก็ค้างตลอด และต่อให้ mark สำเร็จ
+// ป้าย "รออนุมัติ" ก็ยังติดอยู่ ตอนนี้ฟัง changeRequests ที่ status=='pending' แบบ realtime (rules อ่านได้ทุก member)
+// แล้วโชว์ปุ่มเฉพาะคำขอที่ยัง pending จริงเท่านั้น · null = ยังไม่โหลด/ไม่ใช่ Admin → ใช้ n.read แบบเดิมเป็นค่าสำรอง
+var _pendingRequestIds = null;
+var _unsubPendingRequests = null;
+function setupPendingRequestsListener() {
+  if (localStorage.getItem(ROLE_KEY) !== 'admin') return;
+  if (_unsubPendingRequests) return;
+  _unsubPendingRequests = fbDb.collection('changeRequests').where('status', '==', 'pending')
+    .onSnapshot(function (snapshot) {
+      var ids = {};
+      snapshot.forEach(function (d) { ids[d.id] = true; });
+      _pendingRequestIds = ids;
+      updateNotifBadges(false);
+      if (document.getElementById('my-requests-modal-overlay').style.display === 'flex') renderNotificationsList();
+    }, function (err) {
+      console.error('ฟังคำขอรออนุมัติไม่สำเร็จ', err);
+    });
+}
+function teardownPendingRequestsListener() {
+  if (_unsubPendingRequests) { _unsubPendingRequests(); _unsubPendingRequests = null; }
+  _pendingRequestIds = null;
+}
+// คืนสถานะของแจ้งเตือนคำขอ: 'pending' | 'approved' | 'rejected' | 'done' หรือ null ถ้าไม่ใช่แจ้งเตือนคำขอ
+function getRequestNotifState(n) {
+  if (n.type !== 'changeRequestNew') return null;
+  if (n.resolvedStatus) return n.resolvedStatus;
+  if (_pendingRequestIds === null) return n.read ? 'done' : 'pending';
+  return _pendingRequestIds[n.requestId] ? 'pending' : 'done';
+}
+// "ยังไม่อ่าน" สำหรับ badge/ตัวกรอง — คำขอที่คนอื่นดำเนินการไปแล้วไม่นับ แม้สำเนาของเราจะยัง read:false
+function isNotifUnread(n) {
+  if (n.read) return false;
+  var st = getRequestNotifState(n);
+  return !st || st === 'pending';
+}
+function updateNotifBadges(hasNewNotif) {
+  var unreadCount = lastNotifications.filter(isNotifUnread).length;
+  var badge = document.getElementById('notif-badge');
+  var badge2 = document.getElementById('mtb2-badge'); // v3 แถบล่างแบบใหม่
+  if (badge2) { badge2.textContent = unreadCount > 99 ? '99+' : unreadCount; badge2.style.display = unreadCount > 0 ? 'grid' : 'none'; }
+  if (badge) {
+    if (unreadCount > 0) { badge.textContent = unreadCount; badge.style.display = 'flex'; }
+    else { badge.style.display = 'none'; }
+    // เด้ง pop badge ทุกครั้งที่มีแจ้งเตือนใหม่จริงๆเข้ามา (ไม่ใช่แค่ re-render เฉยๆ) - ลบคลาสแล้วบังคับ
+    // reflow ก่อนใส่กลับ เพราะถ้าแจ้งเตือนเข้ามาถี่ๆ ต่อกัน คลาส 'pop' อาจยังค้างอยู่จากรอบก่อน ใส่ซ้ำเฉยๆ
+    // จะไม่ retrigger animation (ต้องเอาออกแล้วบังคับ reflow ก่อนใส่กลับเสมอ)
+    if (hasNewNotif && unreadCount > 0) {
+      badge.classList.remove('pop');
+      void badge.offsetWidth;
+      badge.classList.add('pop');
+    }
+  }
+}
+
 function setupNotificationsRealtimeListener() {
   var myId = localStorage.getItem(ACCOUNT_ID_KEY);
   if (!myId) return;
+  setupPendingRequestsListener();
   if (_unsubNotifications) return; // กันสมัครซ้ำถ้าเรียกซ้อน
 
   _unsubNotifications = fbDb.collection('notifications').where('recipientId', '==', myId)
@@ -5409,22 +5490,7 @@ function setupNotificationsRealtimeListener() {
         return tb - ta;
       });
 
-      var unreadCount = lastNotifications.filter(function (n) { return !n.read; }).length;
-      var badge = document.getElementById('notif-badge');
-      var badge2 = document.getElementById('mtb2-badge'); // v3 แถบล่างแบบใหม่
-      if (badge2) { badge2.textContent = unreadCount > 99 ? '99+' : unreadCount; badge2.style.display = unreadCount > 0 ? 'grid' : 'none'; }
-      if (badge) {
-        if (unreadCount > 0) { badge.textContent = unreadCount; badge.style.display = 'flex'; }
-        else { badge.style.display = 'none'; }
-        // เด้ง pop badge ทุกครั้งที่มีแจ้งเตือนใหม่จริงๆเข้ามา (ไม่ใช่แค่ re-render เฉยๆ) - ลบคลาสแล้วบังคับ
-        // reflow ก่อนใส่กลับ เพราะถ้าแจ้งเตือนเข้ามาถี่ๆ ต่อกัน คลาส 'pop' อาจยังค้างอยู่จากรอบก่อน ใส่ซ้ำเฉยๆ
-        // จะไม่ retrigger animation (ต้องเอาออกแล้วบังคับ reflow ก่อนใส่กลับเสมอ)
-        if (hasNewNotif && unreadCount > 0) {
-          badge.classList.remove('pop');
-          void badge.offsetWidth;
-          badge.classList.add('pop');
-        }
-      }
+      updateNotifBadges(hasNewNotif);
 
       // ถ้า modal เปิดอยู่ ให้ render รายการใหม่ทันที
       if (document.getElementById('my-requests-modal-overlay').style.display === 'flex') {
@@ -5558,7 +5624,7 @@ function renderNotificationsList() {
   container.innerHTML = '';
   var list = lastNotifications;
   if (v2 && _m2NotiFilter === 'unread') {
-    list = lastNotifications.filter(function (n) { return !n.read; });
+    list = lastNotifications.filter(isNotifUnread);
     if (list.length === 0) {
       container.innerHTML = '<div class="m2-nempty"><b>อ่านครบแล้ว</b>ไม่มีแจ้งเตือนที่ยังไม่อ่าน</div>';
       return;
@@ -5566,10 +5632,19 @@ function renderNotificationsList() {
   }
   var lastGroup = null;
   list.forEach(function (n) {
+    var unread = isNotifUnread(n);
+    var reqState = getRequestNotifState(n); // null ถ้าไม่ใช่แจ้งเตือนคำขอ
     var card = document.createElement('div');
-    card.className = 'request-card' + (n.read ? '' : ' notif-unread');
+    card.className = 'request-card' + (unread ? ' notif-unread' : '');
     var timeLabel = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString('th-TH') : '';
     var info = getNotifTypeInfo(n.type);
+    // คำขอที่ถูกดำเนินการไปแล้ว (โดยเราหรือ Admin คนอื่น) เปลี่ยนป้ายจาก "รออนุมัติ" เป็นผลจริง
+    if (reqState && reqState !== 'pending') {
+      var by = n.resolvedByName ? ' โดย ' + n.resolvedByName : '';
+      info = reqState === 'approved' ? { icon: info.icon, color: 'green', tag: 'อนุมัติแล้ว' + by }
+        : reqState === 'rejected' ? { icon: info.icon, color: 'slate', tag: 'ไม่อนุมัติ' + by }
+        : { icon: info.icon, color: 'slate', tag: 'ดำเนินการแล้ว' + by };
+    }
     if (v2) {
       var when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate() : null;
       var grp = m2NotiGroup(when);
@@ -5584,21 +5659,24 @@ function renderNotificationsList() {
     }
 
     var actionsHtml = '';
-    if (n.type === 'changeRequestNew' && !n.read) {
+    if (reqState === 'pending') {
       actionsHtml = '<div class="rc-actions">' +
-        '<button class="btn-approve" onclick="approveFromNotification(this, \'' + n.requestId + '\', \'' + n.id + '\')">อนุมัติ</button>' +
-        '<button class="btn-reject" onclick="rejectFromNotification(this, \'' + n.requestId + '\', \'' + n.id + '\')">ไม่อนุมัติ</button>' +
+        '<button class="btn-approve" onclick="approveFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')">อนุมัติ</button>' +
+        '<button class="btn-reject" onclick="rejectFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')">ไม่อนุมัติ</button>' +
         '</div>';
     }
+    // ปุ่ม ✕ ลบแจ้งเตือนทีละอัน — ไม่โชว์กับคำขอที่ยังรออนุมัติ (backend ก็กันไว้อีกชั้น)
+    var dismissHtml = reqState === 'pending' ? '' :
+      '<button type="button" class="notif-dismiss" aria-label="ลบการแจ้งเตือนนี้" title="ลบการแจ้งเตือนนี้" onclick="dismissNotification(event, this, \'' + n.id + '\')">✕</button>';
 
     card.innerHTML =
       '<div class="notif-ic ' + info.color + '">' + info.icon + '</div>' +
       '<div class="notif-body-col">' +
         '<div class="rc-task">' + escapeHtmlPtb(n.body || '') + '</div>' +
         '<div class="notif-meta-row"><span class="rc-meta">' + timeLabel + '</span>' +
-          (info.tag ? '<span class="notif-tag">' + info.tag + '</span>' : '') +
+          (info.tag ? '<span class="notif-tag">' + escapeHtmlPtb(info.tag) + '</span>' : '') +
         '</div>' + actionsHtml +
-      '</div>' + (v2 && !n.read ? '<span class="m2-udot" aria-label="ยังไม่อ่าน"></span>' : '');
+      '</div>' + (v2 && unread ? '<span class="m2-udot" aria-label="ยังไม่อ่าน"></span>' : '') + dismissHtml;
 
     // คลิกที่การ์ด: ถ้ายังไม่อ่านให้ทำเครื่องหมายอ่านแล้วเหมือนเดิม และถ้ามีงานผูกอยู่ (taskId ของปฏิทินหลัก
     // หรือ personalTaskId ของ Personal Task Board) ให้เปิดการ์ดรายละเอียดงานซ้อนขึ้นมาเลยโดยไม่ปิดลิสต์นี้ก่อน
@@ -5713,6 +5791,61 @@ function markAllNotificationsRead(btn) {
   });
 }
 
+// ===== (2569-11-20) ล้างแจ้งเตือน — ลบทีละอัน (ปุ่ม ✕ บนการ์ด) และ "ล้างที่อ่านแล้ว" =====
+// ลบผ่าน Cloud Function (rules ห้ามเขียนตรง) · หลังลบ onSnapshot จะส่งรายการใหม่มาเอง แต่ตัดออกจาก
+// lastNotifications ทันทีด้วยเพื่อให้การ์ดหายไวไม่ต้องรอรอบ realtime
+function dismissNotification(evt, btn, notificationId) {
+  if (evt) evt.stopPropagation(); // ไม่ให้ไปเปิดงาน/mark อ่านจาก onclick ของการ์ด
+  btn.disabled = true;
+  var token = localStorage.getItem(TOKEN_KEY);
+  callApi('deleteNotification', { token: token, notificationId: notificationId }).then(function (result) {
+    if (result && result.success === false) {
+      Swal.fire({ icon: 'info', title: 'ลบไม่ได้', text: result.message });
+      btn.disabled = false;
+      return;
+    }
+    lastNotifications = lastNotifications.filter(function (x) { return x.id !== notificationId; });
+    updateNotifBadges(false);
+    renderNotificationsList();
+  }).catch(function (err) {
+    Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: err.message });
+    btn.disabled = false;
+  });
+}
+
+function clearReadNotifications(btn) {
+  var readCount = lastNotifications.filter(function (n) { return !isNotifUnread(n); }).length;
+  if (readCount === 0) {
+    Toast.fire({ icon: 'info', title: 'ไม่มีรายการที่อ่านแล้ว' });
+    return;
+  }
+  Swal.fire({
+    icon: 'question',
+    title: 'ล้างการแจ้งเตือนที่อ่านแล้ว?',
+    text: 'รายการที่อ่านแล้วจะถูกลบออกถาวร (รายการที่ยังไม่อ่าน และคำขอที่ยังรออนุมัติ จะยังอยู่)',
+    showCancelButton: true,
+    confirmButtonText: 'ล้างเลย',
+    cancelButtonText: 'ยกเลิก'
+  }).then(function (r) {
+    if (!r.isConfirmed) return;
+    var originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'กำลังล้าง...';
+    callApi('clearReadNotifications', { token: localStorage.getItem(TOKEN_KEY) }).then(function (result) {
+      if (result && result.success) {
+        Toast.fire({ icon: 'success', title: result.deleted ? 'ล้างแล้ว ' + result.deleted + ' รายการ' : 'ไม่มีรายการที่ล้างได้' });
+      } else {
+        Swal.fire({ icon: 'error', title: 'ล้างไม่สำเร็จ', text: (result && result.message) || '' });
+      }
+    }).catch(function (err) {
+      Swal.fire({ icon: 'error', title: 'ล้างไม่สำเร็จ', text: err.message });
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    });
+  });
+}
+
 // ===== v3 มือถือ (ทดลอง) ขั้นที่ 2: ตัวช่วยหน้าแจ้งเตือน =====
 var _m2NotiFilter = 'all';
 function m2IsMobileV2() { return isUiV2() && window.innerWidth <= 768; }
@@ -5724,7 +5857,7 @@ function setM2NotiFilter(f) {
 function m2UpdateNotiHead() {
   var el = document.getElementById('my-requests-head-text');
   if (!el) return;
-  var unread = lastNotifications.filter(function (n) { return !n.read; }).length;
+  var unread = lastNotifications.filter(isNotifUnread).length;
   el.textContent = isFirstNotifSnapshot ? 'กำลังโหลด...' : (unread ? 'ยังไม่อ่าน ' + unread + ' รายการ' : 'อ่านครบแล้ว');
 }
 var M2_NOTI_ICON = {
