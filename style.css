@@ -1236,10 +1236,175 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   max-height: 85vh; overflow-y: hidden; position: relative;
   display: flex; flex-direction: column;
 }
-.my-requests-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+/* ===== (2569-11-21) หน้าแจ้งเตือนแบบใหม่ (#my-requests-box) — ใช้ร่วมกันทั้ง PC และมือถือ =====
+   โครง: หัวเขียว (ชื่อ + สรุปยังไม่อ่าน + ตั้งค่า/ปิด) → แถบเครื่องมือ (ตัวกรอง + อ่านทั้งหมด/ล้างที่อ่านแล้ว) → รายการ
+   แก้บั๊กที่ผู้ใช้แจ้ง: ข้อความยาวล้นกรอบ (ภาษาไทยไม่มีช่องว่าง → overflow-wrap:anywhere) และปุ่มตกบรรทัดตอนโหลด
+   (ปุ่มไม่เปลี่ยนข้อความแล้ว ใช้ .is-busy ซ่อนตัวอักษร + spinner ตรงกลาง ความกว้างคงเดิม) · ใช้คลาส nf-* แยกจาก
+   .request-card/.btn-outline เดิม เพราะคลาสเดิมโดนชุดขยายฟอนต์ PC (min-width:900px) ขยายจนปุ่ม/ข้อความล้น */
+:root {
+  --nf-blue: #2563eb; --nf-purple: #7c3aed; --nf-green: #047857; --nf-orange: #c2410c;
+  --nf-red: #dc2626; --nf-amber: #b45309; --nf-slate: #64748b;
 }
-#mark-all-read-btn { font-size: 12px; padding: 5px 10px; flex-shrink: 0; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --nf-blue: #93c5fd; --nf-purple: #c4b5fd; --nf-green: #6ee7b7; --nf-orange: #fdba74;
+    --nf-red: #fca5a5; --nf-amber: #fcd34d; --nf-slate: #a8b3bf;
+  }
+}
+:root[data-theme="dark"] {
+  --nf-blue: #93c5fd; --nf-purple: #c4b5fd; --nf-green: #6ee7b7; --nf-orange: #fdba74;
+  --nf-red: #fca5a5; --nf-amber: #fcd34d; --nf-slate: #a8b3bf;
+}
+#my-requests-box {
+  width: 460px; max-width: calc(100vw - 32px); max-height: min(86vh, 760px);
+  border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,0.28);
+}
+#my-requests-box .nf-head { padding: 14px 10px 14px 20px; gap: 12px; border-radius: 0; }
+.nf-head-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+#my-requests-box .nf-head h2 { font-size: 17px; font-weight: 700; line-height: 1.3; margin: 0; }
+#my-requests-head-text { font-size: 12.5px; color: rgba(255,255,255,0.85); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nf-head-btns { display: flex; gap: 2px; flex-shrink: 0; }
+#my-requests-box .nf-icon-btn {
+  width: 36px; height: 36px; border-radius: 10px; border: 0; background: transparent;
+  display: grid; place-items: center; color: rgba(255,255,255,0.85); cursor: pointer; padding: 0;
+}
+#my-requests-box .nf-icon-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+#my-requests-box .nf-icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
+
+.nf-toolbar {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 8px 10px; padding: 10px 12px 10px 16px; background: var(--surface); border-bottom: 1px solid var(--border-soft);
+}
+.nf-tabs { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-alt); border: 1px solid var(--border-soft); }
+.nf-tabs button {
+  display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-muted);
+  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; padding: 6px 12px; border-radius: 8px;
+  cursor: pointer; white-space: nowrap;
+}
+.nf-tabs button:hover { color: var(--text); }
+.nf-tabs button.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+.nf-tabs button:focus-visible { outline: 2px solid #059669; outline-offset: 1px; }
+.nf-count {
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #059669; color: #fff;
+  font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; line-height: 1;
+}
+.nf-count[hidden] { display: none; }
+.nf-actions { display: flex; gap: 2px; margin-left: auto; }
+.nf-act {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent;
+  color: var(--nf-green); font-family: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.2;
+  padding: 7px 9px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.nf-act:hover:not(:disabled) { background: var(--tint-mint-bg); }
+.nf-act:disabled { color: var(--text-faint); cursor: default; }
+.nf-act:focus-visible { outline: 2px solid #059669; outline-offset: 1px; }
+
+/* สถานะกำลังโหลด: ซ่อนตัวอักษร (ยังกินพื้นที่เท่าเดิม) แล้ววาด spinner ทับตรงกลาง → ปุ่มไม่ขยาย/ไม่ตกบรรทัด */
+#my-requests-box .is-busy { position: relative; pointer-events: none; }
+#my-requests-box .is-busy > * { visibility: hidden; }
+#my-requests-box .is-busy::after {
+  content: ""; position: absolute; top: 50%; left: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px;
+  border-radius: 50%; border: 2px solid rgba(5,150,105,0.25); border-top-color: #059669; animation: spin 0.7s linear infinite;
+}
+#my-requests-box .nf-btn-approve.is-busy::after { border-color: rgba(255,255,255,0.35); border-top-color: #fff; }
+#my-requests-box .nf-btn-reject.is-busy::after { border-color: rgba(220,38,38,0.25); border-top-color: var(--nf-red); }
+@media (prefers-reduced-motion: reduce) { #my-requests-box .is-busy::after { animation-duration: 1.6s; } }
+
+#my-requests-box .nf-list { padding: 0 10px 14px; background: var(--surface); }
+.nf-group {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  font-size: 12px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.2px; padding: 12px 8px 6px;
+}
+.nf-item {
+  position: relative; display: flex; align-items: flex-start; gap: 12px;
+  padding: 12px 6px 12px 10px; border-radius: 12px; transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+.nf-item + .nf-item { margin-top: 2px; }
+.nf-item.nf-click { cursor: pointer; }
+.nf-item.nf-click:hover { background: var(--surface-alt); }
+.nf-item:focus-visible { outline: 2px solid #059669; outline-offset: -2px; }
+.nf-item.nf-unread { background: var(--tint-mint-bg); }
+.nf-item.nf-removing { opacity: 0.45; pointer-events: none; }
+.nf-ic { width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; display: grid; place-items: center; }
+.nf-tone-blue { background: var(--tint-blue-bg); color: var(--nf-blue); }
+.nf-tone-purple { background: var(--tint-purple-bg); color: var(--nf-purple); }
+.nf-tone-green { background: var(--tint-green-bg); color: var(--nf-green); }
+.nf-tone-orange { background: var(--tint-orange-bg); color: var(--nf-orange); }
+.nf-tone-red { background: var(--tint-red-bg); color: var(--nf-red); }
+.nf-tone-amber { background: var(--tint-amber-bg); color: var(--nf-amber); }
+.nf-tone-slate { background: var(--tint-slate-bg); color: var(--nf-slate); }
+.nf-main { flex: 1; min-width: 0; }
+.nf-text { font-size: 14px; line-height: 1.55; color: var(--text); overflow-wrap: anywhere; word-break: break-word; }
+.nf-unread .nf-text { font-weight: 600; }
+.nf-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-top: 6px; min-width: 0; }
+.nf-chip {
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; font-weight: 600; line-height: 1.5; padding: 1px 8px; border-radius: 999px;
+  background: var(--surface-alt); color: var(--text-muted); border: 1px solid var(--border-soft);
+}
+.nf-chip-amber { background: var(--tint-amber-bg); color: var(--nf-amber); border-color: transparent; }
+.nf-chip-green { background: var(--tint-green-bg); color: var(--nf-green); border-color: transparent; }
+.nf-chip-red { background: var(--tint-red-bg); color: var(--nf-red); border-color: transparent; }
+.nf-chip-slate { background: var(--tint-slate-bg); color: var(--nf-slate); border-color: transparent; }
+.nf-time { font-size: 12px; color: var(--text-faint); white-space: nowrap; }
+.nf-by { font-size: 12px; color: var(--text-muted); margin-top: 4px; overflow-wrap: anywhere; }
+.nf-req-actions { display: flex; gap: 8px; margin-top: 10px; max-width: 320px; }
+.nf-btn {
+  position: relative; flex: 1 1 0; min-width: 0; min-height: 36px; padding: 8px 12px; border-radius: 9px;
+  font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.2; cursor: pointer; white-space: nowrap;
+}
+.nf-btn-approve { background: #059669; color: #fff; border: 1px solid #059669; }
+.nf-btn-approve:hover:not(:disabled) { background: #047857; border-color: #047857; }
+.nf-btn-reject { background: var(--surface); color: var(--nf-red); border: 1px solid var(--nf-red); }
+.nf-btn-reject:hover:not(:disabled) { background: var(--tint-red-bg); }
+.nf-btn:disabled { opacity: 0.55; cursor: default; }
+.nf-btn.is-busy { opacity: 1; }
+.nf-btn:focus-visible { outline: 2px solid #059669; outline-offset: 2px; }
+.nf-side { flex-shrink: 0; width: 28px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.nf-dot { width: 9px; height: 9px; border-radius: 50%; background: #059669; margin: 6px 0 2px; }
+.nf-dismiss {
+  position: relative; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent;
+  color: var(--text-faint); display: grid; place-items: center; cursor: pointer;
+}
+.nf-dismiss:hover { background: var(--border-soft); color: var(--text); }
+.nf-dismiss:focus-visible { outline: 2px solid #059669; outline-offset: 0; opacity: 1; }
+/* PC (เมาส์): ซ่อนปุ่มลบไว้จนกว่าจะชี้ที่การ์ด ให้รายการดูสะอาด — จอสัมผัสโชว์ตลอด (ไม่มี hover) */
+@media (hover: hover) and (pointer: fine) {
+  .nf-item .nf-dismiss { opacity: 0; transition: opacity 0.15s ease; }
+  .nf-item:hover .nf-dismiss, .nf-item:focus-within .nf-dismiss, .nf-dismiss.is-busy { opacity: 1; }
+}
+.nf-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 52px 20px; color: var(--text-muted); font-size: 13px; }
+.nf-empty b { color: var(--text); font-size: 15px; }
+.nf-empty-ic { width: 52px; height: 52px; border-radius: 16px; background: var(--tint-mint-bg); color: var(--nf-green); display: grid; place-items: center; margin-bottom: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+#my-requests-box .skel-notif-row { padding: 12px 8px; }
+
+/* PC จอใหญ่: กว้างขึ้นนิด + ตัวอักษรใหญ่ขึ้นตามชุดขยายฟอนต์ของแอป (แต่คุมไม่ให้ปุ่ม/ป้ายล้น) */
+@media (min-width: 900px) {
+  #my-requests-box { width: 480px; }
+  .nf-text { font-size: 15px; }
+  .nf-time, .nf-by { font-size: 12.5px; }
+  .nf-chip { font-size: 11.5px; }
+}
+/* มือถือ (หน้าตาเดิม ไม่ใช่ v3): modal กลางจอ เต็มความกว้างเกือบสุด + ปุ่มใหญ่ขึ้นให้นิ้วกดง่าย */
+@media (max-width: 768px) {
+  #my-requests-box { max-width: calc(100vw - 24px); max-height: 88vh; }
+  .nf-toolbar { padding: 10px 12px; }
+  .nf-act { padding: 9px 8px; }
+  .nf-dismiss { width: 36px; height: 36px; margin: -4px -4px 0 0; }
+  .nf-side { width: 32px; }
+  .nf-btn { min-height: 40px; }
+}
+/* จอแคบ (มือถือ): แถบเครื่องมือเป็น 2 แถวที่ตั้งใจจัด — แถวบนตัวกรองเต็มแถว แถวล่างปุ่มแบ่งครึ่งเท่ากัน
+   (เดิมปล่อยให้ตกบรรทัดเองแล้วชิดขวา ดูเหมือนหลุด) */
+@media (max-width: 480px) {
+  .nf-toolbar { gap: 8px; }
+  .nf-tabs { flex: 1 1 100%; }
+  .nf-tabs button { flex: 1 1 0; justify-content: center; padding: 7px 10px; }
+  .nf-actions { flex: 1 1 100%; margin-left: 0; gap: 8px; }
+  .nf-act { flex: 1 1 0; justify-content: center; border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 6px; }
+}
+#my-requests-box .nf-list { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 .modal-close-btn {
   position: absolute; top: 12px; right: 14px; background: none; border: none;
   font-size: 16px; cursor: pointer; color: var(--text-muted);
@@ -2386,7 +2551,7 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
 
 /* ===== v3 มือถือ (ทดลอง) ขั้นที่ 2: หน้าแจ้งเตือนเต็มจอ (ใช้ #my-requests-modal-overlay เดิม) =====
    เว้นแถบล่างไว้ให้กดสลับแท็บได้ตลอด / ทุกการทำงาน (อ่าน, อนุมัติ, เปิดงาน) ยังเป็นโค้ดเดิม */
-#m2-noti-filter { display: none; }
+/* (2569-11-21) ตัวกรอง #m2-noti-filter ใช้ทุกขนาดจอแล้ว (เดิมซ่อนนอก v3 มือถือ) */
 @media (max-width: 768px) {
   .ui-v2 #my-requests-modal-overlay {
     inset: 0 0 calc(66px + env(safe-area-inset-bottom)) 0;
@@ -2395,33 +2560,11 @@ button:disabled { opacity: 0.7; cursor: not-allowed; }
   }
   .ui-v2 #my-requests-box {
     width: 100%; max-width: none; max-height: none; height: 100%; border-radius: 0;
-    background: var(--surface-alt); animation: none;
+    background: var(--surface); box-shadow: none; animation: none;
   }
-  .ui-v2 #my-requests-box .tb-head { padding-top: calc(16px + env(safe-area-inset-top)); }
-  .ui-v2 #my-requests-box .tb-head .modal-close-btn { display: none; }
-  .ui-v2 #my-requests-box .my-requests-head { background: #059669; color: rgba(255,255,255,0.9); border: 0; padding: 0 16px 12px; margin: 0; font-size: 12.5px; }
-  .ui-v2 #mark-all-read-btn { background: #fff; color: #047857; border: 0; border-radius: 999px; font-weight: 700; padding: 6px 13px; width: auto; flex: 0 0 auto; }
-  .ui-v2 #m2-noti-filter { display: flex; gap: 8px; align-items: center; padding: 12px 16px 4px; }
-  #m2-noti-filter button {
-    border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
-    border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
-  }
-  #m2-noti-filter button.on { background: #059669; border-color: #059669; color: #fff; }
-  #m2-noti-filter .m2-nf-gear { margin-left: auto; padding: 6px 9px; display: grid; place-items: center; }
-  .ui-v2 #my-requests-list { padding: 4px 16px 24px; overflow-y: auto; flex: 1; }
-  .m2-ngrp { font-size: 12px; font-weight: 700; color: var(--text-muted); margin: 14px 2px 8px; letter-spacing: 0.2px; }
-  .ui-v2 #my-requests-list .request-card {
-    background: var(--surface); border: 0; border-radius: 16px; padding: 13px 14px; margin-bottom: 8px; gap: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  }
-  .ui-v2 #my-requests-list .request-card.notif-unread { background: var(--surface); box-shadow: inset 3px 0 0 #059669, 0 1px 3px rgba(0,0,0,0.05); }
-  .ui-v2 #my-requests-list .notif-ic { width: 38px; height: 38px; border-radius: 12px; font-size: 16px; color: var(--text); }
-  .ui-v2 #my-requests-list .rc-task { font-size: 14px; }
-  .ui-v2 #my-requests-list .rc-meta { font-size: 12px; }
-  .ui-v2 #my-requests-list .notif-tag { font-size: 10.5px; }
-  .m2-udot { width: 8px; height: 8px; border-radius: 50%; background: #059669; flex-shrink: 0; align-self: center; }
-  .m2-nempty { text-align: center; padding: 48px 16px; color: var(--text-muted); font-size: 13px; }
-  .m2-nempty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+  .ui-v2 #my-requests-box .nf-head { padding-top: calc(14px + env(safe-area-inset-top)); }
+  .ui-v2 #my-requests-box .nf-close { display: none; } /* หน้าเต็มจอ ปิดด้วยแถบล่างแทน */
+  .ui-v2 #my-requests-box .nf-list { padding-bottom: 24px; }
 }
 
 /* ===== v3 มือถือ (ทดลอง) ขั้นที่ 3–4: หน้า "งานของฉัน" + ปฏิทินแบบจุดสี ===== */
