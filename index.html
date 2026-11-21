@@ -31,7 +31,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="style.css?v=20261120b">
+  <link rel="stylesheet" href="style.css?v=20261121a">
 </head>
 <body>
 
@@ -766,25 +766,30 @@
   </div>
 
   <div id="my-requests-modal-overlay">
-    <div id="my-requests-box">
-      <div class="tb-head">
-        <h2>🔔 การแจ้งเตือน</h2>
-        <button class="modal-close-btn" onclick="closeMyRequestsModal()">✕</button>
+    <!-- (2569-11-21) ออกแบบหน้าแจ้งเตือนใหม่ ใช้โครงเดียวกันทั้ง PC และมือถือ: หัว (ชื่อ + สรุปยังไม่อ่าน + ตั้งค่า/ปิด)
+         → แถบเครื่องมือ (ตัวกรอง ทั้งหมด/ยังไม่อ่าน + อ่านทั้งหมด/ล้างที่อ่านแล้ว) → รายการ (จัดกลุ่มตามวัน) -->
+    <div id="my-requests-box" role="dialog" aria-modal="true" aria-labelledby="nf-title">
+      <div class="tb-head nf-head">
+        <div class="nf-head-text">
+          <h2 id="nf-title">การแจ้งเตือน</h2>
+          <span id="my-requests-head-text" aria-live="polite">กำลังโหลด...</span>
+        </div>
+        <div class="nf-head-btns">
+          <button type="button" class="nf-icon-btn" onclick="openNotifSettingsModal()" aria-label="ตั้งค่าการแจ้งเตือน" title="ตั้งค่าการแจ้งเตือน"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+          <button type="button" class="nf-icon-btn nf-close" onclick="closeMyRequestsModal()" aria-label="ปิด" title="ปิด"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
       </div>
-      <div class="tb-info-banner my-requests-head">
-        <span id="my-requests-head-text">รายการแจ้งเตือนล่าสุดของคุณ</span>
-        <span class="my-requests-head-btns">
-          <button id="clear-read-btn" class="btn-outline" onclick="clearReadNotifications(this)">ล้างที่อ่านแล้ว</button>
-          <button id="mark-all-read-btn" class="btn-outline" onclick="markAllNotificationsRead(this)">อ่านทั้งหมด</button>
-        </span>
+      <div class="nf-toolbar">
+        <div id="m2-noti-filter" class="nf-tabs" role="tablist" aria-label="ตัวกรองการแจ้งเตือน">
+          <button type="button" class="on" data-f="all" role="tab" aria-selected="true" onclick="setM2NotiFilter('all')">ทั้งหมด</button>
+          <button type="button" data-f="unread" role="tab" aria-selected="false" onclick="setM2NotiFilter('unread')">ยังไม่อ่าน<span id="nf-unread-count" class="nf-count" hidden></span></button>
+        </div>
+        <div class="nf-actions">
+          <button type="button" id="mark-all-read-btn" class="nf-act" onclick="markAllNotificationsRead(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12l5 5L18 6M12 17l1 1 9-11"/></svg><span>อ่านทั้งหมด</span></button>
+          <button type="button" id="clear-read-btn" class="nf-act" onclick="clearReadNotifications(this)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg><span>ล้างที่อ่านแล้ว</span></button>
+        </div>
       </div>
-      <!-- v3 มือถือ (ทดลอง): ตัวกรอง ทั้งหมด/ยังไม่อ่าน — แสดงเฉพาะ html.ui-v2 บนมือถือ -->
-      <div id="m2-noti-filter" role="tablist">
-        <button type="button" class="on" data-f="all" onclick="setM2NotiFilter('all')">ทั้งหมด</button>
-        <button type="button" data-f="unread" onclick="setM2NotiFilter('unread')">ยังไม่อ่าน</button>
-        <button type="button" class="m2-nf-gear" onclick="openNotifSettingsModal()" aria-label="ตั้งค่าการแจ้งเตือน"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-      </div>
-      <div id="my-requests-list" class="tb-body"></div>
+      <div id="my-requests-list" class="tb-body nf-list"></div>
     </div>
   </div>
 
@@ -1106,6 +1111,6 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js"></script>
   <!-- ใส่ ?v=... ต่อท้ายกันเบราว์เซอร์/PWA แคช app.js เก่าค้างไว้ อัปเดตเลขวันที่ต่อท้ายทุกครั้งที่แก้ app.js/style.css -->
-  <script src="app.js?v=20261120b"></script>
+  <script src="app.js?v=20261121a"></script>
 </body>
 </html>

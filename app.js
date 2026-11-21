@@ -5608,75 +5608,102 @@ function renderNotificationsSkeleton() {
   container.innerHTML = rows;
 }
 
+// ===== (2569-11-21) หน้าแจ้งเตือนแบบใหม่ — ใช้หน้าตาเดียวกันทั้ง PC และมือถือ (เดิมแยก v2 มือถือ/แบบเก่า) =====
+// บั๊กที่ผู้ใช้แจ้ง: (1) ข้อความยาวล้นกรอบ — ภาษาไทยไม่มีช่องว่างให้ตัดบรรทัด + ป้าย "อนุมัติแล้วโดย ชื่อ นามสกุล"
+// เป็น nowrap จึงดันการ์ดออกนอกกรอบ แก้ด้วย overflow-wrap:anywhere และแยก "โดย ..." ออกจากป้าย
+// (2) ปุ่ม "อ่านทั้งหมด" เปลี่ยนข้อความเป็น "กำลังทำเครื่องหมาย..." ตอนรอ API ปุ่มเลยกว้างขึ้นจนตกบรรทัด
+// แก้ด้วย nfSetBusy() — คงข้อความเดิมไว้ ซ่อนตัวอักษรแล้วโชว์ spinner ตรงกลางแทน ความกว้างปุ่มไม่เปลี่ยนเลย
+// การ์ดใช้คลาส nf-* ใหม่ (ไม่ใช้ .request-card) เพราะ .request-card โดนชุดขยายฟอนต์ PC (min-width:900px) ขยายจนล้น
+var NF_TONE = { blue: 'blue', purple: 'purple', green: 'green', orange: 'orange', red: 'red', amber: 'amber', slate: 'slate' };
+
+function nfSetBusy(btn, busy) {
+  if (!btn) return;
+  btn.disabled = !!busy;
+  btn.classList.toggle('is-busy', !!busy);
+  btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+// ป้ายสถานะของคำขออนุมัติ (แยกจากป้ายหมวด) — คืน null ถ้าไม่ใช่แจ้งเตือนคำขอ
+function nfRequestStatusChip(reqState) {
+  if (!reqState) return null;
+  if (reqState === 'pending') return { tone: 'amber', text: 'รออนุมัติ' };
+  if (reqState === 'approved') return { tone: 'green', text: 'อนุมัติแล้ว' };
+  if (reqState === 'rejected') return { tone: 'red', text: 'ไม่อนุมัติ' };
+  return { tone: 'slate', text: 'ดำเนินการแล้ว' };
+}
+
 function renderNotificationsList() {
   var container = document.getElementById('my-requests-list');
-  var v2 = m2IsMobileV2(); // v3 มือถือ (ทดลอง): จัดกลุ่มตามวัน + ตัวกรอง + เวลาแบบสั้น
-  if (v2) m2UpdateNotiHead();
+  m2UpdateNotiHead();
   if (isFirstNotifSnapshot) {
     renderNotificationsSkeleton();
     return;
   }
   if (lastNotifications.length === 0) {
-    container.innerHTML = v2 ? '<div class="m2-nempty"><b>ยังไม่มีการแจ้งเตือน</b>เมื่อมีงานใหม่ คำขอ หรือคอมเมนต์ จะขึ้นที่นี่</div>'
-      : '<p style="font-size:13px;color:var(--text-faint)">ยังไม่มีการแจ้งเตือน</p>';
+    container.innerHTML = '<div class="nf-empty"><span class="nf-empty-ic">' + m2Svg(M2_NOTI_ICON.bell, 26) + '</span>' +
+      '<b>ยังไม่มีการแจ้งเตือน</b><span>เมื่อมีงานใหม่ คำขอ หรือคอมเมนต์ จะแสดงที่นี่</span></div>';
     return;
   }
-  container.innerHTML = '';
   var list = lastNotifications;
-  if (v2 && _m2NotiFilter === 'unread') {
+  if (_m2NotiFilter === 'unread') {
     list = lastNotifications.filter(isNotifUnread);
     if (list.length === 0) {
-      container.innerHTML = '<div class="m2-nempty"><b>อ่านครบแล้ว</b>ไม่มีแจ้งเตือนที่ยังไม่อ่าน</div>';
+      container.innerHTML = '<div class="nf-empty"><span class="nf-empty-ic">' + m2Svg(M2_NOTI_ICON.check, 26) + '</span>' +
+        '<b>อ่านครบแล้ว</b><span>ไม่มีการแจ้งเตือนที่ยังไม่อ่าน</span></div>';
       return;
     }
   }
+  container.innerHTML = '';
   var lastGroup = null;
   list.forEach(function (n) {
     var unread = isNotifUnread(n);
     var reqState = getRequestNotifState(n); // null ถ้าไม่ใช่แจ้งเตือนคำขอ
-    var card = document.createElement('div');
-    card.className = 'request-card' + (unread ? ' notif-unread' : '');
-    var timeLabel = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate().toLocaleString('th-TH') : '';
     var info = getNotifTypeInfo(n.type);
-    // คำขอที่ถูกดำเนินการไปแล้ว (โดยเราหรือ Admin คนอื่น) เปลี่ยนป้ายจาก "รออนุมัติ" เป็นผลจริง
-    if (reqState && reqState !== 'pending') {
-      var by = n.resolvedByName ? ' โดย ' + n.resolvedByName : '';
-      info = reqState === 'approved' ? { icon: info.icon, color: 'green', tag: 'อนุมัติแล้ว' + by }
-        : reqState === 'rejected' ? { icon: info.icon, color: 'slate', tag: 'ไม่อนุมัติ' + by }
-        : { icon: info.icon, color: 'slate', tag: 'ดำเนินการแล้ว' + by };
+    var tone = NF_TONE[info.color] || 'blue';
+    var statusChip = nfRequestStatusChip(reqState);
+    // คำขอที่จบแล้ว ไอคอนเปลี่ยนสีตามผล (เขียว/แดง/เทา) ให้กวาดตาแล้วรู้ว่าไม่ต้องทำอะไรแล้ว
+    if (statusChip && reqState !== 'pending') tone = statusChip.tone;
+
+    var when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate() : null;
+    var grp = m2NotiGroup(when);
+    if (grp !== lastGroup) {
+      var gh = document.createElement('div');
+      gh.className = 'nf-group';
+      gh.textContent = grp;
+      container.appendChild(gh);
+      lastGroup = grp;
     }
-    if (v2) {
-      var when = n.createdAt && n.createdAt.toDate ? n.createdAt.toDate() : null;
-      var grp = m2NotiGroup(when);
-      if (grp !== lastGroup) {
-        var gh = document.createElement('div');
-        gh.className = 'm2-ngrp'; gh.textContent = grp;
-        container.appendChild(gh);
-        lastGroup = grp;
-      }
-      timeLabel = m2NotiTime(when);
-      info = { icon: m2NotiIcon(n.type), color: info.color, tag: info.tag };
-    }
+
+    var chips = '';
+    if (info.tag && n.type !== 'changeRequestNew') chips += '<span class="nf-chip">' + escapeHtmlPtb(info.tag) + '</span>';
+    if (statusChip) chips += '<span class="nf-chip nf-chip-' + statusChip.tone + '">' + statusChip.text + '</span>';
+    var fullTime = when ? when.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    var meta = chips +
+      (when ? '<time class="nf-time" datetime="' + when.toISOString() + '" title="' + escapeHtmlPtb(fullTime) + '">' + m2NotiTime(when) + '</time>' : '');
+    var byLine = (statusChip && reqState !== 'pending' && n.resolvedByName)
+      ? '<div class="nf-by">โดย ' + escapeHtmlPtb(n.resolvedByName) + '</div>' : '';
 
     var actionsHtml = '';
     if (reqState === 'pending') {
-      actionsHtml = '<div class="rc-actions">' +
-        '<button class="btn-approve" onclick="approveFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')">อนุมัติ</button>' +
-        '<button class="btn-reject" onclick="rejectFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')">ไม่อนุมัติ</button>' +
+      actionsHtml = '<div class="nf-req-actions">' +
+        '<button type="button" class="nf-btn nf-btn-approve" onclick="approveFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')"><span>อนุมัติ</span></button>' +
+        '<button type="button" class="nf-btn nf-btn-reject" onclick="rejectFromNotification(this, \'' + escapeHtmlPtb(n.requestId) + '\', \'' + n.id + '\')"><span>ไม่อนุมัติ</span></button>' +
         '</div>';
     }
-    // ปุ่ม ✕ ลบแจ้งเตือนทีละอัน — ไม่โชว์กับคำขอที่ยังรออนุมัติ (backend ก็กันไว้อีกชั้น)
+    // ปุ่มลบทีละอัน — ไม่โชว์กับคำขอที่ยังรออนุมัติ (backend ก็กันไว้อีกชั้น)
     var dismissHtml = reqState === 'pending' ? '' :
-      '<button type="button" class="notif-dismiss" aria-label="ลบการแจ้งเตือนนี้" title="ลบการแจ้งเตือนนี้" onclick="dismissNotification(event, this, \'' + n.id + '\')">✕</button>';
+      '<button type="button" class="nf-dismiss" aria-label="ลบการแจ้งเตือนนี้" title="ลบการแจ้งเตือนนี้" onclick="dismissNotification(event, this, \'' + n.id + '\')">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
 
+    var card = document.createElement('div');
+    card.className = 'nf-item' + (unread ? ' nf-unread' : '');
     card.innerHTML =
-      '<div class="notif-ic ' + info.color + '">' + info.icon + '</div>' +
-      '<div class="notif-body-col">' +
-        '<div class="rc-task">' + escapeHtmlPtb(n.body || '') + '</div>' +
-        '<div class="notif-meta-row"><span class="rc-meta">' + timeLabel + '</span>' +
-          (info.tag ? '<span class="notif-tag">' + escapeHtmlPtb(info.tag) + '</span>' : '') +
-        '</div>' + actionsHtml +
-      '</div>' + (v2 && unread ? '<span class="m2-udot" aria-label="ยังไม่อ่าน"></span>' : '') + dismissHtml;
+      '<div class="nf-ic nf-tone-' + tone + '">' + m2NotiIcon(n.type) + '</div>' +
+      '<div class="nf-main">' +
+        '<div class="nf-text">' + escapeHtmlPtb(n.body || '') + '</div>' +
+        '<div class="nf-meta">' + meta + '</div>' + byLine + actionsHtml +
+      '</div>' +
+      '<div class="nf-side">' + (unread ? '<span class="nf-dot" title="ยังไม่อ่าน"></span><span class="sr-only">ยังไม่อ่าน</span>' : '') + dismissHtml + '</div>';
 
     // คลิกที่การ์ด: ถ้ายังไม่อ่านให้ทำเครื่องหมายอ่านแล้วเหมือนเดิม และถ้ามีงานผูกอยู่ (taskId ของปฏิทินหลัก
     // หรือ personalTaskId ของ Personal Task Board) ให้เปิดการ์ดรายละเอียดงานซ้อนขึ้นมาเลยโดยไม่ปิดลิสต์นี้ก่อน
@@ -5684,14 +5711,21 @@ function renderNotificationsList() {
     var hasLinkedTask = n.type !== 'changeRequestNew' && (n.taskId || n.personalTaskId);
     var clickable = n.type !== 'changeRequestNew' && (!n.read || hasLinkedTask);
     if (clickable) {
-      card.style.cursor = 'pointer';
-      card.onclick = function () {
+      card.classList.add('nf-click');
+      card.tabIndex = 0;
+      card.setAttribute('role', 'button');
+      var open = function () {
         if (!n.read) markNotificationReadAndRefresh(n.id);
         if (n.personalTaskId) {
           openPersonalTaskModal(n.personalTaskId);
         } else if (n.taskId) {
           openTaskFromNotification(n.taskId);
         }
+      };
+      card.onclick = open;
+      card.onkeydown = function (e) {
+        if (e.target !== card) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
       };
     }
     container.appendChild(card);
@@ -5719,9 +5753,17 @@ function markNotificationReadAndRefresh(notificationId) {
   });
 }
 
+// ล็อกปุ่มอนุมัติ/ไม่อนุมัติทั้งคู่ระหว่างรอ API (กันกดอีกปุ่มซ้อน) — ปุ่มที่กดโชว์ spinner แทนข้อความ ขนาดปุ่มคงเดิม
+function nfLockRequestButtons(btn, busy) {
+  var row = btn && btn.closest ? btn.closest('.nf-req-actions') : null;
+  if (row) row.querySelectorAll('button').forEach(function (b) { b.disabled = !!busy; });
+  nfSetBusy(btn, busy);
+}
+
 function approveFromNotification(btn, requestId, notificationId) {
   var token = localStorage.getItem(TOKEN_KEY);
-  setButtonLoading(btn, true, 'กำลังอนุมัติ...');
+  nfLockRequestButtons(btn, true);
+  var setButtonLoading = function (b, on) { nfLockRequestButtons(b, on); }; // คืนสถานะปุ่มตอน error ด้านล่าง
   callApi('approveChangeRequest', { token: token, requestId: requestId }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: 'อนุมัติแล้ว' });
@@ -5744,7 +5786,8 @@ function approveFromNotification(btn, requestId, notificationId) {
 
 function rejectFromNotification(btn, requestId, notificationId) {
   var token = localStorage.getItem(TOKEN_KEY);
-  setButtonLoading(btn, true, 'กำลังปฏิเสธ...');
+  nfLockRequestButtons(btn, true);
+  var setButtonLoading = function (b, on) { nfLockRequestButtons(b, on); }; // คืนสถานะปุ่มตอน error ด้านล่าง
   callApi('rejectChangeRequest', { token: token, requestId: requestId }).then(function (result) {
     if (result.success) {
       Toast.fire({ icon: 'success', title: 'ไม่อนุมัติคำขอนี้แล้ว' });
@@ -5772,9 +5815,7 @@ function markAllNotificationsRead(btn) {
     Toast.fire({ icon: 'info', title: 'อ่านหมดแล้ว' });
     return;
   }
-  var originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'กำลังทำเครื่องหมาย...';
+  nfSetBusy(btn, true); // ไม่เปลี่ยนข้อความปุ่ม (เดิมเปลี่ยนเป็นข้อความยาวจนปุ่มตกบรรทัด)
   Promise.all(unread.map(function (n) {
     return callApi('markNotificationRead', { token: token, notificationId: n.id }).then(function () {
       n.read = true;
@@ -5786,8 +5827,8 @@ function markAllNotificationsRead(btn) {
     Swal.fire({ icon: 'error', title: 'ทำเครื่องหมายไม่สำเร็จบางรายการ', text: err.message });
     renderNotificationsList();
   }).finally(function () {
-    btn.disabled = false;
-    btn.textContent = originalText;
+    nfSetBusy(btn, false);
+    m2UpdateNotiHead();
   });
 }
 
@@ -5796,20 +5837,24 @@ function markAllNotificationsRead(btn) {
 // lastNotifications ทันทีด้วยเพื่อให้การ์ดหายไวไม่ต้องรอรอบ realtime
 function dismissNotification(evt, btn, notificationId) {
   if (evt) evt.stopPropagation(); // ไม่ให้ไปเปิดงาน/mark อ่านจาก onclick ของการ์ด
-  btn.disabled = true;
+  nfSetBusy(btn, true);
+  var card = btn.closest ? btn.closest('.nf-item') : null;
+  if (card) card.classList.add('nf-removing'); // จางลงทันทีให้รู้ว่ากำลังลบ
   var token = localStorage.getItem(TOKEN_KEY);
   callApi('deleteNotification', { token: token, notificationId: notificationId }).then(function (result) {
     if (result && result.success === false) {
+      if (card) card.classList.remove('nf-removing');
       Swal.fire({ icon: 'info', title: 'ลบไม่ได้', text: result.message });
-      btn.disabled = false;
+      nfSetBusy(btn, false);
       return;
     }
     lastNotifications = lastNotifications.filter(function (x) { return x.id !== notificationId; });
     updateNotifBadges(false);
     renderNotificationsList();
   }).catch(function (err) {
+    if (card) card.classList.remove('nf-removing');
     Swal.fire({ icon: 'error', title: 'ลบไม่สำเร็จ', text: err.message });
-    btn.disabled = false;
+    nfSetBusy(btn, false);
   });
 }
 
@@ -5828,9 +5873,7 @@ function clearReadNotifications(btn) {
     cancelButtonText: 'ยกเลิก'
   }).then(function (r) {
     if (!r.isConfirmed) return;
-    var originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'กำลังล้าง...';
+    nfSetBusy(btn, true);
     callApi('clearReadNotifications', { token: localStorage.getItem(TOKEN_KEY) }).then(function (result) {
       if (result && result.success) {
         Toast.fire({ icon: 'success', title: result.deleted ? 'ล้างแล้ว ' + result.deleted + ' รายการ' : 'ไม่มีรายการที่ล้างได้' });
@@ -5840,8 +5883,8 @@ function clearReadNotifications(btn) {
     }).catch(function (err) {
       Swal.fire({ icon: 'error', title: 'ล้างไม่สำเร็จ', text: err.message });
     }).finally(function () {
-      btn.disabled = false;
-      btn.textContent = originalText;
+      nfSetBusy(btn, false);
+      m2UpdateNotiHead();
     });
   });
 }
@@ -5851,14 +5894,32 @@ var _m2NotiFilter = 'all';
 function m2IsMobileV2() { return isUiV2() && window.innerWidth <= 768; }
 function setM2NotiFilter(f) {
   _m2NotiFilter = f;
-  document.querySelectorAll('#m2-noti-filter [data-f]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-f') === f); });
+  document.querySelectorAll('#m2-noti-filter [data-f]').forEach(function (b) {
+    var on = b.getAttribute('data-f') === f;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
   renderNotificationsList();
 }
+// หัวหน้าแจ้งเตือน: สรุปจำนวนยังไม่อ่าน + ตัวเลขบนแท็บ "ยังไม่อ่าน" + ปิดปุ่มที่ไม่มีอะไรให้ทำ (ไม่ต้องกดแล้วเจอ toast)
 function m2UpdateNotiHead() {
   var el = document.getElementById('my-requests-head-text');
-  if (!el) return;
   var unread = lastNotifications.filter(isNotifUnread).length;
-  el.textContent = isFirstNotifSnapshot ? 'กำลังโหลด...' : (unread ? 'ยังไม่อ่าน ' + unread + ' รายการ' : 'อ่านครบแล้ว');
+  if (el) {
+    el.textContent = isFirstNotifSnapshot ? 'กำลังโหลด...'
+      : lastNotifications.length === 0 ? 'ยังไม่มีการแจ้งเตือน'
+      : unread ? 'ยังไม่อ่าน ' + unread + ' รายการ' : 'อ่านครบทุกรายการแล้ว';
+  }
+  var cnt = document.getElementById('nf-unread-count');
+  if (cnt) { cnt.textContent = unread > 99 ? '99+' : String(unread); cnt.hidden = !unread || isFirstNotifSnapshot; }
+  var markBtn = document.getElementById('mark-all-read-btn');
+  var clearBtn = document.getElementById('clear-read-btn');
+  if (markBtn && !markBtn.classList.contains('is-busy')) {
+    markBtn.disabled = isFirstNotifSnapshot || !lastNotifications.some(function (n) { return !n.read && n.type !== 'changeRequestNew'; });
+  }
+  if (clearBtn && !clearBtn.classList.contains('is-busy')) {
+    clearBtn.disabled = isFirstNotifSnapshot || !lastNotifications.some(function (n) { return !isNotifUnread(n); });
+  }
 }
 var M2_NOTI_ICON = {
   plus: '<path d="M12 5v14M5 12h14"/>', edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
